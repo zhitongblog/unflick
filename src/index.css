@@ -8,4 +8,16 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  background-color: #030712; /* gray-950 */
+  color: #f3f4f6; /* gray-100 */
+  user-select: none;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
