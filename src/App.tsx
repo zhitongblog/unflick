@@ -1,11 +1,15 @@
 import { useEffect, useCallback, useState, DragEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
 import PlayerBar from "./components/Player/PlayerBar";
+import LibraryPanel from "./components/Library/LibraryPanel";
 import { usePlayerStore } from "./stores/playerStore";
+import { useLibraryStore } from "./stores/libraryStore";
 
 function App() {
   const { state, play, pause, resume, seek, position, volume, setVolume } =
     usePlayerStore();
+  const { showLibrary, toggleLibrary } = useLibraryStore();
   const [isDragging, setIsDragging] = useState(false);
 
   // Keyboard shortcuts
@@ -41,9 +45,25 @@ function App() {
           e.preventDefault();
           setVolume(Math.max(0, volume - 5));
           break;
+        case "l":
+        case "L":
+          e.preventDefault();
+          toggleLibrary();
+          break;
+        case "s":
+        case "S":
+          e.preventDefault();
+          if (state !== "stopped") {
+            invoke("player_screenshot")
+              .then((result: unknown) => {
+                console.log("Screenshot saved:", result);
+              })
+              .catch(console.error);
+          }
+          break;
       }
     },
-    [state, pause, resume, seek, position, volume, setVolume],
+    [state, pause, resume, seek, position, volume, setVolume, toggleLibrary],
   );
 
   useEffect(() => {
@@ -120,6 +140,11 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Library panel */}
+      <AnimatePresence>
+        {showLibrary && <LibraryPanel />}
+      </AnimatePresence>
 
       {/* Player bar at bottom */}
       <PlayerBar />
