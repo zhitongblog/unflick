@@ -314,6 +314,27 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
+        "clip" => {
+            let file = args["file"].as_str().unwrap_or("");
+            let input = if file.is_empty() {
+                // Use currently playing file
+                match player.status().file {
+                    Some(f) => f,
+                    None => return CommandResult::err("no file specified and nothing playing"),
+                }
+            } else {
+                file.to_string()
+            };
+            let start = args["start"].as_f64().unwrap_or(0.0);
+            let end = args["end"].as_f64().unwrap_or(0.0);
+            let output = args.get("output").and_then(|v| v.as_str()).unwrap_or("");
+            let gif = args.get("gif").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            match crate::core::player::extract_clip(&input, start, end, output, gif) {
+                Ok(path) => CommandResult::ok_with_data("clip saved", json!({"path": path})),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
         "screenshot" => {
             let output = args.get("output").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| {
                 let ts = std::time::SystemTime::now()

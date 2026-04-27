@@ -162,3 +162,71 @@ impl Player {
         self.mpv.set_property_i64("sid", id)
     }
 }
+
+/// Extract a video clip using ffmpeg (standalone, does not need a Player instance).
+pub fn extract_clip(
+    input: &str,
+    start: f64,
+    end: f64,
+    output: &str,
+    as_gif: bool,
+) -> Result<String> {
+    let duration = end - start;
+    if duration <= 0.0 {
+        bail!("end time must be after start time");
+    }
+
+    // Determine output path
+    let output_path = if output.is_empty() {
+        let ext = if as_gif { "gif" } else { "mp4" };
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        format!("unflick-clip-{}.{}", ts, ext)
+    } else {
+        output.to_string()
+    };
+
+    let start_str = format!("{:.3}", start);
+    let duration_str = format!("{:.3}", duration);
+
+    let result = if as_gif {
+        std::process::Command::new("ffmpeg")
+            .args([
+                "-y", "-ss", &start_str, "-t", &duration_str,
+                "-i", input,
+                "-vf", "fps=15,scale=480:-1:flags=lanczos",
+                "-loop", "0",
+                &output_path,
+            ])
+            .output()
+    } else {
+        std::process::Command::new("ffmpeg")
+            .args([
+                "-y", "-ss", &start_str, "-t", &duration_str,
+                "-i", input,
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                &output_path,
+            ])
+            .output()
+    };
+
+    match result {
+        Ok(cmd_output) => {
+            if cmd_output.status.success() {
+                Ok(output_path)
+            } else {
+                let stderr = String::from_utf8_lossy(&cmd_output.stderr);
+                bail!("ffmpeg failed: {}", stderr.chars().take(500).collect::<String>())
+            }
+        }
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                bail!("ffmpeg not found. Please install ffmpeg and add it to PATH.")
+            }
+            bail!("failed to run ffmpeg: {}", e)
+        }
+    }
+}

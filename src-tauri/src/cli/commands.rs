@@ -61,6 +61,22 @@ pub enum Commands {
         /// Path to the video file
         file: String,
     },
+    /// Extract a video clip (requires ffmpeg)
+    Clip {
+        /// Start time in seconds
+        start: f64,
+        /// End time in seconds
+        end: f64,
+        /// Input file (uses currently playing file if omitted)
+        #[arg(long)]
+        file: Option<String>,
+        /// Output file path (auto-generated if omitted)
+        #[arg(long)]
+        output: Option<String>,
+        /// Export as GIF instead of MP4
+        #[arg(long)]
+        gif: bool,
+    },
     /// Take a screenshot of the current frame
     Screenshot {
         /// Output file path (default: auto-generated)
@@ -190,6 +206,13 @@ pub fn run_cli(cli: Cli) -> i32 {
         }
         Some(Commands::Status) => {
             send("status", json!({}))
+        }
+        Some(Commands::Clip { start, end, file, output, gif }) => {
+            ensure_daemon();
+            let mut args = json!({"start": start, "end": end, "gif": gif});
+            if let Some(f) = file { args["file"] = json!(f); }
+            if let Some(o) = output { args["output"] = json!(o); }
+            send("clip", args)
         }
         Some(Commands::Screenshot { output }) => {
             let mut args = json!({});

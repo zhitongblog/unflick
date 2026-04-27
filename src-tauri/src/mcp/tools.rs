@@ -27,6 +27,7 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "library_search" => ("library_search", json!({"query": args["query"]})),
         "library_list" => ("library_list", json!({})),
         "library_remove" => ("library_remove", json!({"id": args["id"]})),
+        "clip" => ("clip", args.clone()),
         "screenshot" => ("screenshot", json!({"output": args.get("output")})),
         "save_position" => ("save_position", json!({"path": args["path"], "position": args["position"]})),
         "get_position" => ("get_position", json!({"path": args["path"]})),
@@ -244,6 +245,21 @@ pub fn tool_definitions() -> Value {
                     "id": { "type": "integer", "description": "Media entry ID to remove" }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "clip",
+            "description": "Extract a video clip segment, optionally as GIF. Requires ffmpeg in PATH.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": { "type": "string", "description": "Input file path (uses currently playing file if omitted)" },
+                    "start": { "type": "number", "description": "Start time in seconds" },
+                    "end": { "type": "number", "description": "End time in seconds" },
+                    "output": { "type": "string", "description": "Output file path (auto-generated if omitted)" },
+                    "gif": { "type": "boolean", "description": "Export as GIF instead of MP4" }
+                },
+                "required": ["start", "end"]
             }
         },
         {
