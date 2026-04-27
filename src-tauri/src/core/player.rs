@@ -23,6 +23,15 @@ impl Player {
         })
     }
 
+    /// Create a player that renders video into an existing window handle (HWND on Windows).
+    pub fn new_with_wid(wid: i64) -> Result<Self> {
+        let mpv = MpvHandle::new_with_wid(wid)?;
+        Ok(Self {
+            mpv,
+            current_file: Mutex::new(None),
+        })
+    }
+
     pub fn play(&self, path: &str, seek: Option<f64>, volume: Option<i64>, speed: Option<f64>) -> Result<()> {
         // Set volume/speed before loading file
         if let Some(v) = volume {
@@ -117,6 +126,11 @@ impl Player {
             volume,
             speed,
         }
+    }
+
+    /// Take a screenshot of the current video frame
+    pub fn screenshot(&self, path: &str) -> Result<()> {
+        self.mpv.command(&["screenshot-to-file", path, "video"])
     }
 
     /// Load an external subtitle file

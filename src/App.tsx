@@ -66,6 +66,11 @@ function App() {
     [state, pause, resume, seek, position, volume, setVolume, toggleLibrary],
   );
 
+  // Initialize mpv player with the window handle on mount
+  useEffect(() => {
+    invoke("player_init").catch(console.error);
+  }, []);
+
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -95,7 +100,7 @@ function App() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-gray-950">
+    <div className={`flex h-full flex-col ${state === "stopped" ? "bg-gray-950" : "bg-transparent"}`}>
       {/* Video area / drop zone */}
       <div
         className="relative flex flex-1 items-center justify-center overflow-hidden"
@@ -133,10 +138,10 @@ function App() {
           </div>
         )}
 
-        {/* Playing/paused state placeholder - video will render here via mpv --wid */}
+        {/* Playing/paused state - mpv renders video directly via --wid into the native window */}
         {state !== "stopped" && (
-          <div className="flex items-center justify-center text-gray-600">
-            {/* mpv video surface will be embedded here */}
+          <div className="absolute inset-0 bg-transparent pointer-events-none">
+            {/* mpv video surface renders behind the webview via native window embedding */}
           </div>
         )}
       </div>

@@ -4221,6 +4221,7 @@ dependencies = [
  "clap",
  "dirs-next",
  "libloading 0.8.9",
+ "raw-window-handle",
  "rusqlite",
  "serde",
  "serde_json",

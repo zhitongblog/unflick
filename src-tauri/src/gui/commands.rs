@@ -1,49 +1,32 @@
-use serde_json::json;
-use tauri::command;
+use tauri::{command, State, AppHandle, Manager};
+use serde_json::{json, Value};
 
-use crate::core::daemon;
+use crate::core::player::Player;
+use super::state::GuiPlayer;
 
-/// Public entry point for setup hook — starts daemon in background.
-pub fn ensure_daemon_startup() {
-    ensure_daemon();
-}
-
-/// Start daemon in background if not already running.
-fn ensure_daemon() {
-    if daemon::is_daemon_running() {
-        return;
+#[command]
+pub fn player_init(app: AppHandle, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let mut player_lock = gui_player.player.lock().unwrap();
+    if player_lock.is_some() {
+        return Ok(json!({"status": "already initialized"}));
     }
 
-    // Spawn daemon as a detached child process
-    let exe = std::env::current_exe().unwrap();
-    let _ = std::process::Command::new(exe)
-        .arg("daemon")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    // Get the main window's native handle (HWND on Windows)
+    let window = app.get_webview_window("main").ok_or("no main window")?;
 
-    // Wait for daemon to be ready (up to 2 seconds)
-    for _ in 0..20 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        if daemon::is_daemon_running() {
-            return;
+    let hwnd_value = {
+        use raw_window_handle::HasWindowHandle;
+        let handle = window.window_handle().map_err(|e| e.to_string())?;
+        match handle.as_raw() {
+            raw_window_handle::RawWindowHandle::Win32(h) => h.hwnd.get() as i64,
+            _ => return Err("not a Win32 window".to_string()),
         }
-    }
-}
+    };
 
-/// Send a command to the daemon and return the result as a JSON value.
-/// On success (result.success == true), returns Ok with the data or message.
-/// On failure, returns Err with the error message.
-fn send(cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, String> {
-    ensure_daemon();
-    let result = daemon::send_to_daemon(cmd, args).map_err(|e| e.to_string())?;
-    if result.success {
-        // Return data if present, otherwise wrap the message
-        Ok(result.data.unwrap_or_else(|| json!({ "message": result.message })))
-    } else {
-        Err(result.message)
-    }
+    let player = Player::new_with_wid(hwnd_value).map_err(|e| e.to_string())?;
+    *player_lock = Some(player);
+
+    Ok(json!({"status": "initialized"}))
 }
 
 #[command]
@@ -52,51 +35,81 @@ pub fn player_play(
     seek: Option<f64>,
     volume: Option<i64>,
     speed: Option<f64>,
-) -> Result<serde_json::Value, String> {
-    let mut args = json!({"file": file});
-    if let Some(s) = seek {
-        args["seek"] = json!(s);
-    }
-    if let Some(v) = volume {
-        args["volume"] = json!(v);
-    }
-    if let Some(sp) = speed {
-        args["speed"] = json!(sp);
-    }
-    send("play", args)
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
+    Ok(json!({"message": format!("playing {}", file)}))
 }
 
 #[command]
-pub fn player_pause() -> Result<serde_json::Value, String> {
-    send("pause", json!({}))
+pub fn player_pause(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.pause().map_err(|e| e.to_string())?;
+    Ok(json!({"message": "paused"}))
 }
 
 #[command]
-pub fn player_resume() -> Result<serde_json::Value, String> {
-    send("resume", json!({}))
+pub fn player_resume(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.resume().map_err(|e| e.to_string())?;
+    Ok(json!({"message": "resumed"}))
 }
 
 #[command]
-pub fn player_stop() -> Result<serde_json::Value, String> {
-    send("stop", json!({}))
+pub fn player_stop(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.stop().map_err(|e| e.to_string())?;
+    Ok(json!({"message": "stopped"}))
 }
 
 #[command]
-pub fn player_seek(seconds: f64) -> Result<serde_json::Value, String> {
-    send("seek", json!({"seconds": seconds}))
+pub fn player_seek(seconds: f64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.seek(seconds).map_err(|e| e.to_string())?;
+    Ok(json!({"message": format!("seeked to {}s", seconds)}))
 }
 
 #[command]
-pub fn player_set_volume(level: i64) -> Result<serde_json::Value, String> {
-    send("volume", json!({"level": level}))
+pub fn player_set_volume(level: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.set_volume(level).map_err(|e| e.to_string())?;
+    Ok(json!({"message": format!("volume set to {}", level)}))
 }
 
 #[command]
-pub fn player_set_speed(rate: f64) -> Result<serde_json::Value, String> {
-    send("speed", json!({"rate": rate}))
+pub fn player_set_speed(rate: f64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    player.set_speed(rate).map_err(|e| e.to_string())?;
+    Ok(json!({"message": format!("speed set to {}x", rate)}))
 }
 
 #[command]
-pub fn player_status() -> Result<serde_json::Value, String> {
-    send("status", json!({}))
+pub fn player_status(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    let status = player.status();
+    serde_json::to_value(&status).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let lock = gui_player.player.lock().unwrap();
+    let player = lock.as_ref().ok_or("player not initialized")?;
+    let path = output.unwrap_or_else(|| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        format!("unflick-screenshot-{}.png", ts)
+    });
+    player.screenshot(&path).map_err(|e| e.to_string())?;
+    Ok(json!({"path": path}))
 }
