@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useState, DragEvent } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import PlayerBar from "./components/Player/PlayerBar";
 import LibraryPanel from "./components/Library/LibraryPanel";
 import { usePlayerStore } from "./stores/playerStore";
@@ -89,37 +90,32 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  // Drag and drop
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      // Use the file path if available (Tauri provides it), otherwise use name
-      const path = (file as any).path || file.name;
-      play(path);
-    }
-  };
+  // Tauri native drag and drop
+  useEffect(() => {
+    const webview = getCurrentWebviewWindow();
+    const unlisten = webview.onDragDropEvent((event) => {
+      if (event.payload.type === "over") {
+        setIsDragging(true);
+      } else if (event.payload.type === "leave") {
+        setIsDragging(false);
+      } else if (event.payload.type === "drop") {
+        setIsDragging(false);
+        const paths = event.payload.paths;
+        if (paths.length > 0) {
+          play(paths[0]);
+        }
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [play]);
 
   return (
     <div className={`flex h-full flex-col ${state === "stopped" ? "bg-gray-950" : "bg-transparent"}`}>
       {/* Video area / drop zone */}
       <div
         className="relative flex flex-1 items-center justify-center overflow-hidden"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
         {/* Drop overlay */}
         <AnimatePresence>
