@@ -1,17 +1,30 @@
 import { useEffect, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import PlayerBar from "./components/Player/PlayerBar";
 import LibraryPanel from "./components/Library/LibraryPanel";
+import ContextMenu, { type ContextMenuEntry } from "./components/ContextMenu";
 import { usePlayerStore } from "./stores/playerStore";
 import { useLibraryStore } from "./stores/libraryStore";
+
+async function openFileDialog() {
+  const result = await invoke<{ path: string | null }>("open_file_dialog");
+  return result.path;
+}
 
 function App() {
   const { state, play, pause, resume, seek, position, volume, setVolume } =
     usePlayerStore();
   const { showLibrary, toggleLibrary } = useLibraryStore();
   const [isDragging, setIsDragging] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleOpenFile = useCallback(async () => {
+    const path = await openFileDialog();
+    if (path) play(path);
+  }, [play]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -21,6 +34,13 @@ function App() {
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
       ) {
+        return;
+      }
+
+      // Ctrl+O / Cmd+O to open file
+      if ((e.ctrlKey || e.metaKey) && e.key === "o") {
+        e.preventDefault();
+        handleOpenFile();
         return;
       }
 
@@ -77,7 +97,7 @@ function App() {
           break;
       }
     },
-    [state, pause, resume, seek, position, volume, setVolume, toggleLibrary],
+    [state, pause, resume, seek, position, volume, setVolume, toggleLibrary, handleOpenFile],
   );
 
   // Initialize mpv player with the window handle on mount
@@ -89,6 +109,51 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  // Listen for native menu events
+  useEffect(() => {
+    const unlisten = listen<string>("menu-event", async (event) => {
+      const { state: currentState } = usePlayerStore.getState();
+      switch (event.payload) {
+        case "open":
+          handleOpenFile();
+          break;
+        case "play_pause":
+          if (currentState === "playing") usePlayerStore.getState().pause();
+          else if (currentState === "paused") usePlayerStore.getState().resume();
+          break;
+        case "stop":
+          usePlayerStore.getState().stop();
+          break;
+        case "fullscreen":
+          invoke("set_fullscreen").catch(console.error);
+          break;
+        case "pip":
+          invoke("toggle_pip").catch(console.error);
+          break;
+        case "library":
+          useLibraryStore.getState().toggleLibrary();
+          break;
+        case "volume_up":
+          usePlayerStore.getState().setVolume(
+            Math.min(100, usePlayerStore.getState().volume + 5)
+          );
+          break;
+        case "volume_down":
+          usePlayerStore.getState().setVolume(
+            Math.max(0, usePlayerStore.getState().volume - 5)
+          );
+          break;
+        case "about":
+          // Could show an about dialog in the future
+          console.log("unflick v0.1.0 — A video player for humans and AI");
+          break;
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [handleOpenFile]);
 
   // Tauri native drag and drop
   useEffect(() => {
@@ -111,11 +176,64 @@ function App() {
     };
   }, [play]);
 
+  // Context menu items
+  const contextMenuItems: ContextMenuEntry[] = [
+    {
+      label: "Open File...",
+      shortcut: "Ctrl+O",
+      onClick: handleOpenFile,
+    },
+    { separator: true },
+    {
+      label: state === "playing" ? "Pause" : "Play",
+      shortcut: "Space",
+      onClick: () => {
+        if (state === "playing") pause();
+        else if (state === "paused") resume();
+      },
+      disabled: state === "stopped",
+    },
+    {
+      label: "Stop",
+      onClick: () => usePlayerStore.getState().stop(),
+      disabled: state === "stopped",
+    },
+    { separator: true },
+    {
+      label: "Screenshot",
+      shortcut: "S",
+      onClick: () => invoke("player_screenshot").catch(console.error),
+      disabled: state === "stopped",
+    },
+    { separator: true },
+    {
+      label: "Toggle Fullscreen",
+      shortcut: "F",
+      onClick: () => invoke("set_fullscreen").catch(console.error),
+    },
+    {
+      label: "Picture in Picture",
+      shortcut: "P",
+      onClick: () => invoke("toggle_pip").catch(console.error),
+    },
+    {
+      label: "Toggle Library",
+      shortcut: "L",
+      onClick: toggleLibrary,
+    },
+  ];
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
   return (
     <div className={`flex h-full flex-col ${state === "stopped" ? "bg-gray-950" : "bg-transparent"}`}>
       {/* Video area / drop zone */}
       <div
         className="relative flex flex-1 items-center justify-center overflow-hidden"
+        onContextMenu={handleContextMenu}
       >
         {/* Drop overlay */}
         <AnimatePresence>
@@ -144,6 +262,12 @@ function App() {
             <p className="text-sm text-gray-500">
               Drop a video file to play
             </p>
+            <button
+              onClick={handleOpenFile}
+              className="mt-2 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink px-6 py-2 text-sm font-medium text-white transition-opacity hover:opacity-80"
+            >
+              Open File
+            </button>
           </div>
         )}
 
@@ -154,6 +278,16 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Library panel */}
       <AnimatePresence>

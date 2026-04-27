@@ -6,12 +6,83 @@ pub mod mcp;
 pub mod gui;
 
 use gui::{commands, state::GuiPlayer};
+use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(GuiPlayer::new())
+        .setup(|app| {
+            let handle = app.handle();
+
+            // Build File menu
+            let open_item = MenuItemBuilder::with_id("open", "Open File...")
+                .accelerator("CmdOrCtrl+O")
+                .build(handle)?;
+            let sep1 = PredefinedMenuItem::separator(handle)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit")
+                .accelerator("CmdOrCtrl+Q")
+                .build(handle)?;
+            let file_menu = SubmenuBuilder::new(handle, "File")
+                .items(&[&open_item, &sep1, &quit_item])
+                .build()?;
+
+            // Build Playback menu
+            let play_pause_item = MenuItemBuilder::with_id("play_pause", "Play/Pause")
+                .build(handle)?;
+            let stop_item = MenuItemBuilder::with_id("stop", "Stop")
+                .build(handle)?;
+            let sep2 = PredefinedMenuItem::separator(handle)?;
+            let vol_up_item = MenuItemBuilder::with_id("volume_up", "Volume Up")
+                .build(handle)?;
+            let vol_down_item = MenuItemBuilder::with_id("volume_down", "Volume Down")
+                .build(handle)?;
+            let playback_menu = SubmenuBuilder::new(handle, "Playback")
+                .items(&[&play_pause_item, &stop_item, &sep2, &vol_up_item, &vol_down_item])
+                .build()?;
+
+            // Build View menu
+            let fullscreen_item = MenuItemBuilder::with_id("fullscreen", "Toggle Fullscreen")
+                .accelerator("F11")
+                .build(handle)?;
+            let pip_item = MenuItemBuilder::with_id("pip", "Picture in Picture")
+                .build(handle)?;
+            let library_item = MenuItemBuilder::with_id("library", "Toggle Library")
+                .build(handle)?;
+            let view_menu = SubmenuBuilder::new(handle, "View")
+                .items(&[&fullscreen_item, &pip_item, &library_item])
+                .build()?;
+
+            // Build Help menu
+            let about_item = MenuItemBuilder::with_id("about", "About unflick")
+                .build(handle)?;
+            let help_menu = SubmenuBuilder::new(handle, "Help")
+                .items(&[&about_item])
+                .build()?;
+
+            let menu = Menu::with_items(handle, &[&file_menu, &playback_menu, &view_menu, &help_menu])?;
+            app.set_menu(menu)?;
+
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            let window = app.get_webview_window("main");
+            match event.id().as_ref() {
+                "quit" => {
+                    app.exit(0);
+                }
+                "open" | "play_pause" | "stop" | "fullscreen" | "pip" | "library"
+                | "volume_up" | "volume_down" | "about" => {
+                    if let Some(win) = &window {
+                        let id: String = event.id().as_ref().to_string();
+                        let _ = win.emit("menu-event", id);
+                    }
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::player_init,
             commands::player_play,
@@ -26,6 +97,7 @@ pub fn run() {
             commands::toggle_pip,
             commands::set_fullscreen,
             commands::exit_fullscreen,
+            commands::open_file_dialog,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

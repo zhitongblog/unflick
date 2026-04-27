@@ -153,3 +153,20 @@ pub fn exit_fullscreen(app: AppHandle) -> Result<Value, String> {
     }
     Ok(json!({"fullscreen": false}))
 }
+
+#[command]
+pub async fn open_file_dialog() -> Result<Value, String> {
+    let result = tokio::task::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .add_filter("Video", &["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpg", "mpeg"])
+            .add_filter("All Files", &["*"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(path) => Ok(json!({"path": path.to_string_lossy().to_string()})),
+        None => Ok(json!({"path": null})),
+    }
+}

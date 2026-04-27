@@ -29,3 +29,4 @@ libloading = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs-next = "2"
 raw-window-handle = "0.6"
+rfd = "0.15"
