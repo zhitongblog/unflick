@@ -66,6 +66,12 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS idx_media_path ON media(path);
             CREATE INDEX IF NOT EXISTS idx_media_title ON media(title);
+
+            CREATE TABLE IF NOT EXISTS playback_position (
+                path TEXT PRIMARY KEY,
+                position REAL NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         ",
         )?;
         Ok(())
@@ -153,6 +159,29 @@ impl Database {
             "UPDATE media SET last_played = datetime('now'), play_count = play_count + 1 WHERE path = ?1",
             params![path],
         )?;
+        Ok(())
+    }
+
+    pub fn save_position(&self, path: &str, position: f64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO playback_position (path, position) VALUES (?1, ?2)
+             ON CONFLICT(path) DO UPDATE SET position=?2, updated_at=datetime('now')",
+            params![path, position],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_position(&self, path: &str) -> Result<Option<f64>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT position FROM playback_position WHERE path = ?1")?;
+        let result = stmt.query_row(params![path], |row| row.get(0)).ok();
+        Ok(result)
+    }
+
+    pub fn clear_position(&self, path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM playback_position WHERE path = ?1", params![path])?;
         Ok(())
     }
 

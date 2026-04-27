@@ -61,6 +61,12 @@ pub enum Commands {
         /// Path to the video file
         file: String,
     },
+    /// Take a screenshot of the current frame
+    Screenshot {
+        /// Output file path (default: auto-generated)
+        #[arg(long)]
+        output: Option<String>,
+    },
     /// Manage subtitles
     Subtitle {
         #[command(subcommand)]
@@ -184,6 +190,11 @@ pub fn run_cli(cli: Cli) -> i32 {
         }
         Some(Commands::Status) => {
             send("status", json!({}))
+        }
+        Some(Commands::Screenshot { output }) => {
+            let mut args = json!({});
+            if let Some(o) = output { args["output"] = json!(o); }
+            send("screenshot", args)
         }
         Some(Commands::Info { file }) => {
             ensure_daemon();

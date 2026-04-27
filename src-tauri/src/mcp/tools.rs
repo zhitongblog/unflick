@@ -27,6 +27,9 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "library_search" => ("library_search", json!({"query": args["query"]})),
         "library_list" => ("library_list", json!({})),
         "library_remove" => ("library_remove", json!({"id": args["id"]})),
+        "screenshot" => ("screenshot", json!({"output": args.get("output")})),
+        "save_position" => ("save_position", json!({"path": args["path"], "position": args["position"]})),
+        "get_position" => ("get_position", json!({"path": args["path"]})),
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -241,6 +244,39 @@ pub fn tool_definitions() -> Value {
                     "id": { "type": "integer", "description": "Media entry ID to remove" }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "screenshot",
+            "description": "Take a screenshot of the current video frame",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "output": { "type": "string", "description": "Output file path (optional, auto-generated if omitted)" }
+                }
+            }
+        },
+        {
+            "name": "save_position",
+            "description": "Save playback position for a file (for resume playback)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the media file" },
+                    "position": { "type": "number", "description": "Position in seconds" }
+                },
+                "required": ["path", "position"]
+            }
+        },
+        {
+            "name": "get_position",
+            "description": "Get saved playback position for a file",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the media file" }
+                },
+                "required": ["path"]
             }
         },
         {

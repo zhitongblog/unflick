@@ -101,7 +101,21 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             let seek = args.get("seek").and_then(|v| v.as_f64());
             let volume = args.get("volume").and_then(|v| v.as_i64());
             let speed = args.get("speed").and_then(|v| v.as_f64());
-            match player.play(file, seek, volume, speed) {
+
+            // Save position of current file before switching
+            let current_status = player.status();
+            if let Some(ref current_file) = current_status.file {
+                if current_status.position > 1.0 {
+                    let _ = db.save_position(current_file, current_status.position);
+                }
+            }
+
+            // Check for saved position if no explicit seek
+            let effective_seek = seek.or_else(|| {
+                db.get_position(file).ok().flatten()
+            });
+
+            match player.play(file, effective_seek, volume, speed) {
                 Ok(()) => CommandResult::ok(format!("playing {}", file)),
                 Err(e) => CommandResult::err(e.to_string()),
             }
@@ -114,10 +128,18 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             Ok(()) => CommandResult::ok("resumed"),
             Err(e) => CommandResult::err(e.to_string()),
         },
-        "stop" => match player.stop() {
-            Ok(()) => CommandResult::ok("stopped"),
-            Err(e) => CommandResult::err(e.to_string()),
-        },
+        "stop" => {
+            let status = player.status();
+            if let Some(ref file) = status.file {
+                if status.position > 1.0 {
+                    let _ = db.save_position(file, status.position);
+                }
+            }
+            match player.stop() {
+                Ok(()) => CommandResult::ok("stopped"),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
         "seek" => {
             let seconds = args["seconds"].as_f64().unwrap_or(0.0);
             match player.seek(seconds) {
@@ -289,6 +311,34 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             let id = args["id"].as_i64().unwrap_or(0);
             match db.remove(id) {
                 Ok(()) => CommandResult::ok("removed"),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "screenshot" => {
+            let output = args.get("output").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                format!("unflick-screenshot-{}.png", ts)
+            });
+            match player.screenshot(&output) {
+                Ok(()) => CommandResult::ok_with_data("screenshot saved", json!({"path": output})),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "save_position" => {
+            let path = args["path"].as_str().unwrap_or("");
+            let position = args["position"].as_f64().unwrap_or(0.0);
+            match db.save_position(path, position) {
+                Ok(()) => CommandResult::ok("position saved"),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "get_position" => {
+            let path = args["path"].as_str().unwrap_or("");
+            match db.get_position(path) {
+                Ok(pos) => CommandResult::ok_with_data("ok", json!({"position": pos})),
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
