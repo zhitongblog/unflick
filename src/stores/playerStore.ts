@@ -17,9 +17,15 @@ interface PlayerState {
   seek: (seconds: number) => Promise<void>;
   setVolume: (level: number) => Promise<void>;
   setSpeed: (rate: number) => Promise<void>;
+  pollStatus: () => Promise<void>;
+  startPolling: () => void;
+  stopPolling: () => void;
 }
 
-export const usePlayerStore = create<PlayerState>((set) => ({
+// Module-level variable for the polling interval
+let _pollInterval: ReturnType<typeof setInterval> | null = null;
+
+export const usePlayerStore = create<PlayerState>((set, get) => ({
   state: "stopped",
   file: null,
   position: 0,
@@ -29,10 +35,56 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 
   setStatus: (status) => set(status),
 
+  pollStatus: async () => {
+    try {
+      const status = await invoke<{
+        state: string;
+        file: string | null;
+        position: number;
+        duration: number;
+        volume: number;
+        speed: number;
+      }>("player_status");
+      set({
+        state: status.state as PlayerState["state"],
+        file: status.file,
+        position: status.position,
+        duration: status.duration,
+        volume: status.volume,
+        speed: status.speed,
+      });
+      // Auto-stop polling if playback ended
+      if (status.state === "stopped") {
+        get().stopPolling();
+      }
+    } catch (e) {
+      console.error("Failed to poll status:", e);
+    }
+  },
+
+  startPolling: () => {
+    if (_pollInterval !== null) return;
+    _pollInterval = setInterval(() => {
+      get().pollStatus();
+    }, 500);
+  },
+
+  stopPolling: () => {
+    if (_pollInterval !== null) {
+      clearInterval(_pollInterval);
+      _pollInterval = null;
+    }
+  },
+
   play: async (file: string) => {
     try {
       await invoke("player_play", { file });
       set({ state: "playing", file, position: 0 });
+      // Fetch status after a short delay to get duration
+      setTimeout(() => {
+        get().pollStatus();
+      }, 500);
+      get().startPolling();
     } catch (e) {
       console.error("Failed to play:", e);
     }
@@ -42,6 +94,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       await invoke("player_pause");
       set({ state: "paused" });
+      get().stopPolling();
     } catch (e) {
       console.error("Failed to pause:", e);
     }
@@ -51,6 +104,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       await invoke("player_resume");
       set({ state: "playing" });
+      get().startPolling();
     } catch (e) {
       console.error("Failed to resume:", e);
     }
@@ -60,6 +114,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       await invoke("player_stop");
       set({ state: "stopped", file: null, position: 0, duration: 0 });
+      get().stopPolling();
     } catch (e) {
       console.error("Failed to stop:", e);
     }
@@ -69,6 +124,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       await invoke("player_seek", { seconds });
       set({ position: seconds });
+      // Refresh status after seek
+      setTimeout(() => {
+        get().pollStatus();
+      }, 200);
     } catch (e) {
       console.error("Failed to seek:", e);
     }
