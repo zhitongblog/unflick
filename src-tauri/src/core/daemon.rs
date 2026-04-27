@@ -131,28 +131,33 @@ fn dispatch_command(player: &Player, cmd: &str, args: &Value) -> CommandResult {
         }
         "info" => {
             let file = args["file"].as_str().unwrap_or("");
-            match player.play(file, None, None, None) {
-                Ok(()) => {
-                    std::thread::sleep(std::time::Duration::from_millis(800));
-                    let status = player.status();
-                    let width = player.get_property_i64("width").ok();
-                    let height = player.get_property_i64("height").ok();
-                    let video_codec = player.get_property_string("video-codec").ok();
-                    let audio_codec = player.get_property_string("audio-codec").ok();
-                    let _ = player.stop();
-                    CommandResult::ok_with_data(
-                        "ok",
-                        json!({
-                            "path": file,
-                            "duration": status.duration,
-                            "width": width,
-                            "height": height,
-                            "video_codec": video_codec,
-                            "audio_codec": audio_codec,
-                        }),
-                    )
+            // Use a separate mpv instance to probe file info without disrupting playback
+            match Player::new() {
+                Ok(probe) => {
+                    match probe.play(file, None, None, None) {
+                        Ok(()) => {
+                            std::thread::sleep(std::time::Duration::from_millis(800));
+                            let status = probe.status();
+                            let width = probe.get_property_i64("width").ok();
+                            let height = probe.get_property_i64("height").ok();
+                            let video_codec = probe.get_property_string("video-codec").ok();
+                            let audio_codec = probe.get_property_string("audio-codec").ok();
+                            CommandResult::ok_with_data(
+                                "ok",
+                                json!({
+                                    "path": file,
+                                    "duration": status.duration,
+                                    "width": width,
+                                    "height": height,
+                                    "video_codec": video_codec,
+                                    "audio_codec": audio_codec,
+                                }),
+                            )
+                        }
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
                 }
-                Err(e) => CommandResult::err(e.to_string()),
+                Err(e) => CommandResult::err(format!("failed to create probe: {}", e)),
             }
         }
         "shutdown" => {

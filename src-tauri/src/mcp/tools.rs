@@ -13,6 +13,8 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "set_volume" => ("volume", json!({"level": args["level"]})),
         "set_speed" => ("speed", json!({"rate": args["rate"]})),
         "get_status" => ("status", json!({})),
+        "file_info" => ("info", json!({"file": args["file"]})),
+        "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
         }
@@ -108,6 +110,22 @@ pub fn tool_definitions() -> Value {
         {
             "name": "get_status",
             "description": "Get current playback status including state, file, position, duration, volume, and speed",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "file_info",
+            "description": "Get media file metadata (duration, resolution, codecs) without affecting current playback",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": { "type": "string", "description": "Path to the media file" }
+                },
+                "required": ["file"]
+            }
+        },
+        {
+            "name": "shutdown",
+            "description": "Shut down the unflick daemon",
             "inputSchema": { "type": "object", "properties": {} }
         }
     ])
