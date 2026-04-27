@@ -10,6 +10,7 @@ use std::thread;
 use serde_json::{json, Value};
 
 use super::player::Player;
+use super::playlist::Playlist;
 use super::types::CommandResult;
 
 const DAEMON_ADDR: &str = "127.0.0.1:19542";
@@ -23,6 +24,8 @@ pub fn start_daemon() -> i32 {
             return 1;
         }
     };
+
+    let playlist = Arc::new(Playlist::new());
 
     let listener = match TcpListener::bind(DAEMON_ADDR) {
         Ok(l) => l,
@@ -38,7 +41,8 @@ pub fn start_daemon() -> i32 {
         match stream {
             Ok(stream) => {
                 let player = Arc::clone(&player);
-                thread::spawn(move || handle_client(stream, &player));
+                let playlist = Arc::clone(&playlist);
+                thread::spawn(move || handle_client(stream, &player, &playlist));
             }
             Err(e) => {
                 eprintln!("connection error: {}", e);
@@ -49,7 +53,7 @@ pub fn start_daemon() -> i32 {
     0
 }
 
-fn handle_client(stream: TcpStream, player: &Player) {
+fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist) {
     let reader = BufReader::new(stream.try_clone().unwrap());
     let mut writer = stream;
 
@@ -74,13 +78,13 @@ fn handle_client(stream: TcpStream, player: &Player) {
         let cmd = request["command"].as_str().unwrap_or("");
         let args = &request["args"];
 
-        let result = dispatch_command(player, cmd, args);
+        let result = dispatch_command(player, playlist, cmd, args);
         let json = serde_json::to_string(&result).unwrap();
         let _ = writeln!(writer, "{}", json);
     }
 }
 
-fn dispatch_command(player: &Player, cmd: &str, args: &Value) -> CommandResult {
+fn dispatch_command(player: &Player, playlist: &Playlist, cmd: &str, args: &Value) -> CommandResult {
     match cmd {
         "play" => {
             let file = args["file"].as_str().unwrap_or("");
@@ -158,6 +162,70 @@ fn dispatch_command(player: &Player, cmd: &str, args: &Value) -> CommandResult {
                     }
                 }
                 Err(e) => CommandResult::err(format!("failed to create probe: {}", e)),
+            }
+        }
+        "playlist_add" => {
+            let file = args["file"].as_str().unwrap_or("");
+            if file.is_empty() {
+                return CommandResult::err("file path required");
+            }
+            playlist.add(file);
+            let entries = playlist.list();
+            CommandResult::ok_with_data(
+                format!("added {}", file),
+                serde_json::to_value(&entries).unwrap(),
+            )
+        }
+        "playlist_remove" => {
+            let index = args["index"].as_u64().unwrap_or(0) as usize;
+            match playlist.remove(index) {
+                Ok(()) => {
+                    let entries = playlist.list();
+                    CommandResult::ok_with_data("removed", serde_json::to_value(&entries).unwrap())
+                }
+                Err(e) => CommandResult::err(e),
+            }
+        }
+        "playlist_list" => {
+            let entries = playlist.list();
+            CommandResult::ok_with_data("ok", serde_json::to_value(&entries).unwrap())
+        }
+        "playlist_next" => {
+            match playlist.next() {
+                Some(path) => {
+                    match player.play(&path, None, None, None) {
+                        Ok(()) => CommandResult::ok(format!("playing next: {}", path)),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                None => CommandResult::err("no next track"),
+            }
+        }
+        "playlist_prev" => {
+            match playlist.prev() {
+                Some(path) => {
+                    match player.play(&path, None, None, None) {
+                        Ok(()) => CommandResult::ok(format!("playing previous: {}", path)),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                None => CommandResult::err("no previous track"),
+            }
+        }
+        "playlist_clear" => {
+            playlist.clear();
+            CommandResult::ok("playlist cleared")
+        }
+        "playlist_play" => {
+            let index = args["index"].as_u64().unwrap_or(0) as usize;
+            match playlist.set_current(index) {
+                Ok(path) => {
+                    match player.play(&path, None, None, None) {
+                        Ok(()) => CommandResult::ok(format!("playing index {}: {}", index, path)),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                Err(e) => CommandResult::err(e),
             }
         }
         "shutdown" => {

@@ -61,8 +61,40 @@ pub enum Commands {
         /// Path to the video file
         file: String,
     },
+    /// Manage the playlist
+    Playlist {
+        #[command(subcommand)]
+        action: PlaylistAction,
+    },
     /// Shut down the daemon
     Shutdown,
+}
+
+#[derive(Subcommand)]
+pub enum PlaylistAction {
+    /// Add a file to the playlist
+    Add {
+        /// Path to the media file
+        file: String,
+    },
+    /// Remove entry at index
+    Remove {
+        /// Index of the entry to remove
+        index: usize,
+    },
+    /// List all playlist entries
+    List,
+    /// Play the next track
+    Next,
+    /// Play the previous track
+    Prev,
+    /// Clear the playlist
+    Clear,
+    /// Play a specific entry by index
+    Play {
+        /// Index of the entry to play
+        index: usize,
+    },
 }
 
 pub fn run_cli(cli: Cli) -> i32 {
@@ -109,6 +141,18 @@ pub fn run_cli(cli: Cli) -> i32 {
         Some(Commands::Info { file }) => {
             ensure_daemon();
             send("info", json!({"file": file}))
+        }
+        Some(Commands::Playlist { action }) => {
+            ensure_daemon();
+            match action {
+                PlaylistAction::Add { file } => send("playlist_add", json!({"file": file})),
+                PlaylistAction::Remove { index } => send("playlist_remove", json!({"index": index})),
+                PlaylistAction::List => send("playlist_list", json!({})),
+                PlaylistAction::Next => send("playlist_next", json!({})),
+                PlaylistAction::Prev => send("playlist_prev", json!({})),
+                PlaylistAction::Clear => send("playlist_clear", json!({})),
+                PlaylistAction::Play { index } => send("playlist_play", json!({"index": index})),
+            }
         }
         Some(Commands::Shutdown) => {
             send("shutdown", json!({}))

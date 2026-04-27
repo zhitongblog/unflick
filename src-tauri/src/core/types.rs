@@ -41,6 +41,13 @@ pub struct FileInfo {
     pub audio_codec: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaylistEntry {
+    pub index: usize,
+    pub path: String,
+    pub current: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResult {
     pub success: bool,

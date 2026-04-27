@@ -14,6 +14,12 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "set_speed" => ("speed", json!({"rate": args["rate"]})),
         "get_status" => ("status", json!({})),
         "file_info" => ("info", json!({"file": args["file"]})),
+        "playlist_add" => ("playlist_add", json!({"file": args["file"]})),
+        "playlist_remove" => ("playlist_remove", json!({"index": args["index"]})),
+        "playlist_list" => ("playlist_list", json!({})),
+        "playlist_next" => ("playlist_next", json!({})),
+        "playlist_prev" => ("playlist_prev", json!({})),
+        "playlist_clear" => ("playlist_clear", json!({})),
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -122,6 +128,48 @@ pub fn tool_definitions() -> Value {
                 },
                 "required": ["file"]
             }
+        },
+        {
+            "name": "playlist_add",
+            "description": "Add a file to the playlist",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": { "type": "string", "description": "Path to the media file" }
+                },
+                "required": ["file"]
+            }
+        },
+        {
+            "name": "playlist_remove",
+            "description": "Remove a playlist entry by index",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "index": { "type": "integer", "description": "Index of the entry to remove" }
+                },
+                "required": ["index"]
+            }
+        },
+        {
+            "name": "playlist_list",
+            "description": "List all playlist entries with index, path, and current track indicator",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "playlist_next",
+            "description": "Advance to and play the next track in the playlist",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "playlist_prev",
+            "description": "Go back to and play the previous track in the playlist",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "playlist_clear",
+            "description": "Clear all entries from the playlist",
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "shutdown",
