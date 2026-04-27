@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Result};
 
-use super::types::{PlaybackState, PlayerStatus};
+use super::types::{PlaybackState, PlayerStatus, SubtitleTrack};
 use crate::mpv::MpvHandle;
 
 /// Core player logic backed by libmpv.
@@ -117,5 +117,34 @@ impl Player {
             volume,
             speed,
         }
+    }
+
+    /// Load an external subtitle file
+    pub fn subtitle_load(&self, path: &str) -> Result<()> {
+        self.mpv.command(&["sub-add", path])
+    }
+
+    /// List all subtitle tracks
+    pub fn subtitle_list(&self) -> Vec<SubtitleTrack> {
+        let count = self.mpv.get_property_i64("track-list/count").unwrap_or(0);
+        let mut subs = Vec::new();
+        for i in 0..count {
+            let track_type = self.mpv.get_property_string(&format!("track-list/{}/type", i)).unwrap_or_default();
+            if track_type != "sub" {
+                continue;
+            }
+            let id = self.mpv.get_property_i64(&format!("track-list/{}/id", i)).unwrap_or(0);
+            let title = self.mpv.get_property_string(&format!("track-list/{}/title", i)).ok();
+            let lang = self.mpv.get_property_string(&format!("track-list/{}/lang", i)).ok();
+            let external = self.mpv.get_property_string(&format!("track-list/{}/external-filename", i)).ok();
+            let selected = self.mpv.get_property_bool(&format!("track-list/{}/selected", i)).unwrap_or(false);
+            subs.push(SubtitleTrack { id, title, lang, external_file: external, selected });
+        }
+        subs
+    }
+
+    /// Select a subtitle track by ID (0 to disable)
+    pub fn subtitle_select(&self, id: i64) -> Result<()> {
+        self.mpv.set_property_i64("sid", id)
     }
 }

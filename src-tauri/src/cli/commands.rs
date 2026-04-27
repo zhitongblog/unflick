@@ -61,6 +61,11 @@ pub enum Commands {
         /// Path to the video file
         file: String,
     },
+    /// Manage subtitles
+    Subtitle {
+        #[command(subcommand)]
+        action: SubtitleAction,
+    },
     /// Manage the playlist
     Playlist {
         #[command(subcommand)]
@@ -68,6 +73,22 @@ pub enum Commands {
     },
     /// Shut down the daemon
     Shutdown,
+}
+
+#[derive(Subcommand)]
+pub enum SubtitleAction {
+    /// Load an external subtitle file
+    Load {
+        /// Path to the subtitle file (.srt, .ass, .sub)
+        file: String,
+    },
+    /// List subtitle tracks
+    List,
+    /// Select a subtitle track by ID (0 to disable)
+    Select {
+        /// Subtitle track ID
+        id: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -141,6 +162,14 @@ pub fn run_cli(cli: Cli) -> i32 {
         Some(Commands::Info { file }) => {
             ensure_daemon();
             send("info", json!({"file": file}))
+        }
+        Some(Commands::Subtitle { action }) => {
+            ensure_daemon();
+            match action {
+                SubtitleAction::Load { file } => send("subtitle_load", json!({"file": file})),
+                SubtitleAction::List => send("subtitle_list", json!({})),
+                SubtitleAction::Select { id } => send("subtitle_select", json!({"id": id})),
+            }
         }
         Some(Commands::Playlist { action }) => {
             ensure_daemon();

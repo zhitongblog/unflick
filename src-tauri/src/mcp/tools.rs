@@ -20,6 +20,9 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "playlist_next" => ("playlist_next", json!({})),
         "playlist_prev" => ("playlist_prev", json!({})),
         "playlist_clear" => ("playlist_clear", json!({})),
+        "load_subtitle" => ("subtitle_load", json!({"file": args["file"]})),
+        "subtitle_list" => ("subtitle_list", json!({})),
+        "subtitle_select" => ("subtitle_select", json!({"id": args["id"]})),
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -170,6 +173,33 @@ pub fn tool_definitions() -> Value {
             "name": "playlist_clear",
             "description": "Clear all entries from the playlist",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "load_subtitle",
+            "description": "Load an external subtitle file",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": { "type": "string", "description": "Path to the subtitle file (.srt, .ass, .sub)" }
+                },
+                "required": ["file"]
+            }
+        },
+        {
+            "name": "subtitle_list",
+            "description": "List all subtitle tracks (embedded and external)",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "subtitle_select",
+            "description": "Select a subtitle track by ID (0 to disable subtitles)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "integer", "description": "Subtitle track ID (0 to disable)" }
+                },
+                "required": ["id"]
+            }
         },
         {
             "name": "shutdown",

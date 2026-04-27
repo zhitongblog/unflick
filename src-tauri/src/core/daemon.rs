@@ -228,6 +228,24 @@ fn dispatch_command(player: &Player, playlist: &Playlist, cmd: &str, args: &Valu
                 Err(e) => CommandResult::err(e),
             }
         }
+        "subtitle_load" => {
+            let file = args["file"].as_str().unwrap_or("");
+            match player.subtitle_load(file) {
+                Ok(()) => CommandResult::ok(format!("loaded subtitle: {}", file)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "subtitle_list" => {
+            let tracks = player.subtitle_list();
+            CommandResult::ok_with_data("ok", serde_json::to_value(&tracks).unwrap())
+        }
+        "subtitle_select" => {
+            let id = args["id"].as_i64().unwrap_or(0);
+            match player.subtitle_select(id) {
+                Ok(()) => CommandResult::ok(format!("selected subtitle track {}", id)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
         "shutdown" => {
             std::process::exit(0);
         }
