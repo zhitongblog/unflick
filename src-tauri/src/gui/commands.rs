@@ -113,3 +113,43 @@ pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer
     player.screenshot(&path).map_err(|e| e.to_string())?;
     Ok(json!({"path": path}))
 }
+
+#[command]
+pub fn toggle_pip(app: AppHandle) -> Result<Value, String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    let is_on_top = window.is_always_on_top().map_err(|e| e.to_string())?;
+
+    if is_on_top {
+        // Exit PiP: restore normal size, disable always-on-top
+        window.set_always_on_top(false).map_err(|e| e.to_string())?;
+        window.set_decorations(true).map_err(|e| e.to_string())?;
+        let _ = window.set_size(tauri::LogicalSize::new(1024.0, 640.0));
+        Ok(json!({"pip": false}))
+    } else {
+        // Enter PiP: small window, always-on-top, no decorations
+        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        window.set_decorations(false).map_err(|e| e.to_string())?;
+        let _ = window.set_size(tauri::LogicalSize::new(400.0, 250.0));
+        // Move to bottom-right corner
+        let _ = window.set_position(tauri::LogicalPosition::new(1400.0, 700.0));
+        Ok(json!({"pip": true}))
+    }
+}
+
+#[command]
+pub fn set_fullscreen(app: AppHandle) -> Result<Value, String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
+    window.set_fullscreen(!is_fullscreen).map_err(|e| e.to_string())?;
+    Ok(json!({"fullscreen": !is_fullscreen}))
+}
+
+#[command]
+pub fn exit_fullscreen(app: AppHandle) -> Result<Value, String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
+    if is_fullscreen {
+        window.set_fullscreen(false).map_err(|e| e.to_string())?;
+    }
+    Ok(json!({"fullscreen": false}))
+}

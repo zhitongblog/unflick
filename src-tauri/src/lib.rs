@@ -23,6 +23,9 @@ pub fn run() {
             commands::player_set_speed,
             commands::player_status,
             commands::player_screenshot,
+            commands::toggle_pip,
+            commands::set_fullscreen,
+            commands::exit_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

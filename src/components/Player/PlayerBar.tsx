@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useLibraryStore } from "../../stores/libraryStore";
 import ProgressBar from "./ProgressBar";
@@ -12,6 +13,26 @@ function LibraryIcon() {
       <rect x="14" y="3" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
       <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function PipIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <rect x="12" y="9" width="8" height="6" rx="1" />
+    </svg>
+  );
+}
+
+function FullscreenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
     </svg>
   );
 }
@@ -61,9 +82,25 @@ export default function PlayerBar() {
           <PlaybackControls />
         </div>
 
-        {/* Right: volume */}
-        <div className="flex flex-1 items-center justify-end">
+        {/* Right: volume + window controls */}
+        <div className="flex flex-1 items-center justify-end gap-1">
           <VolumeControl />
+          <motion.button
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            onClick={() => invoke("toggle_pip").catch(console.error)}
+            whileTap={{ scale: 0.9 }}
+            title="Picture-in-Picture (P)"
+          >
+            <PipIcon />
+          </motion.button>
+          <motion.button
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            onClick={() => invoke("set_fullscreen").catch(console.error)}
+            whileTap={{ scale: 0.9 }}
+            title="Fullscreen (F)"
+          >
+            <FullscreenIcon />
+          </motion.button>
         </div>
       </div>
     </motion.div>

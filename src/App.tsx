@@ -61,6 +61,19 @@ function App() {
               .catch(console.error);
           }
           break;
+        case "p":
+        case "P":
+          e.preventDefault();
+          invoke("toggle_pip").catch(console.error);
+          break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          invoke("set_fullscreen").catch(console.error);
+          break;
+        case "Escape":
+          invoke("exit_fullscreen").catch(console.error);
+          break;
       }
     },
     [state, pause, resume, seek, position, volume, setVolume, toggleLibrary],

@@ -85,7 +85,7 @@ export default function ProgressBar() {
         {/* Thumb */}
         {state !== "stopped" && (
           <motion.div
-            className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100"
+            className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-all group-hover:opacity-100 group-hover:shadow-[0_0_8px_rgba(124,58,237,0.6)]"
             style={{ left: `${progress}%` }}
           />
         )}
