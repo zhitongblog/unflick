@@ -1,4 +1,5 @@
 pub mod core;
+pub mod db;
 pub mod mpv;
 pub mod cli;
 pub mod mcp;

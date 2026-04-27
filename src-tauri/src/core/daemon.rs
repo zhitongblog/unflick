@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use super::player::Player;
 use super::playlist::Playlist;
 use super::types::CommandResult;
+use crate::db::Database;
 
 const DAEMON_ADDR: &str = "127.0.0.1:19542";
 
@@ -26,6 +27,14 @@ pub fn start_daemon() -> i32 {
     };
 
     let playlist = Arc::new(Playlist::new());
+
+    let db = match Database::open() {
+        Ok(d) => Arc::new(d),
+        Err(e) => {
+            eprintln!("failed to open database: {}", e);
+            return 1;
+        }
+    };
 
     let listener = match TcpListener::bind(DAEMON_ADDR) {
         Ok(l) => l,
@@ -42,7 +51,8 @@ pub fn start_daemon() -> i32 {
             Ok(stream) => {
                 let player = Arc::clone(&player);
                 let playlist = Arc::clone(&playlist);
-                thread::spawn(move || handle_client(stream, &player, &playlist));
+                let db = Arc::clone(&db);
+                thread::spawn(move || handle_client(stream, &player, &playlist, &db));
             }
             Err(e) => {
                 eprintln!("connection error: {}", e);
@@ -53,7 +63,7 @@ pub fn start_daemon() -> i32 {
     0
 }
 
-fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist) {
+fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist, db: &Database) {
     let reader = BufReader::new(stream.try_clone().unwrap());
     let mut writer = stream;
 
@@ -78,13 +88,13 @@ fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist) {
         let cmd = request["command"].as_str().unwrap_or("");
         let args = &request["args"];
 
-        let result = dispatch_command(player, playlist, cmd, args);
+        let result = dispatch_command(player, playlist, db, cmd, args);
         let json = serde_json::to_string(&result).unwrap();
         let _ = writeln!(writer, "{}", json);
     }
 }
 
-fn dispatch_command(player: &Player, playlist: &Playlist, cmd: &str, args: &Value) -> CommandResult {
+fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &str, args: &Value) -> CommandResult {
     match cmd {
         "play" => {
             let file = args["file"].as_str().unwrap_or("");
@@ -243,6 +253,42 @@ fn dispatch_command(player: &Player, playlist: &Playlist, cmd: &str, args: &Valu
             let id = args["id"].as_i64().unwrap_or(0);
             match player.subtitle_select(id) {
                 Ok(()) => CommandResult::ok(format!("selected subtitle track {}", id)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "library_scan" => {
+            let dir = args["dir"].as_str().unwrap_or("");
+            match crate::core::library::scan_directory(db, dir) {
+                Ok(entries) => CommandResult::ok_with_data(
+                    format!("scanned {} files", entries.len()),
+                    serde_json::to_value(&entries).unwrap(),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "library_search" => {
+            let query = args["query"].as_str().unwrap_or("");
+            match db.search(query) {
+                Ok(entries) => CommandResult::ok_with_data(
+                    "ok",
+                    serde_json::to_value(&entries).unwrap(),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "library_list" => {
+            match db.list_all() {
+                Ok(entries) => CommandResult::ok_with_data(
+                    "ok",
+                    serde_json::to_value(&entries).unwrap(),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "library_remove" => {
+            let id = args["id"].as_i64().unwrap_or(0);
+            match db.remove(id) {
+                Ok(()) => CommandResult::ok("removed"),
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }

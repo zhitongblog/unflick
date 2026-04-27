@@ -71,6 +71,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: PlaylistAction,
     },
+    /// Manage the media library
+    Library {
+        #[command(subcommand)]
+        action: LibraryAction,
+    },
     /// Shut down the daemon
     Shutdown,
 }
@@ -115,6 +120,27 @@ pub enum PlaylistAction {
     Play {
         /// Index of the entry to play
         index: usize,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LibraryAction {
+    /// Scan a directory for video files and add them to the library
+    Scan {
+        /// Directory path to scan
+        dir: String,
+    },
+    /// Search the library by title or path
+    Search {
+        /// Search query
+        query: String,
+    },
+    /// List all media in the library
+    List,
+    /// Remove an entry by ID
+    Remove {
+        /// Media entry ID
+        id: i64,
     },
 }
 
@@ -181,6 +207,15 @@ pub fn run_cli(cli: Cli) -> i32 {
                 PlaylistAction::Prev => send("playlist_prev", json!({})),
                 PlaylistAction::Clear => send("playlist_clear", json!({})),
                 PlaylistAction::Play { index } => send("playlist_play", json!({"index": index})),
+            }
+        }
+        Some(Commands::Library { action }) => {
+            ensure_daemon();
+            match action {
+                LibraryAction::Scan { dir } => send("library_scan", json!({"dir": dir})),
+                LibraryAction::Search { query } => send("library_search", json!({"query": query})),
+                LibraryAction::List => send("library_list", json!({})),
+                LibraryAction::Remove { id } => send("library_remove", json!({"id": id})),
             }
         }
         Some(Commands::Shutdown) => {

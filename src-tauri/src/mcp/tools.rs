@@ -23,6 +23,10 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "load_subtitle" => ("subtitle_load", json!({"file": args["file"]})),
         "subtitle_list" => ("subtitle_list", json!({})),
         "subtitle_select" => ("subtitle_select", json!({"id": args["id"]})),
+        "library_scan" => ("library_scan", json!({"dir": args["dir"]})),
+        "library_search" => ("library_search", json!({"query": args["query"]})),
+        "library_list" => ("library_list", json!({})),
+        "library_remove" => ("library_remove", json!({"id": args["id"]})),
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -197,6 +201,44 @@ pub fn tool_definitions() -> Value {
                 "type": "object",
                 "properties": {
                     "id": { "type": "integer", "description": "Subtitle track ID (0 to disable)" }
+                },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "library_scan",
+            "description": "Scan a directory for video files and add them to the library",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dir": { "type": "string", "description": "Directory path to scan" }
+                },
+                "required": ["dir"]
+            }
+        },
+        {
+            "name": "library_search",
+            "description": "Search the media library by title or path",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Search query" }
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "library_list",
+            "description": "List all media files in the library",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "library_remove",
+            "description": "Remove a media entry from the library by ID",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "integer", "description": "Media entry ID to remove" }
                 },
                 "required": ["id"]
             }
