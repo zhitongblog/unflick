@@ -84,7 +84,34 @@ impl MpvApi {
             "libmpv.so.2"
         };
 
+        // Try loading from multiple locations:
+        // 1. Default search path (exe directory, system, PATH)
+        // 2. Tauri resource directory (for bundled installs)
         let lib = unsafe { Library::new(lib_name) }
+            .or_else(|_| {
+                // Try exe directory / resources / mpv-dev /
+                let exe_dir = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+                if let Some(dir) = &exe_dir {
+                    // Try <exe_dir>/resources/mpv-dev/libmpv-2.dll (NSIS install)
+                    let resource_path = dir.join("resources").join("mpv-dev").join(lib_name);
+                    if resource_path.exists() {
+                        return unsafe { Library::new(&resource_path) };
+                    }
+                    // Try <exe_dir>/mpv-dev/libmpv-2.dll
+                    let direct_path = dir.join("mpv-dev").join(lib_name);
+                    if direct_path.exists() {
+                        return unsafe { Library::new(&direct_path) };
+                    }
+                    // Try <exe_dir>/libmpv-2.dll
+                    let beside_path = dir.join(lib_name);
+                    if beside_path.exists() {
+                        return unsafe { Library::new(&beside_path) };
+                    }
+                }
+                unsafe { Library::new(lib_name) }
+            })
             .map_err(|e| format!("failed to load {}: {}", lib_name, e))?;
 
         unsafe {
