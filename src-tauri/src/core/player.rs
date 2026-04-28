@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Result};
 
-use super::types::{PlaybackState, PlayerStatus, SubtitleTrack};
+use super::types::{AudioTrack, PlaybackState, PlayerStatus, SubtitleTrack};
 use crate::mpv::MpvHandle;
 
 /// Core player logic backed by libmpv.
@@ -17,6 +17,15 @@ pub struct Player {
 impl Player {
     pub fn new() -> Result<Self> {
         let mpv = MpvHandle::new("null")?;
+        Ok(Self {
+            mpv,
+            current_file: Mutex::new(None),
+        })
+    }
+
+    /// Create a player with video output (mpv opens its own window).
+    pub fn new_with_video() -> Result<Self> {
+        let mpv = MpvHandle::new_with_video()?;
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
@@ -160,6 +169,30 @@ impl Player {
     /// Select a subtitle track by ID (0 to disable)
     pub fn subtitle_select(&self, id: i64) -> Result<()> {
         self.mpv.set_property_i64("sid", id)
+    }
+
+    /// List all audio tracks
+    pub fn audio_list(&self) -> Vec<AudioTrack> {
+        let count = self.mpv.get_property_i64("track-list/count").unwrap_or(0);
+        let mut tracks = Vec::new();
+        for i in 0..count {
+            let track_type = self.mpv.get_property_string(&format!("track-list/{}/type", i)).unwrap_or_default();
+            if track_type != "audio" {
+                continue;
+            }
+            let id = self.mpv.get_property_i64(&format!("track-list/{}/id", i)).unwrap_or(0);
+            let title = self.mpv.get_property_string(&format!("track-list/{}/title", i)).ok();
+            let lang = self.mpv.get_property_string(&format!("track-list/{}/lang", i)).ok();
+            let codec = self.mpv.get_property_string(&format!("track-list/{}/codec", i)).ok();
+            let selected = self.mpv.get_property_bool(&format!("track-list/{}/selected", i)).unwrap_or(false);
+            tracks.push(AudioTrack { id, title, lang, codec, selected });
+        }
+        tracks
+    }
+
+    /// Select an audio track by ID (0 to disable)
+    pub fn audio_select(&self, id: i64) -> Result<()> {
+        self.mpv.set_property_i64("aid", id)
     }
 }
 

@@ -1,0 +1,20 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for unflick",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-is-always-on-top",
+    "core:webview:default",
+    "core:event:default",
+    "core:menu:default",
+    "shell:default"
+  ]
+}

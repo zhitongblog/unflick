@@ -51,9 +51,19 @@ pub struct SubtitleTrack {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioTrack {
+    pub id: i64,
+    pub title: Option<String>,
+    pub lang: Option<String>,
+    pub codec: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistEntry {
     pub index: usize,
     pub path: String,
+    pub title: String,
     pub current: bool,
 }
 

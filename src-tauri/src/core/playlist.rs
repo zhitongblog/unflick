@@ -60,10 +60,17 @@ impl Playlist {
         entries
             .iter()
             .enumerate()
-            .map(|(i, path)| PlaylistEntry {
-                index: i,
-                path: path.clone(),
-                current: *current == Some(i),
+            .map(|(i, path)| {
+                let title = std::path::Path::new(path)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                PlaylistEntry {
+                    index: i,
+                    path: path.clone(),
+                    title,
+                    current: *current == Some(i),
+                }
             })
             .collect()
     }

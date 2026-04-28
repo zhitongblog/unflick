@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { motion } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
 import { useLibraryStore, MediaEntry } from "../../stores/libraryStore";
 import { usePlayerStore } from "../../stores/playerStore";
 
@@ -100,11 +101,23 @@ function LibraryEntry({ entry, onPlay }: { entry: MediaEntry; onPlay: (path: str
 }
 
 export default function LibraryPanel() {
-  const { entries, searchQuery, isLoading, setSearchQuery, toggleLibrary, fetchLibrary, search } =
+  const { entries, searchQuery, isLoading, setSearchQuery, toggleLibrary, fetchLibrary, search, scanDirectory } =
     useLibraryStore();
   const play = usePlayerStore((s) => s.play);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const hasFetchedRef = useRef(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  const handleScanFolder = useCallback(async () => {
+    const result = await invoke<{ path: string | null }>("open_folder_dialog");
+    if (!result.path) return;
+    setIsScanning(true);
+    try {
+      await scanDirectory(result.path);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [scanDirectory]);
 
   // Fetch library on first mount
   useEffect(() => {
@@ -164,14 +177,25 @@ export default function LibraryPanel() {
           <h2 className="bg-gradient-to-r from-brand-purple to-brand-pink bg-clip-text text-sm font-semibold text-transparent">
             Media Library
           </h2>
-          <motion.button
-            className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
-            onClick={toggleLibrary}
-            whileTap={{ scale: 0.9 }}
-            title="Close library (L)"
-          >
-            <CloseIcon />
-          </motion.button>
+          <div className="flex items-center gap-1">
+            <motion.button
+              className="rounded-lg px-2 py-1 text-xs font-medium bg-gradient-to-r from-brand-purple to-brand-pink text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+              onClick={handleScanFolder}
+              whileTap={{ scale: 0.95 }}
+              disabled={isScanning}
+              title="Scan a folder for media"
+            >
+              {isScanning ? "Scanning…" : "Scan"}
+            </motion.button>
+            <motion.button
+              className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+              onClick={toggleLibrary}
+              whileTap={{ scale: 0.9 }}
+              title="Close library (L)"
+            >
+              <CloseIcon />
+            </motion.button>
+          </div>
         </div>
 
         {/* Search bar */}
@@ -200,14 +224,16 @@ export default function LibraryPanel() {
           )}
 
           {!isLoading && entries.length === 0 && (
-            <div className="flex flex-col items-center gap-2 py-12 text-center">
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
               <p className="text-sm text-gray-500">No media found</p>
-              <p className="text-xs text-gray-600">
-                Use CLI to scan a directory:
-              </p>
-              <code className="rounded bg-gray-900 px-2 py-1 text-xs text-gray-400">
-                unflick library scan &lt;dir&gt;
-              </code>
+              <motion.button
+                className="rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                onClick={handleScanFolder}
+                whileTap={{ scale: 0.97 }}
+                disabled={isScanning}
+              >
+                {isScanning ? "Scanning…" : "Scan Folder"}
+              </motion.button>
             </div>
           )}
 

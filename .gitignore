@@ -6,3 +6,4 @@ src-tauri/target/
 Thumbs.db
 src-tauri/mpv-dev/
 src-tauri/vendor/
+src-tauri/whisper/

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../../stores/playerStore";
+import { usePlaylistStore } from "../../stores/playlistStore";
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -56,7 +57,10 @@ function ScreenshotIcon() {
 
 export default function PlaybackControls() {
   const { state, speed, pause, resume, stop, play, file, setSpeed } = usePlayerStore();
+  const { items: playlistItems, next: playlistNext, prev: playlistPrev } = usePlaylistStore();
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+
+  const hasPlaylist = playlistItems.length > 1;
 
   const handlePlayPause = () => {
     if (state === "playing") {
@@ -77,10 +81,15 @@ export default function PlaybackControls() {
     <div className="flex items-center gap-1">
       {/* Previous track */}
       <motion.button
-        className="rounded-full p-2 text-gray-500 cursor-not-allowed"
-        disabled
+        className={`rounded-full p-2 transition-colors ${
+          hasPlaylist
+            ? "text-gray-300 hover:text-white"
+            : "cursor-not-allowed text-gray-600"
+        }`}
+        disabled={!hasPlaylist}
+        onClick={() => hasPlaylist && playlistPrev()}
         whileTap={{ scale: 0.9 }}
-        title="Previous (playlist not available)"
+        title={hasPlaylist ? "Previous track" : "No playlist"}
       >
         <PrevIcon />
       </motion.button>
@@ -109,10 +118,15 @@ export default function PlaybackControls() {
 
       {/* Next track */}
       <motion.button
-        className="rounded-full p-2 text-gray-500 cursor-not-allowed"
-        disabled
+        className={`rounded-full p-2 transition-colors ${
+          hasPlaylist
+            ? "text-gray-300 hover:text-white"
+            : "cursor-not-allowed text-gray-600"
+        }`}
+        disabled={!hasPlaylist}
+        onClick={() => hasPlaylist && playlistNext()}
         whileTap={{ scale: 0.9 }}
-        title="Next (playlist not available)"
+        title={hasPlaylist ? "Next track" : "No playlist"}
       >
         <NextIcon />
       </motion.button>

@@ -98,6 +98,41 @@ pub fn run() {
             commands::set_fullscreen,
             commands::exit_fullscreen,
             commands::open_file_dialog,
+            commands::open_folder_dialog,
+            // Library
+            commands::library_list,
+            commands::library_search,
+            commands::library_scan,
+            // Subtitles
+            commands::subtitle_load,
+            commands::subtitle_list,
+            commands::subtitle_select,
+            // Playlist
+            commands::playlist_add,
+            commands::playlist_list,
+            commands::playlist_next,
+            commands::playlist_prev,
+            commands::playlist_remove,
+            commands::playlist_play_index,
+            commands::playlist_clear,
+            commands::open_subtitle_dialog,
+            // Clip extraction
+            commands::extract_clip,
+            commands::save_file_dialog,
+            // Audio tracks
+            commands::audio_list,
+            commands::audio_select,
+            // Playback position / history
+            commands::save_position,
+            commands::get_position,
+            commands::clear_position,
+            commands::record_play,
+            // AI subtitle generation
+            commands::generate_subtitles,
+            // Settings persistence
+            commands::save_settings,
+            commands::load_settings,
+            commands::check_bundled_whisper,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

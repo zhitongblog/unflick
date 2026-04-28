@@ -45,6 +45,37 @@ impl MpvHandle {
         Ok(handle)
     }
 
+    /// Create mpv with its own video window (not headless).
+    pub fn new_with_video() -> Result<Self> {
+        let api = Arc::new(MpvApi::load().map_err(|e| anyhow::anyhow!(e))?);
+
+        let ctx = unsafe { (api.create)() };
+        if ctx.is_null() {
+            bail!("mpv_create returned null");
+        }
+
+        let handle = Self { api, ctx };
+
+        // Let mpv use default video output and create its own window
+        handle.set_option("terminal", "no")?;
+        handle.set_option("msg-level", "all=no")?;
+        handle.set_option("idle", "yes")?;
+        handle.set_option("force-window", "yes")?;
+        handle.set_option("keepaspect", "yes")?;
+        handle.set_option("border", "no")?;
+        handle.set_option("title", "unflick")?;
+        handle.set_option("input-default-bindings", "no")?;
+        handle.set_option("input-vo-keyboard", "no")?;
+        handle.set_option("osc", "no")?;
+
+        let err = unsafe { (handle.api.initialize)(handle.ctx) };
+        if err < 0 {
+            bail!("mpv_initialize failed: {}", handle.error_str(err));
+        }
+
+        Ok(handle)
+    }
+
     /// Create mpv instance that renders into an existing window (HWND on Windows).
     pub fn new_with_wid(wid: i64) -> Result<Self> {
         let api = Arc::new(MpvApi::load().map_err(|e| anyhow::anyhow!(e))?);

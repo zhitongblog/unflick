@@ -56,6 +56,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Auto-stop polling if playback ended
       if (status.state === "stopped") {
         get().stopPolling();
+        // Clear saved position if playback reached the end naturally
+        // Use the previous store state (captured before set()) via get() is fine here
+        // because we check status.file/duration which come from the same snapshot
+        const stoppedFile = get().file; // set() already ran, but file may still reflect last known
+        const checkFile = status.file ?? stoppedFile;
+        if (checkFile && status.duration > 0 && status.position >= status.duration - 1) {
+          invoke("clear_position", { path: checkFile }).catch(() => {});
+        }
       }
     } catch (e) {
       console.error("Failed to poll status:", e);
@@ -78,8 +86,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   play: async (file: string) => {
     try {
-      await invoke("player_play", { file });
-      set({ state: "playing", file, position: 0 });
+      // Check for a saved resume position
+      let seekTo: number | undefined;
+      try {
+        const posResult = await invoke<{ position: number | null }>("get_position", { path: file });
+        if (posResult.position != null && posResult.position > 5) {
+          seekTo = posResult.position;
+        }
+      } catch {
+        // ignore — proceed without seek
+      }
+
+      await invoke("player_play", { file, seek: seekTo ?? null });
+      set({ state: "playing", file, position: seekTo ?? 0 });
+
+      // Record this play in history (fire-and-forget)
+      invoke("record_play", { path: file }).catch(() => {});
+
       // Fetch status after a short delay to get duration
       setTimeout(() => {
         get().pollStatus();
@@ -112,6 +135,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   stop: async () => {
     try {
+      // Save position before stopping so we can resume later
+      const { file, position, duration } = get();
+      if (file && position > 0) {
+        // Only save if not near the very end (within 1 second of end)
+        if (duration <= 0 || position < duration - 1) {
+          invoke("save_position", { path: file, position }).catch(() => {});
+        } else {
+          // At the end — clear any stale saved position
+          invoke("clear_position", { path: file }).catch(() => {});
+        }
+      }
       await invoke("player_stop");
       set({ state: "stopped", file: null, position: 0, duration: 0 });
       get().stopPolling();
