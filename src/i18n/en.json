@@ -1,0 +1,156 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "apply": "Apply",
+    "ok": "OK",
+    "browse": "Browse…",
+    "loading": "Loading…",
+    "remove": "Remove",
+    "clear": "Clear",
+    "reset": "Reset"
+  },
+  "menu": {
+    "file": "File",
+    "openFile": "Open File…",
+    "openUrl": "Open URL…",
+    "quit": "Quit",
+    "playback": "Playback",
+    "playPause": "Play / Pause",
+    "stop": "Stop",
+    "volumeUp": "Volume Up",
+    "volumeDown": "Volume Down",
+    "view": "View",
+    "fullscreen": "Toggle Fullscreen",
+    "pip": "Picture in Picture",
+    "library": "Toggle Library",
+    "playlist": "Toggle Playlist",
+    "help": "Help",
+    "about": "About unflick",
+    "checkUpdates": "Check for Updates…"
+  },
+  "dropZone": {
+    "title": "Drop a video here",
+    "subtitle": "or click to open a file",
+    "openFile": "Open file",
+    "openUrl": "Open URL"
+  },
+  "update": {
+    "available": "is available",
+    "currentVersion": "you're on v{current}",
+    "download": "Download",
+    "dismiss": "Dismiss",
+    "upToDate": "You're on the latest version (v{current}).",
+    "checkFailed": "Couldn't check for updates. Try again later.",
+    "newVersionPrompt": "unflick {latest} is available (you're on {current}).\n\nOpen the download page?"
+  },
+  "library": {
+    "title": "Library",
+    "search": "Search the library…",
+    "scan": "Scan a directory",
+    "empty": "Your library is empty. Scan a folder to get started.",
+    "clearAll": "Clear all",
+    "add": "Add"
+  },
+  "playlist": {
+    "title": "Playlist",
+    "empty": "Playlist is empty.",
+    "addFile": "Add file",
+    "next": "Next",
+    "prev": "Previous",
+    "clear": "Clear playlist",
+    "removeEntry": "Remove this entry"
+  },
+  "subtitle": {
+    "title": "Subtitles",
+    "off": "Off",
+    "loadFile": "Load subtitle file…",
+    "generate": "Generate with AI",
+    "generating": "Generating…",
+    "noTracks": "No subtitle tracks loaded."
+  },
+  "audio": {
+    "title": "Audio Track",
+    "noTracks": "No audio tracks."
+  },
+  "filters": {
+    "title": "Video Filters",
+    "brightness": "Brightness",
+    "contrast": "Contrast",
+    "saturation": "Saturation",
+    "gamma": "Gamma",
+    "hue": "Hue",
+    "reset": "Reset all"
+  },
+  "clip": {
+    "title": "Extract Clip",
+    "start": "Start",
+    "end": "End",
+    "output": "Output file",
+    "gif": "Export as GIF",
+    "saving": "Saving…",
+    "saved": "Clip saved to {path}",
+    "failed": "Clip failed: {error}"
+  },
+  "urlDialog": {
+    "title": "Open URL",
+    "label": "Video URL",
+    "placeholder": "https://www.youtube.com/watch?v=…",
+    "open": "Open",
+    "ytDlpMissing": "yt-dlp is required to play URLs but wasn't found.",
+    "ytDlpUpdate": "Update yt-dlp",
+    "extracting": "Extracting stream…"
+  },
+  "context": {
+    "openFile": "Open file…",
+    "openUrl": "Open URL…",
+    "play": "Play",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "screenshot": "Screenshot",
+    "clip": "Extract clip…",
+    "fullscreen": "Toggle fullscreen",
+    "pip": "Picture in picture",
+    "subtitles": "Subtitles",
+    "audio": "Audio track",
+    "filters": "Video filters",
+    "openLibrary": "Show library",
+    "openPlaylist": "Show playlist",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "languageHint": "Restart unflick for the native menu to switch languages.",
+    "theme": "Theme",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "volume": "Default volume",
+    "proxy": "Proxy",
+    "proxyPlaceholder": "http://host:port (leave empty to use system proxy)",
+    "ai": {
+      "section": "AI Subtitles",
+      "modeLocal": "Local (Whisper)",
+      "modeApi": "OpenAI API",
+      "modeOff": "Off",
+      "whisperBinary": "Whisper binary",
+      "whisperModel": "Whisper model",
+      "bundledReady": "Bundled Whisper ready",
+      "bundledMissing": "No bundled Whisper detected.",
+      "apiKey": "OpenAI API key",
+      "apiKeyPlaceholder": "sk-…"
+    },
+    "tools": {
+      "section": "Tools",
+      "ytDlp": "yt-dlp",
+      "ytDlpVersion": "Version {version}",
+      "ytDlpChecking": "Checking…",
+      "update": "Update",
+      "updating": "Updating…",
+      "updated": "Updated"
+    },
+    "savedToast": "Saved"
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "common": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "apply": "適用",
+    "ok": "OK",
+    "browse": "参照…",
+    "loading": "読み込み中…",
+    "remove": "削除",
+    "clear": "クリア",
+    "reset": "リセット"
+  },
+  "menu": {
+    "file": "ファイル",
+    "openFile": "ファイルを開く…",
+    "openUrl": "URL を開く…",
+    "quit": "終了",
+    "playback": "再生",
+    "playPause": "再生 / 一時停止",
+    "stop": "停止",
+    "volumeUp": "音量を上げる",
+    "volumeDown": "音量を下げる",
+    "view": "表示",
+    "fullscreen": "フルスクリーン切り替え",
+    "pip": "ピクチャ・イン・ピクチャ",
+    "library": "ライブラリの表示",
+    "playlist": "プレイリストの表示",
+    "help": "ヘルプ",
+    "about": "unflick について",
+    "checkUpdates": "アップデートを確認…"
+  },
+  "dropZone": {
+    "title": "ここに動画をドロップ",
+    "subtitle": "またはクリックしてファイルを選択",
+    "openFile": "ファイルを開く",
+    "openUrl": "URL を開く"
+  },
+  "update": {
+    "available": "が利用可能",
+    "currentVersion": "現在のバージョン v{current}",
+    "download": "ダウンロード",
+    "dismiss": "閉じる",
+    "upToDate": "最新バージョンです（v{current}）。",
+    "checkFailed": "アップデートを確認できませんでした。後でもう一度お試しください。",
+    "newVersionPrompt": "unflick {latest} がリリースされました（現在は {current}）。\n\nダウンロードページを開きますか？"
+  },
+  "library": {
+    "title": "ライブラリ",
+    "search": "ライブラリを検索…",
+    "scan": "ディレクトリをスキャン",
+    "empty": "ライブラリは空です。フォルダをスキャンして始めましょう。",
+    "clearAll": "すべてクリア",
+    "add": "追加"
+  },
+  "playlist": {
+    "title": "プレイリスト",
+    "empty": "プレイリストは空です。",
+    "addFile": "ファイルを追加",
+    "next": "次へ",
+    "prev": "前へ",
+    "clear": "プレイリストをクリア",
+    "removeEntry": "この項目を削除"
+  },
+  "subtitle": {
+    "title": "字幕",
+    "off": "オフ",
+    "loadFile": "字幕ファイルを読み込む…",
+    "generate": "AI で生成",
+    "generating": "生成中…",
+    "noTracks": "字幕トラックがありません。"
+  },
+  "audio": {
+    "title": "音声トラック",
+    "noTracks": "音声トラックがありません。"
+  },
+  "filters": {
+    "title": "ビデオフィルター",
+    "brightness": "明るさ",
+    "contrast": "コントラスト",
+    "saturation": "彩度",
+    "gamma": "ガンマ",
+    "hue": "色相",
+    "reset": "すべてリセット"
+  },
+  "clip": {
+    "title": "クリップを切り出す",
+    "start": "開始",
+    "end": "終了",
+    "output": "出力ファイル",
+    "gif": "GIF として出力",
+    "saving": "保存中…",
+    "saved": "クリップを {path} に保存しました",
+    "failed": "保存に失敗しました: {error}"
+  },
+  "urlDialog": {
+    "title": "URL を開く",
+    "label": "動画 URL",
+    "placeholder": "https://www.youtube.com/watch?v=…",
+    "open": "開く",
+    "ytDlpMissing": "URL の再生には yt-dlp が必要ですが、見つかりませんでした。",
+    "ytDlpUpdate": "yt-dlp を更新",
+    "extracting": "ストリーム URL を取得中…"
+  },
+  "context": {
+    "openFile": "ファイルを開く…",
+    "openUrl": "URL を開く…",
+    "play": "再生",
+    "pause": "一時停止",
+    "resume": "再開",
+    "stop": "停止",
+    "screenshot": "スクリーンショット",
+    "clip": "クリップを切り出す…",
+    "fullscreen": "フルスクリーン切り替え",
+    "pip": "ピクチャ・イン・ピクチャ",
+    "subtitles": "字幕",
+    "audio": "音声トラック",
+    "filters": "ビデオフィルター",
+    "openLibrary": "ライブラリを表示",
+    "openPlaylist": "プレイリストを表示",
+    "settings": "設定"
+  },
+  "settings": {
+    "title": "設定",
+    "language": "言語",
+    "languageHint": "ネイティブメニューの言語を切り替えるには unflick を再起動してください。",
+    "theme": "テーマ",
+    "themeDark": "ダーク",
+    "themeLight": "ライト",
+    "volume": "デフォルト音量",
+    "proxy": "プロキシ",
+    "proxyPlaceholder": "http://host:port（空欄でシステムプロキシ）",
+    "ai": {
+      "section": "AI 字幕",
+      "modeLocal": "ローカル（Whisper）",
+      "modeApi": "OpenAI API",
+      "modeOff": "オフ",
+      "whisperBinary": "Whisper 実行ファイル",
+      "whisperModel": "Whisper モデル",
+      "bundledReady": "同梱の Whisper が利用可能",
+      "bundledMissing": "同梱の Whisper が見つかりません。",
+      "apiKey": "OpenAI API キー",
+      "apiKeyPlaceholder": "sk-…"
+    },
+    "tools": {
+      "section": "ツール",
+      "ytDlp": "yt-dlp",
+      "ytDlpVersion": "バージョン {version}",
+      "ytDlpChecking": "確認中…",
+      "update": "更新",
+      "updating": "更新中…",
+      "updated": "更新済み"
+    },
+    "savedToast": "保存しました"
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "common": {
+    "save": "儲存",
+    "cancel": "取消",
+    "close": "關閉",
+    "apply": "套用",
+    "ok": "確定",
+    "browse": "瀏覽…",
+    "loading": "載入中…",
+    "remove": "移除",
+    "clear": "清空",
+    "reset": "重設"
+  },
+  "menu": {
+    "file": "檔案",
+    "openFile": "開啟檔案…",
+    "openUrl": "開啟 URL…",
+    "quit": "結束",
+    "playback": "播放",
+    "playPause": "播放 / 暫停",
+    "stop": "停止",
+    "volumeUp": "增大音量",
+    "volumeDown": "減小音量",
+    "view": "檢視",
+    "fullscreen": "切換全螢幕",
+    "pip": "子母畫面",
+    "library": "切換媒體庫",
+    "playlist": "切換播放列表",
+    "help": "說明",
+    "about": "關於 unflick",
+    "checkUpdates": "檢查更新…"
+  },
+  "dropZone": {
+    "title": "把影片拖到這裡",
+    "subtitle": "或點擊開啟檔案",
+    "openFile": "開啟檔案",
+    "openUrl": "開啟 URL"
+  },
+  "update": {
+    "available": "可用",
+    "currentVersion": "目前版本 v{current}",
+    "download": "下載",
+    "dismiss": "忽略",
+    "upToDate": "已是最新版本（v{current}）。",
+    "checkFailed": "無法檢查更新，請稍後重試。",
+    "newVersionPrompt": "unflick {latest} 已發布（你目前是 {current}）。\n\n要開啟下載頁嗎？"
+  },
+  "library": {
+    "title": "媒體庫",
+    "search": "搜尋媒體庫…",
+    "scan": "掃描目錄",
+    "empty": "媒體庫還是空的。掃描一個資料夾開始使用。",
+    "clearAll": "全部清空",
+    "add": "新增"
+  },
+  "playlist": {
+    "title": "播放列表",
+    "empty": "播放列表是空的。",
+    "addFile": "新增檔案",
+    "next": "下一個",
+    "prev": "上一個",
+    "clear": "清空播放列表",
+    "removeEntry": "移除此項"
+  },
+  "subtitle": {
+    "title": "字幕",
+    "off": "關閉",
+    "loadFile": "載入字幕檔…",
+    "generate": "AI 生成",
+    "generating": "生成中…",
+    "noTracks": "尚未載入字幕軌。"
+  },
+  "audio": {
+    "title": "音軌",
+    "noTracks": "沒有音軌。"
+  },
+  "filters": {
+    "title": "影片濾鏡",
+    "brightness": "亮度",
+    "contrast": "對比度",
+    "saturation": "飽和度",
+    "gamma": "Gamma",
+    "hue": "色相",
+    "reset": "全部重設"
+  },
+  "clip": {
+    "title": "擷取片段",
+    "start": "開始",
+    "end": "結束",
+    "output": "輸出檔案",
+    "gif": "輸出為 GIF",
+    "saving": "儲存中…",
+    "saved": "片段已儲存到 {path}",
+    "failed": "儲存失敗：{error}"
+  },
+  "urlDialog": {
+    "title": "開啟 URL",
+    "label": "影片 URL",
+    "placeholder": "https://www.youtube.com/watch?v=…",
+    "open": "開啟",
+    "ytDlpMissing": "播放 URL 需要 yt-dlp，但沒有找到。",
+    "ytDlpUpdate": "更新 yt-dlp",
+    "extracting": "擷取串流位址中…"
+  },
+  "context": {
+    "openFile": "開啟檔案…",
+    "openUrl": "開啟 URL…",
+    "play": "播放",
+    "pause": "暫停",
+    "resume": "繼續",
+    "stop": "停止",
+    "screenshot": "截圖",
+    "clip": "擷取片段…",
+    "fullscreen": "切換全螢幕",
+    "pip": "子母畫面",
+    "subtitles": "字幕",
+    "audio": "音軌",
+    "filters": "影片濾鏡",
+    "openLibrary": "顯示媒體庫",
+    "openPlaylist": "顯示播放列表",
+    "settings": "設定"
+  },
+  "settings": {
+    "title": "設定",
+    "language": "語言",
+    "languageHint": "切換選單語言需要重新啟動 unflick。",
+    "theme": "主題",
+    "themeDark": "深色",
+    "themeLight": "淺色",
+    "volume": "預設音量",
+    "proxy": "代理",
+    "proxyPlaceholder": "http://主機:埠（留空使用系統代理）",
+    "ai": {
+      "section": "AI 字幕",
+      "modeLocal": "本地（Whisper）",
+      "modeApi": "OpenAI API",
+      "modeOff": "關閉",
+      "whisperBinary": "Whisper 執行檔",
+      "whisperModel": "Whisper 模型",
+      "bundledReady": "內建 Whisper 已就緒",
+      "bundledMissing": "未偵測到內建 Whisper。",
+      "apiKey": "OpenAI API Key",
+      "apiKeyPlaceholder": "sk-…"
+    },
+    "tools": {
+      "section": "工具",
+      "ytDlp": "yt-dlp",
+      "ytDlpVersion": "版本 {version}",
+      "ytDlpChecking": "檢查中…",
+      "update": "更新",
+      "updating": "更新中…",
+      "updated": "已更新"
+    },
+    "savedToast": "已儲存"
+  }
+}

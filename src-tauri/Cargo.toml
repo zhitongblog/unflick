@@ -1,6 +1,6 @@
 [package]
 name = "unflick"
-version = "0.6.2"
+version = "0.7.0"
 description = "A video player for humans and AI"
 authors = []
 edition = "2021"
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }

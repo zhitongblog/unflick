@@ -1,0 +1,156 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "apply": "Appliquer",
+    "ok": "OK",
+    "browse": "Parcourir…",
+    "loading": "Chargement…",
+    "remove": "Supprimer",
+    "clear": "Effacer",
+    "reset": "Réinitialiser"
+  },
+  "menu": {
+    "file": "Fichier",
+    "openFile": "Ouvrir un fichier…",
+    "openUrl": "Ouvrir une URL…",
+    "quit": "Quitter",
+    "playback": "Lecture",
+    "playPause": "Lecture / Pause",
+    "stop": "Arrêter",
+    "volumeUp": "Volume +",
+    "volumeDown": "Volume −",
+    "view": "Affichage",
+    "fullscreen": "Basculer en plein écran",
+    "pip": "Picture in Picture",
+    "library": "Basculer la bibliothèque",
+    "playlist": "Basculer la playlist",
+    "help": "Aide",
+    "about": "À propos d'unflick",
+    "checkUpdates": "Vérifier les mises à jour…"
+  },
+  "dropZone": {
+    "title": "Dépose une vidéo ici",
+    "subtitle": "ou clique pour ouvrir un fichier",
+    "openFile": "Ouvrir un fichier",
+    "openUrl": "Ouvrir une URL"
+  },
+  "update": {
+    "available": "est disponible",
+    "currentVersion": "tu es sur v{current}",
+    "download": "Télécharger",
+    "dismiss": "Ignorer",
+    "upToDate": "Tu es sur la dernière version (v{current}).",
+    "checkFailed": "Impossible de vérifier les mises à jour. Réessaie plus tard.",
+    "newVersionPrompt": "unflick {latest} est disponible (tu es sur {current}).\n\nOuvrir la page de téléchargement ?"
+  },
+  "library": {
+    "title": "Bibliothèque",
+    "search": "Rechercher dans la bibliothèque…",
+    "scan": "Scanner un dossier",
+    "empty": "Ta bibliothèque est vide. Scanne un dossier pour commencer.",
+    "clearAll": "Tout effacer",
+    "add": "Ajouter"
+  },
+  "playlist": {
+    "title": "Playlist",
+    "empty": "La playlist est vide.",
+    "addFile": "Ajouter un fichier",
+    "next": "Suivant",
+    "prev": "Précédent",
+    "clear": "Vider la playlist",
+    "removeEntry": "Supprimer cette entrée"
+  },
+  "subtitle": {
+    "title": "Sous-titres",
+    "off": "Désactivés",
+    "loadFile": "Charger un fichier de sous-titres…",
+    "generate": "Générer avec l'IA",
+    "generating": "Génération…",
+    "noTracks": "Aucune piste de sous-titres chargée."
+  },
+  "audio": {
+    "title": "Piste audio",
+    "noTracks": "Aucune piste audio."
+  },
+  "filters": {
+    "title": "Filtres vidéo",
+    "brightness": "Luminosité",
+    "contrast": "Contraste",
+    "saturation": "Saturation",
+    "gamma": "Gamma",
+    "hue": "Teinte",
+    "reset": "Tout réinitialiser"
+  },
+  "clip": {
+    "title": "Extraire un clip",
+    "start": "Début",
+    "end": "Fin",
+    "output": "Fichier de sortie",
+    "gif": "Exporter en GIF",
+    "saving": "Enregistrement…",
+    "saved": "Clip enregistré dans {path}",
+    "failed": "Échec de l'enregistrement : {error}"
+  },
+  "urlDialog": {
+    "title": "Ouvrir une URL",
+    "label": "URL de la vidéo",
+    "placeholder": "https://www.youtube.com/watch?v=…",
+    "open": "Ouvrir",
+    "ytDlpMissing": "yt-dlp est nécessaire pour lire les URL mais n'a pas été trouvé.",
+    "ytDlpUpdate": "Mettre à jour yt-dlp",
+    "extracting": "Extraction de l'URL du flux…"
+  },
+  "context": {
+    "openFile": "Ouvrir un fichier…",
+    "openUrl": "Ouvrir une URL…",
+    "play": "Lire",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "stop": "Arrêter",
+    "screenshot": "Capture d'écran",
+    "clip": "Extraire un clip…",
+    "fullscreen": "Basculer en plein écran",
+    "pip": "Picture in Picture",
+    "subtitles": "Sous-titres",
+    "audio": "Piste audio",
+    "filters": "Filtres vidéo",
+    "openLibrary": "Afficher la bibliothèque",
+    "openPlaylist": "Afficher la playlist",
+    "settings": "Paramètres"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "language": "Langue",
+    "languageHint": "Redémarre unflick pour que le menu natif change de langue.",
+    "theme": "Thème",
+    "themeDark": "Sombre",
+    "themeLight": "Clair",
+    "volume": "Volume par défaut",
+    "proxy": "Proxy",
+    "proxyPlaceholder": "http://host:port (vide = proxy système)",
+    "ai": {
+      "section": "Sous-titres IA",
+      "modeLocal": "Local (Whisper)",
+      "modeApi": "OpenAI API",
+      "modeOff": "Désactivé",
+      "whisperBinary": "Binaire Whisper",
+      "whisperModel": "Modèle Whisper",
+      "bundledReady": "Whisper intégré prêt",
+      "bundledMissing": "Aucun Whisper intégré détecté.",
+      "apiKey": "Clé API OpenAI",
+      "apiKeyPlaceholder": "sk-…"
+    },
+    "tools": {
+      "section": "Outils",
+      "ytDlp": "yt-dlp",
+      "ytDlpVersion": "Version {version}",
+      "ytDlpChecking": "Vérification…",
+      "update": "Mettre à jour",
+      "updating": "Mise à jour…",
+      "updated": "Mis à jour"
+    },
+    "savedToast": "Enregistré"
+  }
+}

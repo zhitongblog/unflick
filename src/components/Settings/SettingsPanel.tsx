@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { LOCALES, LOCALE_NAMES } from "../../i18n/config";
+import { useStrings } from "../../i18n/utils";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -9,10 +11,11 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
-    whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy,
+    whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
-    setTheme, setProxy, saveSettings,
+    setTheme, setProxy, setLocale, saveSettings,
   } = useSettingsStore();
+  const t = useStrings();
 
   const [draftMode, setDraftMode] = useState(whisperMode);
   const [draftModelPath, setDraftModelPath] = useState(whisperModelPath ?? "");
@@ -133,7 +136,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         >
           {/* Header */}
           <div className="flex flex-shrink-0 items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">Settings</h2>
+            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">{t.settings.title}</h2>
             <button
               className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
               onClick={onClose}
@@ -147,6 +150,31 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             className="settings-scroll p-5 space-y-5"
             style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
           >
+            {/* Language */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.language}
+              </p>
+              <select
+                value={locale}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  // Cast is safe — option list comes from LOCALES.
+                  setLocale(next as typeof LOCALES[number]);
+                  // Persist immediately so a restart picks up the new menu language.
+                  void saveSettings();
+                }}
+                className="w-full rounded-lg border border-white/6 bg-white/4 px-3 py-2 text-[12px] text-white/70 outline-none focus:border-brand-purple/40"
+              >
+                {LOCALES.map((l) => (
+                  <option key={l} value={l}>{LOCALE_NAMES[l]}</option>
+                ))}
+              </select>
+              <p className="mt-2 text-[10px] leading-relaxed text-white/30">
+                {t.settings.languageHint}
+              </p>
+            </div>
+
             {/* AI Subtitles */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">

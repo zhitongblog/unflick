@@ -1,0 +1,156 @@
+{
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "close": "닫기",
+    "apply": "적용",
+    "ok": "확인",
+    "browse": "찾아보기…",
+    "loading": "불러오는 중…",
+    "remove": "제거",
+    "clear": "지우기",
+    "reset": "초기화"
+  },
+  "menu": {
+    "file": "파일",
+    "openFile": "파일 열기…",
+    "openUrl": "URL 열기…",
+    "quit": "종료",
+    "playback": "재생",
+    "playPause": "재생 / 일시정지",
+    "stop": "정지",
+    "volumeUp": "음량 높이기",
+    "volumeDown": "음량 낮추기",
+    "view": "보기",
+    "fullscreen": "전체화면 전환",
+    "pip": "PIP 모드",
+    "library": "라이브러리 토글",
+    "playlist": "재생목록 토글",
+    "help": "도움말",
+    "about": "unflick 정보",
+    "checkUpdates": "업데이트 확인…"
+  },
+  "dropZone": {
+    "title": "여기에 영상을 드롭하세요",
+    "subtitle": "또는 클릭하여 파일 열기",
+    "openFile": "파일 열기",
+    "openUrl": "URL 열기"
+  },
+  "update": {
+    "available": "사용 가능",
+    "currentVersion": "현재 버전 v{current}",
+    "download": "다운로드",
+    "dismiss": "무시",
+    "upToDate": "최신 버전입니다 (v{current}).",
+    "checkFailed": "업데이트를 확인할 수 없습니다. 나중에 다시 시도해 주세요.",
+    "newVersionPrompt": "unflick {latest} 가 출시되었습니다 (현재 {current}).\n\n다운로드 페이지를 열까요?"
+  },
+  "library": {
+    "title": "라이브러리",
+    "search": "라이브러리 검색…",
+    "scan": "디렉토리 스캔",
+    "empty": "라이브러리가 비어 있습니다. 폴더를 스캔하여 시작하세요.",
+    "clearAll": "모두 지우기",
+    "add": "추가"
+  },
+  "playlist": {
+    "title": "재생목록",
+    "empty": "재생목록이 비어 있습니다.",
+    "addFile": "파일 추가",
+    "next": "다음",
+    "prev": "이전",
+    "clear": "재생목록 지우기",
+    "removeEntry": "이 항목 제거"
+  },
+  "subtitle": {
+    "title": "자막",
+    "off": "끄기",
+    "loadFile": "자막 파일 로드…",
+    "generate": "AI 로 생성",
+    "generating": "생성 중…",
+    "noTracks": "로드된 자막 트랙이 없습니다."
+  },
+  "audio": {
+    "title": "오디오 트랙",
+    "noTracks": "오디오 트랙이 없습니다."
+  },
+  "filters": {
+    "title": "비디오 필터",
+    "brightness": "밝기",
+    "contrast": "대비",
+    "saturation": "채도",
+    "gamma": "감마",
+    "hue": "색상",
+    "reset": "모두 초기화"
+  },
+  "clip": {
+    "title": "클립 추출",
+    "start": "시작",
+    "end": "종료",
+    "output": "출력 파일",
+    "gif": "GIF 로 내보내기",
+    "saving": "저장 중…",
+    "saved": "클립을 {path} 에 저장했습니다",
+    "failed": "저장 실패: {error}"
+  },
+  "urlDialog": {
+    "title": "URL 열기",
+    "label": "비디오 URL",
+    "placeholder": "https://www.youtube.com/watch?v=…",
+    "open": "열기",
+    "ytDlpMissing": "URL 재생에는 yt-dlp 가 필요하지만 찾을 수 없습니다.",
+    "ytDlpUpdate": "yt-dlp 업데이트",
+    "extracting": "스트림 URL 추출 중…"
+  },
+  "context": {
+    "openFile": "파일 열기…",
+    "openUrl": "URL 열기…",
+    "play": "재생",
+    "pause": "일시정지",
+    "resume": "다시 재생",
+    "stop": "정지",
+    "screenshot": "스크린샷",
+    "clip": "클립 추출…",
+    "fullscreen": "전체화면 전환",
+    "pip": "PIP 모드",
+    "subtitles": "자막",
+    "audio": "오디오 트랙",
+    "filters": "비디오 필터",
+    "openLibrary": "라이브러리 보기",
+    "openPlaylist": "재생목록 보기",
+    "settings": "설정"
+  },
+  "settings": {
+    "title": "설정",
+    "language": "언어",
+    "languageHint": "네이티브 메뉴 언어 변경은 unflick 재시작이 필요합니다.",
+    "theme": "테마",
+    "themeDark": "다크",
+    "themeLight": "라이트",
+    "volume": "기본 음량",
+    "proxy": "프록시",
+    "proxyPlaceholder": "http://host:port (비워두면 시스템 프록시 사용)",
+    "ai": {
+      "section": "AI 자막",
+      "modeLocal": "로컬 (Whisper)",
+      "modeApi": "OpenAI API",
+      "modeOff": "끄기",
+      "whisperBinary": "Whisper 실행 파일",
+      "whisperModel": "Whisper 모델",
+      "bundledReady": "내장 Whisper 사용 가능",
+      "bundledMissing": "내장 Whisper 를 찾을 수 없습니다.",
+      "apiKey": "OpenAI API 키",
+      "apiKeyPlaceholder": "sk-…"
+    },
+    "tools": {
+      "section": "도구",
+      "ytDlp": "yt-dlp",
+      "ytDlpVersion": "버전 {version}",
+      "ytDlpChecking": "확인 중…",
+      "update": "업데이트",
+      "updating": "업데이트 중…",
+      "updated": "업데이트 완료"
+    },
+    "savedToast": "저장됨"
+  }
+}

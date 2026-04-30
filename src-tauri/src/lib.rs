@@ -5,6 +5,7 @@ pub mod cli;
 pub mod mcp;
 pub mod gui;
 
+use core::i18n::{menu_strings, read_locale_from_settings};
 use gui::{commands, state::{GuiPlayer, PendingFile}};
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
@@ -12,6 +13,30 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // single-instance MUST come first so a second-launch is short-
+        // circuited before any other plugin spends time on initialization.
+        // The callback runs inside the *first* (already-running) process —
+        // we focus its window and forward the second launch's file argument
+        // (if any) to the frontend so it plays in the existing window.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            use tauri::{Emitter, Manager};
+
+            // Bring the existing window forward.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+
+                // Forward a "open this file" arg, mirroring main.rs's logic.
+                let file = args
+                    .iter()
+                    .skip(1)
+                    .find(|a| !a.starts_with('-') && std::path::Path::new(a).is_file())
+                    .cloned();
+                if let Some(path) = file {
+                    let _ = window.emit("open-file", path);
+                }
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GuiPlayer::new())
@@ -19,54 +44,60 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle();
 
+            // Pull the user's saved locale once, here at startup. Tauri's
+            // native menu can't re-render its labels at runtime, so
+            // switching languages requires a restart (the Settings panel
+            // tells the user this explicitly).
+            let m = menu_strings(&read_locale_from_settings());
+
             // Build File menu
-            let open_item = MenuItemBuilder::with_id("open", "Open File...")
+            let open_item = MenuItemBuilder::with_id("open", m.open_file)
                 .accelerator("CmdOrCtrl+O")
                 .build(handle)?;
-            let open_url_item = MenuItemBuilder::with_id("open_url", "Open URL...")
+            let open_url_item = MenuItemBuilder::with_id("open_url", m.open_url)
                 .accelerator("CmdOrCtrl+U")
                 .build(handle)?;
             let sep1 = PredefinedMenuItem::separator(handle)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit")
+            let quit_item = MenuItemBuilder::with_id("quit", m.quit)
                 .accelerator("CmdOrCtrl+Q")
                 .build(handle)?;
-            let file_menu = SubmenuBuilder::new(handle, "File")
+            let file_menu = SubmenuBuilder::new(handle, m.file)
                 .items(&[&open_item, &open_url_item, &sep1, &quit_item])
                 .build()?;
 
             // Build Playback menu
-            let play_pause_item = MenuItemBuilder::with_id("play_pause", "Play/Pause")
+            let play_pause_item = MenuItemBuilder::with_id("play_pause", m.play_pause)
                 .build(handle)?;
-            let stop_item = MenuItemBuilder::with_id("stop", "Stop")
+            let stop_item = MenuItemBuilder::with_id("stop", m.stop)
                 .build(handle)?;
             let sep2 = PredefinedMenuItem::separator(handle)?;
-            let vol_up_item = MenuItemBuilder::with_id("volume_up", "Volume Up")
+            let vol_up_item = MenuItemBuilder::with_id("volume_up", m.volume_up)
                 .build(handle)?;
-            let vol_down_item = MenuItemBuilder::with_id("volume_down", "Volume Down")
+            let vol_down_item = MenuItemBuilder::with_id("volume_down", m.volume_down)
                 .build(handle)?;
-            let playback_menu = SubmenuBuilder::new(handle, "Playback")
+            let playback_menu = SubmenuBuilder::new(handle, m.playback)
                 .items(&[&play_pause_item, &stop_item, &sep2, &vol_up_item, &vol_down_item])
                 .build()?;
 
             // Build View menu
-            let fullscreen_item = MenuItemBuilder::with_id("fullscreen", "Toggle Fullscreen")
+            let fullscreen_item = MenuItemBuilder::with_id("fullscreen", m.fullscreen)
                 .accelerator("F11")
                 .build(handle)?;
-            let pip_item = MenuItemBuilder::with_id("pip", "Picture in Picture")
+            let pip_item = MenuItemBuilder::with_id("pip", m.pip)
                 .build(handle)?;
-            let library_item = MenuItemBuilder::with_id("library", "Toggle Library")
+            let library_item = MenuItemBuilder::with_id("library", m.library)
                 .build(handle)?;
-            let view_menu = SubmenuBuilder::new(handle, "View")
+            let view_menu = SubmenuBuilder::new(handle, m.view)
                 .items(&[&fullscreen_item, &pip_item, &library_item])
                 .build()?;
 
             // Build Help menu
-            let about_item = MenuItemBuilder::with_id("about", "About unflick")
+            let about_item = MenuItemBuilder::with_id("about", m.about)
                 .build(handle)?;
-            let check_updates_item = MenuItemBuilder::with_id("check_updates", "Check for Updates...")
+            let check_updates_item = MenuItemBuilder::with_id("check_updates", m.check_updates)
                 .build(handle)?;
             let sep_help = PredefinedMenuItem::separator(handle)?;
-            let help_menu = SubmenuBuilder::new(handle, "Help")
+            let help_menu = SubmenuBuilder::new(handle, m.help)
                 .items(&[&check_updates_item, &sep_help, &about_item])
                 .build()?;
 

@@ -16,6 +16,7 @@ import { useLibraryStore } from "./stores/libraryStore";
 import { usePlaylistStore } from "./stores/playlistStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { checkForUpdate, type UpdateResult } from "./lib/checkUpdate";
+import { useStrings } from "./i18n/utils";
 
 async function openFileDialog() {
   const result = await invoke<{ path: string | null }>("open_file_dialog");
@@ -35,6 +36,7 @@ function App() {
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateResult | null>(null);
+  const t = useStrings();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -360,6 +362,19 @@ useEffect(() => {
     return () => window.removeEventListener("unflick:screenshot", handler);
   }, [captureScreenshot]);
 
+  // Single-instance plugin: a second launch (e.g. user double-clicks
+  // another file in Explorer while we're running) is short-circuited,
+  // and Rust forwards the new file path to *us* via this event so it
+  // plays in the existing window instead of opening a new one.
+  useEffect(() => {
+    const unlisten = listen<string>("open-file", (event) => {
+      if (event.payload) play(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [play]);
+
   // Listen for native menu events
   useEffect(() => {
     const unlisten = listen<string>("menu-event", async (event) => {
@@ -406,14 +421,16 @@ useEffect(() => {
           const result = await checkForUpdate();
           setUpdateInfo(result);
           if (result.error) {
-            alert(`Couldn't check for updates. Try again later.`);
+            alert(t.update.checkFailed);
           } else if (result.hasUpdate) {
             const open = confirm(
-              `unflick ${result.latest} is available (you're on ${result.current}).\n\nOpen the download page?`,
+              t.update.newVersionPrompt
+                .replace("{latest}", result.latest ?? "")
+                .replace("{current}", result.current),
             );
             if (open) window.open(result.url, "_blank");
           } else {
-            alert(`You're on the latest version (v${result.current}).`);
+            alert(t.update.upToDate.replace("{current}", result.current));
           }
           break;
         }
@@ -559,13 +576,13 @@ useEffect(() => {
             className="flex items-center gap-3 px-4 py-2 text-sm bg-gradient-to-r from-violet-600/90 to-pink-600/90 text-white"
           >
             <span className="font-medium">unflick v{updateInfo.latest}</span>
-            <span className="text-white/80">is available — you're on v{updateInfo.current}.</span>
+            <span className="text-white/80">{t.update.available} — {t.update.currentVersion.replace("{current}", updateInfo.current)}.</span>
             <button
               type="button"
               onClick={() => updateInfo.url && window.open(updateInfo.url, "_blank")}
               className="ml-auto px-3 py-0.5 rounded-md bg-white/15 hover:bg-white/25 transition text-xs font-medium"
             >
-              Download
+              {t.update.download}
             </button>
             <button
               type="button"
@@ -687,14 +704,14 @@ useEffect(() => {
                 unflick
               </h1>
               <p className="idle-fade-in-delay text-[13px] font-normal tracking-wide text-white/25">
-                Drop a video file or click to open
+                {t.dropZone.title} · {t.dropZone.subtitle}
               </p>
               <button
                 onClick={handleOpenFile}
                 className="idle-open-btn idle-fade-in-delay-2 mt-1 rounded-xl px-8 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 active:scale-95"
                 style={{ background: "linear-gradient(135deg, #7C3AED, #9333EA, #DB2777)" }}
               >
-                Open File
+                {t.dropZone.openFile}
               </button>
             </div>
           </div>
