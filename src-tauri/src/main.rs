@@ -9,7 +9,26 @@ use clap::Parser;
 use unflick_lib::cli::{run_cli, Cli};
 use unflick_lib::mcp::run_mcp_server;
 
+/// Env var the GUI reads on startup to auto-play a file. Set when Windows
+/// invokes us via "Open with..." / a file association — Explorer passes the
+/// chosen file as argv[1], which clap would otherwise reject as an unknown
+/// subcommand.
+const PENDING_FILE_ENV: &str = "UNFLICK_OPEN_FILE";
+
 fn main() {
+    // Special case before clap: a single positional arg that points at a
+    // real file means "Explorer asked us to open this." Bypass CLI parsing
+    // and route to the GUI with the path stashed for the frontend.
+    let raw_args: Vec<String> = std::env::args().collect();
+    if raw_args.len() == 2 {
+        let arg = &raw_args[1];
+        if !arg.starts_with('-') && std::path::Path::new(arg).is_file() {
+            std::env::set_var(PENDING_FILE_ENV, arg);
+            unflick_lib::run();
+            return;
+        }
+    }
+
     let cli = Cli::parse();
 
     // Mode 1: MCP server (--mcp flag)

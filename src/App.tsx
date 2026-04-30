@@ -285,6 +285,16 @@ function App() {
   // Initialize mpv player on mount and load persisted settings
   useEffect(() => {
     invoke("player_init").catch(console.error);
+
+    // If Explorer launched us via a file association, the backend stashed
+    // the path on startup. Pull it out and start playback. Single-shot:
+    // a second invocation returns null so refreshes don't replay.
+    invoke<string | null>("consume_pending_file")
+      .then((path) => {
+        if (path) play(path);
+      })
+      .catch(console.error);
+
     loadSettings().then(async () => {
       // Apply saved volume
       const savedVolume = useSettingsStore.getState().volume;

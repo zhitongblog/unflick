@@ -5,7 +5,7 @@ pub mod cli;
 pub mod mcp;
 pub mod gui;
 
-use gui::{commands, state::GuiPlayer};
+use gui::{commands, state::{GuiPlayer, PendingFile}};
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -15,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GuiPlayer::new())
+        .manage(PendingFile::from_env())
         .setup(|app| {
             let handle = app.handle();
 
@@ -92,6 +93,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::player_init,
+            commands::consume_pending_file,
             commands::player_play,
             commands::player_pause,
             commands::player_resume,

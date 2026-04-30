@@ -2,7 +2,7 @@ use tauri::{command, State, AppHandle, Manager};
 use serde_json::{json, Value};
 
 use crate::core::library;
-use super::state::GuiPlayer;
+use super::state::{GuiPlayer, PendingFile};
 
 /// GUI playback uses HTMLVideoElement (rendered in WebView2), not mpv.
 /// mpv stays available for CLI/MCP usage. This command is a no-op kept for
@@ -10,6 +10,14 @@ use super::state::GuiPlayer;
 #[command]
 pub async fn player_init(_app: AppHandle, _gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     Ok(json!({"status": "ready"}))
+}
+
+/// Take and clear the file Explorer asked us to open at launch.
+/// Returns `null` when there's nothing pending. Single-shot: a second call
+/// returns `null` so refreshes don't re-trigger playback.
+#[command]
+pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<String> {
+    pending.0.lock().ok().and_then(|mut g| g.take())
 }
 
 /// User-data path for an auto-updated copy of yt-dlp. Updates are written here

@@ -21,3 +21,14 @@ impl GuiPlayer {
         }
     }
 }
+
+/// Holds a file path Explorer asked us to open at launch (via the
+/// UNFLICK_OPEN_FILE env var set in main.rs). The frontend pulls and
+/// clears it via the `consume_pending_file` command on init.
+pub struct PendingFile(pub Mutex<Option<String>>);
+
+impl PendingFile {
+    pub fn from_env() -> Self {
+        Self(Mutex::new(std::env::var("UNFLICK_OPEN_FILE").ok().filter(|s| !s.is_empty())))
+    }
+}
