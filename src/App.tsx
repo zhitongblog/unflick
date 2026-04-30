@@ -15,6 +15,7 @@ import { usePlayerStore } from "./stores/playerStore";
 import { useLibraryStore } from "./stores/libraryStore";
 import { usePlaylistStore } from "./stores/playlistStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { checkForUpdate, type UpdateResult } from "./lib/checkUpdate";
 
 async function openFileDialog() {
   const result = await invoke<{ path: string | null }>("open_file_dialog");
@@ -33,6 +34,7 @@ function App() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateResult | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -295,6 +297,20 @@ function App() {
       })
       .catch(console.error);
 
+    // Quiet background update check. Suppress the banner if the user has
+    // already dismissed *this exact version* before — re-show only when a
+    // newer version appears.
+    checkForUpdate()
+      .then((res) => {
+        if (!res.hasUpdate || !res.latest) return;
+        const dismissed = localStorage.getItem("update-dismissed-version");
+        if (dismissed === res.latest) return;
+        setUpdateInfo(res);
+      })
+      .catch(() => {
+        /* silent on startup; menu item still lets users retry manually */
+      });
+
     loadSettings().then(async () => {
       // Apply saved volume
       const savedVolume = useSettingsStore.getState().volume;
@@ -384,15 +400,23 @@ useEffect(() => {
             Math.max(0, usePlayerStore.getState().volume - 5)
           );
           break;
-        case "check_updates":
-          invoke<{ message: string }>("check_for_updates")
-            .then((result) => {
-              alert(result.message);
-            })
-            .catch((err) => {
-              alert(`Update check failed: ${err}`);
-            });
+        case "check_updates": {
+          // Manual menu trigger: always tell the user the result, even when
+          // they're up to date or the network call failed.
+          const result = await checkForUpdate();
+          setUpdateInfo(result);
+          if (result.error) {
+            alert(`Couldn't check for updates. Try again later.`);
+          } else if (result.hasUpdate) {
+            const open = confirm(
+              `unflick ${result.latest} is available (you're on ${result.current}).\n\nOpen the download page?`,
+            );
+            if (open) window.open(result.url, "_blank");
+          } else {
+            alert(`You're on the latest version (v${result.current}).`);
+          }
           break;
+        }
         case "about":
           // Could show an about dialog in the future
           console.log("unflick v0.1.0 — A video player for humans and AI");
@@ -523,6 +547,44 @@ useEffect(() => {
       >
         <TitleBar />
       </motion.div>
+
+      {/* Update available banner */}
+      <AnimatePresence>
+        {updateInfo?.hasUpdate && updateInfo.latest && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex items-center gap-3 px-4 py-2 text-sm bg-gradient-to-r from-violet-600/90 to-pink-600/90 text-white"
+          >
+            <span className="font-medium">unflick v{updateInfo.latest}</span>
+            <span className="text-white/80">is available — you're on v{updateInfo.current}.</span>
+            <button
+              type="button"
+              onClick={() => updateInfo.url && window.open(updateInfo.url, "_blank")}
+              className="ml-auto px-3 py-0.5 rounded-md bg-white/15 hover:bg-white/25 transition text-xs font-medium"
+            >
+              Download
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => {
+                if (updateInfo.latest) {
+                  localStorage.setItem("update-dismissed-version", updateInfo.latest);
+                }
+                setUpdateInfo(null);
+              }}
+              className="text-white/70 hover:text-white transition"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Video area / drop zone */}
       <div
