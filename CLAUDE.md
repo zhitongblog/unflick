@@ -237,9 +237,21 @@ cargo run -- screenshot --output /tmp/test.png && ls -la /tmp/test.png
 - PiP mode, screenshot, clip extraction
 - Installer packaging (Windows .msi, macOS .dmg)
 
-### Future — AI
-- Local Whisper speech recognition
-- AI subtitle generation and translation
+### v0.6 — CLI/MCP-complete + AI subtitles
+- Audio track switching (CLI + MCP)
+- Playlist jump-by-index (MCP)
+- MCP resources: `unflick://now-playing`, `unflick://playlist`, `unflick://library`
+- Event-driven `info` probe (replaced 800ms sleep hack with `MPV_EVENT_FILE_LOADED`)
+- AI subtitle generation + translation (CLI + MCP, local whisper.cpp + OpenAI API)
+- Settings get/set/unset (CLI + MCP, partial-key updates)
+- Video filters: brightness/contrast/saturation/gamma/hue (CLI + MCP)
+- Every GUI feature now has CLI + MCP coverage — no more first-class/second-class divide
+
+### Future — Advanced AI
+- AI scene detection / chapter generation
+- Voice-controlled playback ("skip ahead 30 seconds")
+- Smart subtitle search ("find where they say 'X'")
+- AI-recommended viewing based on library
 
 ## Brand
 

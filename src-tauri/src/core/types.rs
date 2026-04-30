@@ -39,6 +39,8 @@ pub struct FileInfo {
     pub height: Option<i64>,
     pub video_codec: Option<String>,
     pub audio_codec: Option<String>,
+    pub fps: Option<f64>,
+    pub container: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

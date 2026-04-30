@@ -292,10 +292,11 @@ function App() {
         setVolume(savedVolume);
       }
 
-      // Auto-detect bundled whisper. If the full version was installed and the
-      // user hasn't configured anything yet, switch on Local Whisper silently.
+      // Auto-detect bundled whisper whenever the local paths are not configured.
+      // Previously this only ran when whisperMode === "off", which left users
+      // stranded if they had the mode set to "local" but the paths got cleared.
       const s = useSettingsStore.getState();
-      if (s.whisperMode === "off" && !s.whisperBinaryPath && !s.whisperModelPath) {
+      if (!s.whisperBinaryPath || !s.whisperModelPath) {
         try {
           const r = await invoke<{
             bundled: boolean;

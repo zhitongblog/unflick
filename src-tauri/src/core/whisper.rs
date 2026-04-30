@@ -1,6 +1,22 @@
 use anyhow::{bail, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Locate bundled whisper binary and tiny model alongside the running executable.
+/// Looks at `<exe_dir>/whisper/` and `<exe_dir>/resources/whisper/` (NSIS install layout).
+pub fn find_bundled_whisper() -> Option<(PathBuf, PathBuf)> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+    for sub in ["whisper", "resources/whisper"] {
+        let dir = exe_dir.join(sub);
+        let bin = dir.join(bin_name);
+        let model = dir.join("ggml-tiny.bin");
+        if bin.exists() && model.exists() {
+            return Some((bin, model));
+        }
+    }
+    None
+}
 
 /// Hide the console flash on Windows when launching subprocesses.
 fn suppress_console(cmd: &mut Command) {

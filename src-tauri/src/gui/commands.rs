@@ -915,10 +915,21 @@ pub async fn generate_subtitles(
     let srt_path = tokio::task::spawn_blocking(move || {
         match mode.as_str() {
             "local" => {
-                let binary = whisper_binary
-                    .ok_or_else(|| anyhow::anyhow!("whisper binary path not set"))?;
-                let model = model_path
-                    .ok_or_else(|| anyhow::anyhow!("whisper model path not set"))?;
+                // Fall back to the bundled whisper binary/model if the frontend
+                // didn't pass paths. This matches the CLI/MCP behavior so the
+                // GUI works out of the box when the AI installer is used.
+                let (binary, model) = match (whisper_binary, model_path) {
+                    (Some(b), Some(m)) => (b, m),
+                    _ => match crate::core::whisper::find_bundled_whisper() {
+                        Some((b, m)) => (
+                            b.to_string_lossy().into_owned(),
+                            m.to_string_lossy().into_owned(),
+                        ),
+                        None => anyhow::bail!(
+                            "whisper binary/model path not set and no bundled whisper found"
+                        ),
+                    },
+                };
                 let (safe_bin, safe_model) = whisper_safe_paths(&binary, &model)
                     .map_err(|e| anyhow::anyhow!(e))?;
                 let safe_bin_str = safe_bin.to_string_lossy().to_string();

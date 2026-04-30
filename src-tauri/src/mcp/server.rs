@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 
 use crate::core::daemon;
 
+use super::resources;
 use super::tools;
 
 /// Run the MCP server over stdio (JSON-RPC 2.0).
@@ -73,7 +74,8 @@ pub fn run_mcp_server() -> i32 {
                     "result": {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {
-                            "tools": {}
+                            "tools": {},
+                            "resources": {}
                         },
                         "serverInfo": {
                             "name": "unflick",
@@ -103,6 +105,33 @@ pub fn run_mcp_server() -> i32 {
                     "id": id,
                     "result": result
                 })
+            }
+            "resources/list" => {
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "resources": resources::resource_definitions()
+                    }
+                })
+            }
+            "resources/read" => {
+                let uri = request["params"]["uri"].as_str().unwrap_or("");
+                match resources::read_resource(uri) {
+                    Ok(result) => json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": result
+                    }),
+                    Err(e) => json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": e
+                        }
+                    }),
+                }
             }
             _ => {
                 json!({

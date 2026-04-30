@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use anyhow::{bail, Result};
 
-use super::types::{AudioTrack, PlaybackState, PlayerStatus, SubtitleTrack};
+use super::types::{AudioTrack, FileInfo, PlaybackState, PlayerStatus, SubtitleTrack};
+use crate::mpv::ffi::{MPV_EVENT_END_FILE, MPV_EVENT_FILE_LOADED};
 use crate::mpv::MpvHandle;
 
 /// Core player logic backed by libmpv.
@@ -198,6 +199,53 @@ impl Player {
     pub fn audio_select(&self, id: i64) -> Result<()> {
         self.mpv.set_property_i64("aid", id)
     }
+}
+
+/// Probe a media file's metadata without affecting any active playback.
+/// Spins up an isolated headless mpv with `pause=yes`, loads the file, waits for
+/// the FILE_LOADED event, then reads metadata properties.
+pub fn probe_file(path: &str) -> Result<FileInfo> {
+    let mpv = MpvHandle::new("null")?;
+    mpv.set_property_bool("pause", true)?;
+    mpv.command(&["loadfile", path])?;
+
+    // Drain events until file-loaded or end-of-file (load failure), capped by a deadline.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let mut loaded = false;
+    while std::time::Instant::now() < deadline {
+        let (event_id, _err) = mpv.wait_event(0.1);
+        if event_id == MPV_EVENT_FILE_LOADED {
+            loaded = true;
+            break;
+        }
+        if event_id == MPV_EVENT_END_FILE {
+            // Load failed before file-loaded fired
+            break;
+        }
+    }
+
+    if !loaded {
+        bail!("failed to probe {}: file did not load within 5s", path);
+    }
+
+    let duration = mpv.get_property_f64("duration").unwrap_or(0.0);
+    let width = mpv.get_property_i64("width").ok();
+    let height = mpv.get_property_i64("height").ok();
+    let video_codec = mpv.get_property_string("video-codec").ok();
+    let audio_codec = mpv.get_property_string("audio-codec").ok();
+    let fps = mpv.get_property_f64("container-fps").ok();
+    let container = mpv.get_property_string("file-format").ok();
+
+    Ok(FileInfo {
+        path: path.to_string(),
+        duration,
+        width,
+        height,
+        video_codec,
+        audio_codec,
+        fps,
+        container,
+    })
 }
 
 /// Locate ffmpeg by searching alongside the running executable, then PATH.

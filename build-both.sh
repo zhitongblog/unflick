@@ -1,45 +1,67 @@
 #!/bin/bash
-# Build both standard and AI editions of unflick
+# Build both standard and AI editions of unflick.
+#
+# Both editions share the same productName ("unflick") so they install to
+# the same location and share the same Start menu shortcut. The AI suffix
+# is only used in release filenames so the two installers can coexist
+# in GitHub releases without overwriting each other.
+#
+# Standard edition bundles: libmpv, ffmpeg, yt-dlp.
+# AI edition adds: whisper-cli + ggml-tiny model + whisper DLLs.
 set -e
 
+VERSION="0.6.0"
+NSIS_DIR="src-tauri/target/release/bundle/nsis"
+MSI_DIR="src-tauri/target/release/bundle/msi"
+
+STANDARD_RESOURCES='[
+  "mpv-dev/libmpv-2.dll",
+  "ffmpeg/ffmpeg.exe",
+  "yt-dlp/yt-dlp.exe"
+]'
+
+AI_RESOURCES='[
+  "mpv-dev/libmpv-2.dll",
+  "ffmpeg/ffmpeg.exe",
+  "yt-dlp/yt-dlp.exe",
+  "whisper/whisper-cli.exe",
+  "whisper/whisper.dll",
+  "whisper/ggml.dll",
+  "whisper/ggml-base.dll",
+  "whisper/ggml-cpu.dll",
+  "whisper/ggml-tiny.bin"
+]'
+
+apply_resources() {
+  local resources="$1"
+  node -e "
+    const fs = require('fs');
+    const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+    conf.bundle.resources = ${resources};
+    conf.productName = 'unflick';
+    fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+  "
+}
+
+# Restore the standard bundle config on exit, even if a build fails.
+trap 'apply_resources "$STANDARD_RESOURCES"' EXIT
+
 echo "=== Building Standard Edition ==="
-# Standard build (no whisper bundled)
+apply_resources "$STANDARD_RESOURCES"
 pnpm tauri build
-cp "src-tauri/target/release/bundle/nsis/unflick_0.5.0_x64-setup.exe" "src-tauri/target/release/bundle/nsis/unflick_0.5.0_x64-setup-standard.exe"
-cp "src-tauri/target/release/bundle/msi/unflick_0.5.0_x64_en-US.msi" "src-tauri/target/release/bundle/msi/unflick_0.5.0_x64_en-US-standard.msi"
+cp "${NSIS_DIR}/unflick_${VERSION}_x64-setup.exe" "${NSIS_DIR}/unflick_${VERSION}_x64-setup-standard.exe"
+cp "${MSI_DIR}/unflick_${VERSION}_x64_en-US.msi"  "${MSI_DIR}/unflick_${VERSION}_x64_en-US-standard.msi"
 echo "Standard edition built."
 
 echo ""
 echo "=== Building AI Edition (with Whisper) ==="
-# Add whisper resources to tauri.conf.json temporarily
-node -e "
-const fs = require('fs');
-const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-conf.bundle.resources = [
-  'mpv-dev/libmpv-2.dll',
-  'whisper/whisper-cli.exe',
-  'whisper/whisper.dll',
-  'whisper/ggml.dll',
-  'whisper/ggml-base.dll',
-  'whisper/ggml-cpu.dll',
-  'whisper/ggml-tiny.bin'
-];
-conf.productName = 'unflick-ai';
-fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
-"
-
+apply_resources "$AI_RESOURCES"
 pnpm tauri build
-
-# Restore original config
-node -e "
-const fs = require('fs');
-const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-conf.bundle.resources = ['mpv-dev/libmpv-2.dll'];
-conf.productName = 'unflick';
-fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
-"
+# Rename the AI bundle so it doesn't keep being overwritten by future standard builds.
+mv "${NSIS_DIR}/unflick_${VERSION}_x64-setup.exe" "${NSIS_DIR}/unflick-ai_${VERSION}_x64-setup.exe"
+mv "${MSI_DIR}/unflick_${VERSION}_x64_en-US.msi"  "${MSI_DIR}/unflick-ai_${VERSION}_x64_en-US.msi"
 
 echo ""
 echo "=== Build Complete ==="
-echo "Standard: src-tauri/target/release/bundle/nsis/unflick_0.5.0_x64-setup-standard.exe"
-echo "AI:       src-tauri/target/release/bundle/nsis/unflick-ai_0.5.0_x64-setup.exe"
+echo "Standard: ${NSIS_DIR}/unflick_${VERSION}_x64-setup-standard.exe"
+echo "AI:       ${NSIS_DIR}/unflick-ai_${VERSION}_x64-setup.exe"

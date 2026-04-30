@@ -167,33 +167,12 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
         }
         "info" => {
             let file = args["file"].as_str().unwrap_or("");
-            // Use a separate mpv instance to probe file info without disrupting playback
-            match Player::new() {
-                Ok(probe) => {
-                    match probe.play(file, None, None, None) {
-                        Ok(()) => {
-                            std::thread::sleep(std::time::Duration::from_millis(800));
-                            let status = probe.status();
-                            let width = probe.get_property_i64("width").ok();
-                            let height = probe.get_property_i64("height").ok();
-                            let video_codec = probe.get_property_string("video-codec").ok();
-                            let audio_codec = probe.get_property_string("audio-codec").ok();
-                            CommandResult::ok_with_data(
-                                "ok",
-                                json!({
-                                    "path": file,
-                                    "duration": status.duration,
-                                    "width": width,
-                                    "height": height,
-                                    "video_codec": video_codec,
-                                    "audio_codec": audio_codec,
-                                }),
-                            )
-                        }
-                        Err(e) => CommandResult::err(e.to_string()),
-                    }
-                }
-                Err(e) => CommandResult::err(format!("failed to create probe: {}", e)),
+            if file.is_empty() {
+                return CommandResult::err("file path required");
+            }
+            match crate::core::player::probe_file(file) {
+                Ok(info) => CommandResult::ok_with_data("ok", serde_json::to_value(&info).unwrap()),
+                Err(e) => CommandResult::err(e.to_string()),
             }
         }
         "playlist_add" => {
@@ -275,6 +254,86 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             let id = args["id"].as_i64().unwrap_or(0);
             match player.subtitle_select(id) {
                 Ok(()) => CommandResult::ok(format!("selected subtitle track {}", id)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "audio_list" => {
+            let tracks = player.audio_list();
+            CommandResult::ok_with_data("ok", serde_json::to_value(&tracks).unwrap())
+        }
+        "audio_select" => {
+            let id = args["id"].as_i64().unwrap_or(0);
+            match player.audio_select(id) {
+                Ok(()) => CommandResult::ok(format!("selected audio track {}", id)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "subtitle_generate" => {
+            let video = args["video"].as_str().unwrap_or("");
+            if video.is_empty() {
+                return CommandResult::err("video path required");
+            }
+            let api_key = args.get("api_key").and_then(|v| v.as_str()).map(String::from);
+            let mode = args.get("mode").and_then(|v| v.as_str()).map(String::from)
+                .unwrap_or_else(|| if api_key.is_some() { "api".into() } else { "local".into() });
+
+            let output_dir = args.get("output_dir").and_then(|v| v.as_str()).map(String::from)
+                .unwrap_or_else(default_subtitle_output_dir);
+            if let Err(e) = std::fs::create_dir_all(&output_dir) {
+                return CommandResult::err(format!("failed to create output dir: {}", e));
+            }
+
+            let ffmpeg = match crate::core::player::find_ffmpeg() {
+                Some(p) => p.to_string_lossy().to_string(),
+                None => return CommandResult::err("ffmpeg not found"),
+            };
+
+            match mode.as_str() {
+                "local" => {
+                    let (whisper_bin, model_path) = match (
+                        args.get("whisper").and_then(|v| v.as_str()),
+                        args.get("model").and_then(|v| v.as_str()),
+                    ) {
+                        (Some(w), Some(m)) => (w.to_string(), m.to_string()),
+                        _ => match crate::core::whisper::find_bundled_whisper() {
+                            Some((w, m)) => (w.to_string_lossy().into_owned(), m.to_string_lossy().into_owned()),
+                            None => return CommandResult::err(
+                                "local mode requires --whisper and --model, or a bundled whisper installation"
+                            ),
+                        },
+                    };
+                    match crate::core::whisper::transcribe_local(video, &whisper_bin, &model_path, &output_dir, &ffmpeg) {
+                        Ok(srt) => CommandResult::ok_with_data("subtitles generated", json!({"srt_path": srt})),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                "api" => {
+                    let key = match api_key {
+                        Some(k) => k,
+                        None => return CommandResult::err("api mode requires --api-key"),
+                    };
+                    match crate::core::whisper::transcribe_api(video, &key, &output_dir, &ffmpeg) {
+                        Ok(srt) => CommandResult::ok_with_data("subtitles generated", json!({"srt_path": srt})),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                other => CommandResult::err(format!("unknown mode: {} (expected 'local' or 'api')", other)),
+            }
+        }
+        "subtitle_translate" => {
+            let srt = args["srt"].as_str().unwrap_or("");
+            let target_lang = args["target_lang"].as_str().unwrap_or("");
+            let api_key = args["api_key"].as_str().unwrap_or("");
+            if srt.is_empty() || target_lang.is_empty() || api_key.is_empty() {
+                return CommandResult::err("srt, target_lang, and api_key are required");
+            }
+            let output_dir = args.get("output_dir").and_then(|v| v.as_str()).map(String::from)
+                .unwrap_or_else(default_subtitle_output_dir);
+            if let Err(e) = std::fs::create_dir_all(&output_dir) {
+                return CommandResult::err(format!("failed to create output dir: {}", e));
+            }
+            match crate::core::whisper::translate_srt(srt, target_lang, api_key, &output_dir) {
+                Ok(path) => CommandResult::ok_with_data("translated", json!({"srt_path": path})),
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -367,6 +426,78 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
+        "settings_path" => {
+            CommandResult::ok_with_data(
+                "ok",
+                json!({"path": crate::core::settings::settings_path().to_string_lossy()}),
+            )
+        }
+        "settings_get" => match crate::core::settings::read_all() {
+            Ok(all) => match args.get("key").and_then(|v| v.as_str()) {
+                Some(k) => match all.get(k) {
+                    Some(v) => CommandResult::ok_with_data("ok", json!({"key": k, "value": v})),
+                    None => CommandResult::err(format!("key not found: {}", k)),
+                },
+                None => CommandResult::ok_with_data("ok", all),
+            },
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+        "settings_set" => {
+            let key = args["key"].as_str().unwrap_or("");
+            if key.is_empty() {
+                return CommandResult::err("key is required");
+            }
+            let value = args.get("value").cloned().unwrap_or(Value::Null);
+            match crate::core::settings::set(key, value.clone()) {
+                Ok(()) => CommandResult::ok_with_data(
+                    format!("set {}", key),
+                    json!({"key": key, "value": value}),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "settings_unset" => {
+            let key = args["key"].as_str().unwrap_or("");
+            if key.is_empty() {
+                return CommandResult::err("key is required");
+            }
+            match crate::core::settings::unset(key) {
+                Ok(true) => CommandResult::ok(format!("removed {}", key)),
+                Ok(false) => CommandResult::err(format!("key not found: {}", key)),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "filter_list" => {
+            let mut out = serde_json::Map::new();
+            for prop in ["brightness", "contrast", "saturation", "gamma", "hue"] {
+                let value = player.get_property_i64(prop).unwrap_or(0);
+                out.insert(prop.to_string(), json!(value));
+            }
+            CommandResult::ok_with_data("ok", Value::Object(out))
+        }
+        "filter_set" => {
+            let name = args["name"].as_str().unwrap_or("");
+            if !matches!(name, "brightness" | "contrast" | "saturation" | "gamma" | "hue") {
+                return CommandResult::err(format!(
+                    "unknown filter: {} (expected brightness | contrast | saturation | gamma | hue)",
+                    name
+                ));
+            }
+            let value = args["value"].as_i64().unwrap_or(0).clamp(-100, 100);
+            match player.set_property_i64(name, value) {
+                Ok(()) => CommandResult::ok_with_data(
+                    format!("{} = {}", name, value),
+                    json!({"name": name, "value": value}),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "filter_reset" => {
+            for prop in ["brightness", "contrast", "saturation", "gamma", "hue"] {
+                let _ = player.set_property_i64(prop, 0);
+            }
+            CommandResult::ok("filters reset")
+        }
         "shutdown" => {
             std::process::exit(0);
         }
@@ -392,4 +523,13 @@ pub fn send_to_daemon(cmd: &str, args: Value) -> Result<CommandResult, String> {
 /// Check if daemon is already running.
 pub fn is_daemon_running() -> bool {
     TcpStream::connect(DAEMON_ADDR).is_ok()
+}
+
+/// Default output directory for AI-generated subtitle files (matches GUI behavior).
+fn default_subtitle_output_dir() -> String {
+    dirs_next::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("unflick")
+        .to_string_lossy()
+        .into_owned()
 }

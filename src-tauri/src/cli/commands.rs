@@ -88,6 +88,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: SubtitleAction,
     },
+    /// Manage audio tracks
+    Audio {
+        #[command(subcommand)]
+        action: AudioAction,
+    },
     /// Manage the playlist
     Playlist {
         #[command(subcommand)]
@@ -97,6 +102,16 @@ pub enum Commands {
     Library {
         #[command(subcommand)]
         action: LibraryAction,
+    },
+    /// Manage user settings (persisted to a JSON file)
+    Settings {
+        #[command(subcommand)]
+        action: SettingsAction,
+    },
+    /// Adjust video filters (brightness, contrast, saturation, gamma, hue)
+    Filter {
+        #[command(subcommand)]
+        action: FilterAction,
     },
     /// Shut down the daemon
     Shutdown,
@@ -114,6 +129,51 @@ pub enum SubtitleAction {
     /// Select a subtitle track by ID (0 to disable)
     Select {
         /// Subtitle track ID
+        id: i64,
+    },
+    /// Generate subtitles for a video using whisper (local or OpenAI API)
+    Generate {
+        /// Path to the video file
+        video: String,
+        /// Transcription mode: "local" (whisper.cpp) or "api" (OpenAI). Auto-detected if omitted.
+        #[arg(long)]
+        mode: Option<String>,
+        /// Path to whisper-cli executable (local mode; auto-detects bundled if omitted)
+        #[arg(long)]
+        whisper: Option<String>,
+        /// Path to whisper model file (local mode; auto-detects bundled if omitted)
+        #[arg(long)]
+        model: Option<String>,
+        /// OpenAI API key (api mode)
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Output directory for the .srt file (default: OS cache dir/unflick)
+        #[arg(long)]
+        output_dir: Option<String>,
+    },
+    /// Translate an SRT file to another language via OpenAI API
+    Translate {
+        /// Path to the source .srt file
+        srt: String,
+        /// Target language (e.g. "Chinese", "Spanish", "Japanese")
+        #[arg(long = "to")]
+        target_lang: String,
+        /// OpenAI API key
+        #[arg(long)]
+        api_key: String,
+        /// Output directory (default: OS cache dir/unflick)
+        #[arg(long)]
+        output_dir: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AudioAction {
+    /// List all audio tracks
+    List,
+    /// Select an audio track by ID (0 to disable)
+    Select {
+        /// Audio track ID
         id: i64,
     },
 }
@@ -143,6 +203,46 @@ pub enum PlaylistAction {
         /// Index of the entry to play
         index: usize,
     },
+}
+
+#[derive(Subcommand)]
+pub enum SettingsAction {
+    /// Print the absolute path to the settings file
+    Path,
+    /// Print all settings (or a single key with --key)
+    Get {
+        /// Specific key to read; if omitted, prints the entire settings JSON
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// Set a single key to the given JSON value
+    Set {
+        /// Key name
+        key: String,
+        /// JSON-encoded value (e.g. '"foo"', '42', 'true', '{"a":1}'). Falls back to a string if not valid JSON.
+        value: String,
+    },
+    /// Remove a single key
+    Unset {
+        /// Key name
+        key: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum FilterAction {
+    /// Show all current filter values (brightness, contrast, saturation, gamma, hue)
+    List,
+    /// Set a filter to the given value (-100 to 100)
+    Set {
+        /// Filter name (brightness | contrast | saturation | gamma | hue)
+        name: String,
+        /// Value in the range -100 to 100 (0 = neutral)
+        #[arg(allow_hyphen_values = true)]
+        value: i64,
+    },
+    /// Reset all filters to 0 (neutral)
+    Reset,
 }
 
 #[derive(Subcommand)]
@@ -229,6 +329,27 @@ pub fn run_cli(cli: Cli) -> i32 {
                 SubtitleAction::Load { file } => send("subtitle_load", json!({"file": file})),
                 SubtitleAction::List => send("subtitle_list", json!({})),
                 SubtitleAction::Select { id } => send("subtitle_select", json!({"id": id})),
+                SubtitleAction::Generate { video, mode, whisper, model, api_key, output_dir } => {
+                    let mut args = json!({"video": video});
+                    if let Some(m) = mode { args["mode"] = json!(m); }
+                    if let Some(w) = whisper { args["whisper"] = json!(w); }
+                    if let Some(m) = model { args["model"] = json!(m); }
+                    if let Some(k) = api_key { args["api_key"] = json!(k); }
+                    if let Some(d) = output_dir { args["output_dir"] = json!(d); }
+                    send("subtitle_generate", args)
+                }
+                SubtitleAction::Translate { srt, target_lang, api_key, output_dir } => {
+                    let mut args = json!({"srt": srt, "target_lang": target_lang, "api_key": api_key});
+                    if let Some(d) = output_dir { args["output_dir"] = json!(d); }
+                    send("subtitle_translate", args)
+                }
+            }
+        }
+        Some(Commands::Audio { action }) => {
+            ensure_daemon();
+            match action {
+                AudioAction::List => send("audio_list", json!({})),
+                AudioAction::Select { id } => send("audio_select", json!({"id": id})),
             }
         }
         Some(Commands::Playlist { action }) => {
@@ -250,6 +371,18 @@ pub fn run_cli(cli: Cli) -> i32 {
                 LibraryAction::Search { query } => send("library_search", json!({"query": query})),
                 LibraryAction::List => send("library_list", json!({})),
                 LibraryAction::Remove { id } => send("library_remove", json!({"id": id})),
+            }
+        }
+        Some(Commands::Settings { action }) => {
+            // Settings ops touch a JSON file directly — no daemon needed.
+            handle_settings(action)
+        }
+        Some(Commands::Filter { action }) => {
+            ensure_daemon();
+            match action {
+                FilterAction::List => send("filter_list", json!({})),
+                FilterAction::Set { name, value } => send("filter_set", json!({"name": name, "value": value})),
+                FilterAction::Reset => send("filter_reset", json!({})),
             }
         }
         Some(Commands::Shutdown) => {
@@ -274,6 +407,44 @@ fn send(cmd: &str, args: serde_json::Value) -> CommandResult {
     match daemon::send_to_daemon(cmd, args) {
         Ok(r) => r,
         Err(e) => CommandResult::err(e),
+    }
+}
+
+fn handle_settings(action: SettingsAction) -> CommandResult {
+    use crate::core::settings;
+
+    match action {
+        SettingsAction::Path => CommandResult::ok_with_data(
+            "ok",
+            json!({"path": settings::settings_path().to_string_lossy()}),
+        ),
+        SettingsAction::Get { key } => match settings::read_all() {
+            Ok(all) => match key {
+                Some(k) => match all.get(&k) {
+                    Some(v) => CommandResult::ok_with_data("ok", json!({"key": k, "value": v})),
+                    None => CommandResult::err(format!("key not found: {}", k)),
+                },
+                None => CommandResult::ok_with_data("ok", all),
+            },
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+        SettingsAction::Set { key, value } => {
+            // Try to parse as JSON; fall back to a plain string if it's not valid JSON.
+            let parsed: serde_json::Value =
+                serde_json::from_str(&value).unwrap_or_else(|_| json!(value));
+            match settings::set(&key, parsed.clone()) {
+                Ok(()) => CommandResult::ok_with_data(
+                    format!("set {}", key),
+                    json!({"key": key, "value": parsed}),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        SettingsAction::Unset { key } => match settings::unset(&key) {
+            Ok(true) => CommandResult::ok(format!("removed {}", key)),
+            Ok(false) => CommandResult::err(format!("key not found: {}", key)),
+            Err(e) => CommandResult::err(e.to_string()),
+        },
     }
 }
 

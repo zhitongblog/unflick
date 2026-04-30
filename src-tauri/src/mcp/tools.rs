@@ -20,9 +20,21 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "playlist_next" => ("playlist_next", json!({})),
         "playlist_prev" => ("playlist_prev", json!({})),
         "playlist_clear" => ("playlist_clear", json!({})),
+        "playlist_play" => ("playlist_play", json!({"index": args["index"]})),
         "load_subtitle" => ("subtitle_load", json!({"file": args["file"]})),
         "subtitle_list" => ("subtitle_list", json!({})),
         "subtitle_select" => ("subtitle_select", json!({"id": args["id"]})),
+        "audio_list" => ("audio_list", json!({})),
+        "audio_select" => ("audio_select", json!({"id": args["id"]})),
+        "generate_subtitles" => ("subtitle_generate", args.clone()),
+        "translate_subtitles" => ("subtitle_translate", args.clone()),
+        "settings_path" => ("settings_path", json!({})),
+        "settings_get" => ("settings_get", args.clone()),
+        "settings_set" => ("settings_set", args.clone()),
+        "settings_unset" => ("settings_unset", args.clone()),
+        "filter_list" => ("filter_list", json!({})),
+        "filter_set" => ("filter_set", args.clone()),
+        "filter_reset" => ("filter_reset", json!({})),
         "library_scan" => ("library_scan", json!({"dir": args["dir"]})),
         "library_search" => ("library_search", json!({"query": args["query"]})),
         "library_list" => ("library_list", json!({})),
@@ -183,6 +195,17 @@ pub fn tool_definitions() -> Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
+            "name": "playlist_play",
+            "description": "Play a specific playlist entry by index",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "index": { "type": "integer", "description": "Index of the playlist entry to play" }
+                },
+                "required": ["index"]
+            }
+        },
+        {
             "name": "load_subtitle",
             "description": "Load an external subtitle file",
             "inputSchema": {
@@ -207,6 +230,52 @@ pub fn tool_definitions() -> Value {
                     "id": { "type": "integer", "description": "Subtitle track ID (0 to disable)" }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "audio_list",
+            "description": "List all audio tracks (embedded)",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "audio_select",
+            "description": "Select an audio track by ID (0 to disable audio)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "integer", "description": "Audio track ID (0 to disable)" }
+                },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "generate_subtitles",
+            "description": "Generate subtitles for a video using whisper. Mode 'local' uses bundled or supplied whisper.cpp; mode 'api' uses OpenAI. Returns the path of the generated .srt file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "video": { "type": "string", "description": "Path to the video file" },
+                    "mode": { "type": "string", "enum": ["local", "api"], "description": "Transcription mode (auto-detected from arguments if omitted)" },
+                    "whisper": { "type": "string", "description": "Path to whisper-cli (local mode; auto-detects bundled if omitted)" },
+                    "model": { "type": "string", "description": "Path to whisper model (local mode; auto-detects bundled if omitted)" },
+                    "api_key": { "type": "string", "description": "OpenAI API key (api mode)" },
+                    "output_dir": { "type": "string", "description": "Output directory for the .srt file" }
+                },
+                "required": ["video"]
+            }
+        },
+        {
+            "name": "translate_subtitles",
+            "description": "Translate an SRT file to another language using OpenAI. Returns the path of the translated .srt file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "srt": { "type": "string", "description": "Path to the source .srt file" },
+                    "target_lang": { "type": "string", "description": "Target language (e.g. 'Chinese', 'Spanish')" },
+                    "api_key": { "type": "string", "description": "OpenAI API key" },
+                    "output_dir": { "type": "string", "description": "Output directory" }
+                },
+                "required": ["srt", "target_lang", "api_key"]
             }
         },
         {
@@ -294,6 +363,66 @@ pub fn tool_definitions() -> Value {
                 },
                 "required": ["path"]
             }
+        },
+        {
+            "name": "settings_path",
+            "description": "Get the absolute path of the settings.json file",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "settings_get",
+            "description": "Read all settings, or a single key if provided",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "description": "Optional key name; omit to read all settings" }
+                }
+            }
+        },
+        {
+            "name": "settings_set",
+            "description": "Set a single settings key to the given JSON value",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "description": "Key name" },
+                    "value": { "description": "Any JSON value (string, number, bool, object, array)" }
+                },
+                "required": ["key", "value"]
+            }
+        },
+        {
+            "name": "settings_unset",
+            "description": "Remove a single settings key",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "description": "Key name to remove" }
+                },
+                "required": ["key"]
+            }
+        },
+        {
+            "name": "filter_list",
+            "description": "List current video filter values (brightness, contrast, saturation, gamma, hue)",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "filter_set",
+            "description": "Set a video filter (brightness | contrast | saturation | gamma | hue) to a value in -100..100",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "enum": ["brightness", "contrast", "saturation", "gamma", "hue"] },
+                    "value": { "type": "integer", "minimum": -100, "maximum": 100 }
+                },
+                "required": ["name", "value"]
+            }
+        },
+        {
+            "name": "filter_reset",
+            "description": "Reset all video filters to 0 (neutral)",
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "shutdown",
