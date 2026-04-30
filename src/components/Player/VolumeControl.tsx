@@ -5,7 +5,7 @@ import { usePlayerStore } from "../../stores/playerStore";
 function VolumeIcon({ level }: { level: number }) {
   if (level === 0) {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M11 5L6 9H2v6h4l5 4V5z" />
         <line x1="23" y1="9" x2="17" y2="15" />
         <line x1="17" y1="9" x2="23" y2="15" />
@@ -14,14 +14,14 @@ function VolumeIcon({ level }: { level: number }) {
   }
   if (level < 50) {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M11 5L6 9H2v6h4l5 4V5z" />
         <path d="M15.54 8.46a5 5 0 010 7.07" />
       </svg>
     );
   }
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M11 5L6 9H2v6h4l5 4V5z" />
       <path d="M15.54 8.46a5 5 0 010 7.07" />
       <path d="M19.07 4.93a10 10 0 010 14.14" />
@@ -48,8 +48,7 @@ export default function VolumeControl() {
     (e: React.MouseEvent) => {
       if (!sliderRef.current) return;
       const rect = sliderRef.current.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      setVolume(Math.round(ratio * 100));
+      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100));
     },
     [setVolume],
   );
@@ -58,26 +57,24 @@ export default function VolumeControl() {
     (e: React.MouseEvent) => {
       if (e.buttons !== 1 || !sliderRef.current) return;
       const rect = sliderRef.current.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      setVolume(Math.round(ratio * 100));
+      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100));
     },
     [setVolume],
   );
 
   return (
     <div
-      className="relative flex items-center gap-2"
+      className="relative flex items-center gap-1.5"
       onMouseEnter={() => setShowSlider(true)}
       onMouseLeave={() => setShowSlider(false)}
     >
-      <motion.button
-        className="text-gray-300 transition-colors hover:text-white"
+      <button
+        className="rounded-full p-1.5 text-white/50 transition-all duration-150 hover:text-white/80 hover:bg-white/8 active:scale-90"
         onClick={toggleMute}
-        whileTap={{ scale: 0.9 }}
         title={volume === 0 ? "Unmute" : "Mute"}
       >
         <VolumeIcon level={volume} />
-      </motion.button>
+      </button>
 
       <AnimatePresence>
         {showSlider && (
@@ -85,7 +82,7 @@ export default function VolumeControl() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 80, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="overflow-hidden"
           >
             <div
@@ -94,10 +91,24 @@ export default function VolumeControl() {
               onClick={handleSliderClick}
               onMouseMove={handleSliderDrag}
             >
-              <div className="h-1 w-full rounded-full bg-gray-700 transition-all group-hover:h-1.5">
+              <div className="relative h-[3px] w-full rounded-full bg-white/10 transition-all group-hover:h-1">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-purple to-brand-pink transition-all"
-                  style={{ width: `${volume}%` }}
+                  className="absolute inset-y-0 left-0 rounded-full"
+                  style={{
+                    width: `${volume}%`,
+                    background: "linear-gradient(90deg, #7C3AED, #DB2777)",
+                  }}
+                />
+                {/* Volume knob */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{
+                    left: `${volume}%`,
+                    transform: `translate(-50%, -50%)`,
+                    width: "10px",
+                    height: "10px",
+                    boxShadow: "0 0 4px rgba(124,58,237,0.4)",
+                  }}
                 />
               </div>
             </div>
@@ -105,7 +116,7 @@ export default function VolumeControl() {
         )}
       </AnimatePresence>
 
-      <span className="w-8 text-xs tabular-nums text-gray-500">
+      <span className="w-7 text-[11px] tabular-nums text-white/25 font-medium">
         {volume}
       </span>
     </div>

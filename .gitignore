@@ -7,3 +7,8 @@ Thumbs.db
 src-tauri/mpv-dev/
 src-tauri/vendor/
 src-tauri/whisper/
+src-tauri/ffmpeg/
+src-tauri/yt-dlp/
+
+# Test artifacts
+unflick-screenshot-*.png

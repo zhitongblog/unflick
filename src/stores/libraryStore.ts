@@ -26,6 +26,7 @@ interface LibraryState {
   fetchLibrary: () => Promise<void>;
   search: (query: string) => Promise<void>;
   scanDirectory: (dir: string) => Promise<void>;
+  clearLibrary: () => Promise<number>;
 }
 
 export const useLibraryStore = create<LibraryState>((set) => ({
@@ -63,11 +64,29 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   scanDirectory: async (dir: string) => {
     set({ isLoading: true });
     try {
-      const entries = await invoke<MediaEntry[]>("library_scan", { dir });
+      await invoke<{ scanned_dir: string; added: number; entries: MediaEntry[] }>(
+        "library_scan",
+        { dir },
+      );
+      // Re-fetch the full library so the panel reflects the new state
+      const entries = await invoke<MediaEntry[]>("library_list");
       set({ entries, isLoading: false });
     } catch (e) {
       console.error("Failed to scan directory:", e);
       set({ isLoading: false });
+    }
+  },
+
+  clearLibrary: async () => {
+    set({ isLoading: true });
+    try {
+      const r = await invoke<{ removed: number }>("library_clear");
+      set({ entries: [], isLoading: false });
+      return r.removed;
+    } catch (e) {
+      console.error("Failed to clear library:", e);
+      set({ isLoading: false });
+      return 0;
     }
   },
 }));

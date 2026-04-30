@@ -4,59 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePlaylistStore, PlaylistItem } from "../../stores/playlistStore";
 import { usePlayerStore } from "../../stores/playerStore";
 
-function CloseIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function AddIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4h6v2" />
-    </svg>
-  );
-}
-
-function PlayingIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-      <line x1="8" y1="6" x2="21" y2="6" />
-      <line x1="8" y1="12" x2="21" y2="12" />
-      <line x1="8" y1="18" x2="21" y2="18" />
-      <line x1="3" y1="6" x2="3.01" y2="6" />
-      <line x1="3" y1="12" x2="3.01" y2="12" />
-      <line x1="3" y1="18" x2="3.01" y2="18" />
-    </svg>
-  );
-}
-
 function extractFileName(path: string): string {
   const parts = path.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || path;
+  const name = parts[parts.length - 1] || path;
+  return name.replace(/\.[^/.]+$/, "");
 }
 
 function PlaylistEntry({
@@ -71,52 +22,46 @@ function PlaylistEntry({
   const displayTitle = item.title || extractFileName(item.path);
 
   return (
-    <motion.div
-      className={`group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors ${
+    <div
+      className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition-all duration-150 ${
         item.current
-          ? "bg-brand-purple/15 border border-brand-purple/20"
-          : "hover:bg-gray-800/60"
+          ? "bg-brand-purple/10 border border-brand-purple/15"
+          : "hover:bg-white/4"
       }`}
-      whileTap={{ scale: 0.98 }}
     >
-      {/* Play indicator / index */}
+      {/* Play indicator */}
       <div className="flex w-5 flex-shrink-0 items-center justify-center">
         {item.current ? (
           <span className="text-brand-purple">
-            <PlayingIcon />
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </span>
         ) : (
-          <span className="text-xs tabular-nums text-gray-600 group-hover:hidden">
+          <span className="text-[10px] tabular-nums text-white/15 group-hover:hidden font-medium">
             {item.index + 1}
           </span>
         )}
       </div>
 
-      {/* Title — clickable */}
+      {/* Title */}
       <button
         className="min-w-0 flex-1 text-left"
         onClick={() => onPlay(item.index)}
         title={item.path}
       >
-        <p
-          className={`truncate text-sm ${
-            item.current ? "font-medium text-gray-100" : "text-gray-300"
-          }`}
-        >
+        <p className={`truncate text-[12px] ${item.current ? "font-medium text-white/80" : "text-white/50 group-hover:text-white/70"}`}>
           {displayTitle}
         </p>
       </button>
 
-      {/* Remove button */}
-      <motion.button
-        className="flex-shrink-0 rounded p-1 text-gray-600 opacity-0 transition-colors hover:bg-gray-700 hover:text-gray-300 group-hover:opacity-100"
+      {/* Remove */}
+      <button
+        className="flex-shrink-0 rounded p-1 text-white/15 opacity-0 transition-all hover:bg-white/6 hover:text-white/40 group-hover:opacity-100"
         onClick={() => onRemove(item.index)}
-        whileTap={{ scale: 0.9 }}
-        title="Remove from playlist"
+        title="Remove"
       >
-        <TrashIcon />
-      </motion.button>
-    </motion.div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+    </div>
   );
 }
 
@@ -136,9 +81,7 @@ export default function PlaylistPanel() {
   const handleAddFile = async () => {
     try {
       const result = await invoke<{ path: string | null }>("open_file_dialog");
-      if (result.path) {
-        await add(result.path);
-      }
+      if (result.path) await add(result.path);
     } catch (e) {
       console.error("Failed to open file dialog:", e);
     }
@@ -146,18 +89,15 @@ export default function PlaylistPanel() {
 
   const handlePlayAt = async (index: number) => {
     await playAt(index);
-    // Also trigger playerStore play so UI state updates
     const item = items.find((i) => i.index === index);
-    if (item) {
-      play(item.path);
-    }
+    if (item) play(item.path);
   };
 
   return (
     <>
       {/* Backdrop */}
       <motion.div
-        className="absolute inset-0 z-20 bg-black/50"
+        className="absolute inset-0 z-20 bg-black/60"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -165,85 +105,83 @@ export default function PlaylistPanel() {
         onClick={togglePlaylist}
       />
 
-      {/* Panel — slides in from right */}
+      {/* Panel */}
       <motion.div
-        className="absolute bottom-0 right-0 top-0 z-30 flex w-72 flex-col border-l border-gray-800 bg-gray-950/95 backdrop-blur-md"
+        className="absolute bottom-0 right-0 top-0 z-30 flex w-72 flex-col"
+        style={{
+          background: "var(--bg-primary)",
+          borderLeft: "1px solid var(--border-subtle)",
+        }}
         initial={{ x: 288 }}
         animate={{ x: 0 }}
         exit={{ x: 288 }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
-          <h2 className="bg-gradient-to-r from-brand-purple to-brand-pink bg-clip-text text-sm font-semibold text-transparent">
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">
             Playlist
           </h2>
           <div className="flex items-center gap-1">
             {items.length > 0 && (
-              <motion.button
-                className="rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+              <button
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
                 onClick={clear}
-                whileTap={{ scale: 0.9 }}
                 title="Clear playlist"
               >
                 Clear
-              </motion.button>
+              </button>
             )}
-            <motion.button
-              className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            <button
+              className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/6 hover:text-white/60"
               onClick={handleAddFile}
-              whileTap={{ scale: 0.9 }}
-              title="Add file to playlist"
+              title="Add file"
             >
-              <AddIcon />
-            </motion.button>
-            <motion.button
-              className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
+            <button
+              className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
               onClick={togglePlaylist}
-              whileTap={{ scale: 0.9 }}
-              title="Close playlist (N)"
+              title="Close (N)"
             >
-              <CloseIcon />
-            </motion.button>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
           </div>
         </div>
 
-        {/* Items list */}
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto px-2 py-1.5">
           {isLoading && (
             <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-purple border-t-transparent" />
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-purple border-t-transparent" />
             </div>
           )}
 
           {!isLoading && items.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <ListIcon />
-              <p className="text-sm text-gray-500">Playlist is empty</p>
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/10" strokeLinecap="round">
+                <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              <p className="text-[12px] text-white/25">Playlist is empty</p>
               <button
                 onClick={handleAddFile}
-                className="rounded-lg bg-gray-800 px-4 py-2 text-xs text-gray-300 transition-colors hover:bg-gray-700 hover:text-gray-100"
+                className="rounded-lg bg-white/5 px-4 py-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/8 hover:text-white/60"
               >
                 Add a file
               </button>
             </div>
           )}
 
-          {!isLoading &&
-            items.map((item) => (
-              <PlaylistEntry
-                key={item.index}
-                item={item}
-                onPlay={handlePlayAt}
-                onRemove={remove}
-              />
-            ))}
+          {!isLoading && items.map((item) => (
+            <PlaylistEntry key={item.index} item={item} onPlay={handlePlayAt} onRemove={remove} />
+          ))}
         </div>
 
-        {/* Footer with count */}
+        {/* Footer */}
         {!isLoading && items.length > 0 && (
-          <div className="border-t border-gray-800/50 px-4 py-2">
-            <p className="text-xs text-gray-600">
+          <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <p className="text-[10px] text-white/15 font-medium">
               {items.length} item{items.length !== 1 ? "s" : ""}
             </p>
           </div>

@@ -126,6 +126,12 @@ impl Database {
         Ok(entries)
     }
 
+    pub fn clear_all(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM media", [])?;
+        Ok(n)
+    }
+
     pub fn list_all(&self) -> Result<Vec<MediaEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(

@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GuiPlayer::new())
         .setup(|app| {
             let handle = app.handle();
@@ -21,12 +22,15 @@ pub fn run() {
             let open_item = MenuItemBuilder::with_id("open", "Open File...")
                 .accelerator("CmdOrCtrl+O")
                 .build(handle)?;
+            let open_url_item = MenuItemBuilder::with_id("open_url", "Open URL...")
+                .accelerator("CmdOrCtrl+U")
+                .build(handle)?;
             let sep1 = PredefinedMenuItem::separator(handle)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit")
                 .accelerator("CmdOrCtrl+Q")
                 .build(handle)?;
             let file_menu = SubmenuBuilder::new(handle, "File")
-                .items(&[&open_item, &sep1, &quit_item])
+                .items(&[&open_item, &open_url_item, &sep1, &quit_item])
                 .build()?;
 
             // Build Playback menu
@@ -58,8 +62,11 @@ pub fn run() {
             // Build Help menu
             let about_item = MenuItemBuilder::with_id("about", "About unflick")
                 .build(handle)?;
+            let check_updates_item = MenuItemBuilder::with_id("check_updates", "Check for Updates...")
+                .build(handle)?;
+            let sep_help = PredefinedMenuItem::separator(handle)?;
             let help_menu = SubmenuBuilder::new(handle, "Help")
-                .items(&[&about_item])
+                .items(&[&check_updates_item, &sep_help, &about_item])
                 .build()?;
 
             let menu = Menu::with_items(handle, &[&file_menu, &playback_menu, &view_menu, &help_menu])?;
@@ -73,8 +80,8 @@ pub fn run() {
                 "quit" => {
                     app.exit(0);
                 }
-                "open" | "play_pause" | "stop" | "fullscreen" | "pip" | "library"
-                | "volume_up" | "volume_down" | "about" => {
+                "open" | "open_url" | "play_pause" | "stop" | "fullscreen" | "pip" | "library"
+                | "volume_up" | "volume_down" | "about" | "check_updates" => {
                     if let Some(win) = &window {
                         let id: String = event.id().as_ref().to_string();
                         let _ = win.emit("menu-event", id);
@@ -103,6 +110,7 @@ pub fn run() {
             commands::library_list,
             commands::library_search,
             commands::library_scan,
+            commands::library_clear,
             // Subtitles
             commands::subtitle_load,
             commands::subtitle_list,
@@ -119,6 +127,14 @@ pub fn run() {
             // Clip extraction
             commands::extract_clip,
             commands::save_file_dialog,
+            commands::write_file_bytes,
+            commands::read_text_file,
+            commands::find_sidecar_subtitles,
+            commands::check_yt_dlp,
+            commands::extract_stream_url,
+            commands::yt_dlp_info,
+            commands::update_yt_dlp,
+            commands::get_system_proxy,
             // Audio tracks
             commands::audio_list,
             commands::audio_select,
@@ -129,11 +145,27 @@ pub fn run() {
             commands::record_play,
             // AI subtitle generation
             commands::generate_subtitles,
+            commands::translate_subtitles,
             // Settings persistence
             commands::save_settings,
             commands::load_settings,
             commands::check_bundled_whisper,
+            commands::check_for_updates,
+            // Video filters
+            commands::set_video_filter,
+            commands::get_video_filters,
+            commands::reset_video_filters,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if let Some(gui_player) = window.try_state::<GuiPlayer>() {
+                    let mut lock = gui_player.player.lock().unwrap();
+                    if let Some(player) = lock.take() {
+                        drop(player);
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

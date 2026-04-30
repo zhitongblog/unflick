@@ -1,5 +1,4 @@
 import { useRef, useState, useCallback } from "react";
-import { motion } from "framer-motion";
 import { usePlayerStore } from "../../stores/playerStore";
 
 function formatTime(seconds: number): string {
@@ -8,9 +7,7 @@ function formatTime(seconds: number): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   const pad = (n: number) => n.toString().padStart(2, "0");
-  if (h > 0) {
-    return `${h}:${pad(m)}:${pad(sec)}`;
-  }
+  if (h > 0) return `${h}:${pad(m)}:${pad(sec)}`;
   return `${pad(m)}:${pad(sec)}`;
 }
 
@@ -20,6 +17,7 @@ export default function ProgressBar() {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [hoverTime, setHoverTime] = useState<number>(0);
   const [isHovering, setIsHovering] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const progress = duration > 0 ? (position / duration) * 100 : 0;
 
@@ -27,16 +25,14 @@ export default function ProgressBar() {
     (clientX: number) => {
       if (!barRef.current || duration <= 0) return 0;
       const rect = barRef.current.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      return ratio * duration;
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
     },
     [duration],
   );
 
   const handleClick = (e: React.MouseEvent) => {
     if (state === "stopped") return;
-    const time = getTimeFromX(e.clientX);
-    seek(time);
+    seek(getTimeFromX(e.clientX));
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -44,81 +40,110 @@ export default function ProgressBar() {
     const rect = barRef.current.getBoundingClientRect();
     setHoverX(e.clientX - rect.left);
     setHoverTime(getTimeFromX(e.clientX));
+    if (isDragging && state !== "stopped") {
+      seek(getTimeFromX(e.clientX));
+    }
   };
 
-  const handleMouseEnter = () => setIsHovering(true);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (state === "stopped") return;
+    setIsDragging(true);
+    seek(getTimeFromX(e.clientX));
 
-  const handleMouseLeave = () => {
-    setHoverX(null);
-    setIsHovering(false);
+    const onMouseUp = () => {
+      setIsDragging(false);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+    window.addEventListener("mouseup", onMouseUp);
   };
+
+  const active = isHovering || isDragging;
+  const trackHeight = active ? 6 : 3;
 
   return (
-    <div className="flex items-center gap-3 px-4">
-      <span className="w-14 text-right text-xs tabular-nums text-white/40">
+    <div className="flex items-center gap-3 px-4 py-1">
+      <span className="w-[52px] text-right text-[11px] tabular-nums text-white/30 font-medium">
         {formatTime(position)}
       </span>
 
       <div
         ref={barRef}
-        className="group relative flex h-6 flex-1 cursor-pointer items-center"
+        className="group relative flex flex-1 cursor-pointer items-center py-2"
         onClick={handleClick}
         onMouseMove={handleMouseMove}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        onMouseDown={handleMouseDown}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => { setIsHovering(false); setHoverX(null); }}
       >
         {/* Track background */}
         <div
-          className="w-full rounded-full transition-all duration-150"
-          style={{ height: isHovering ? "6px" : "4px", background: "rgba(255,255,255,0.12)" }}
+          className="relative w-full overflow-hidden rounded-full transition-all duration-200 ease-out"
+          style={{ height: `${trackHeight}px`, background: "rgba(255,255,255,0.08)" }}
         >
-          {/* Progress fill — brand gradient */}
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-brand-purple to-brand-pink"
-            style={{ width: `${progress}%` }}
-            transition={{ duration: 0.1 }}
+          {/* Hover fill preview */}
+          {hoverX !== null && barRef.current && (
+            <div
+              className="absolute inset-y-0 left-0 rounded-full"
+              style={{
+                width: `${(hoverX / barRef.current.getBoundingClientRect().width) * 100}%`,
+                background: "rgba(255,255,255,0.06)",
+              }}
+            />
+          )}
+
+          {/* Progress fill */}
+          <div
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              width: `${progress}%`,
+              background: "linear-gradient(90deg, #7C3AED, #DB2777)",
+              transition: isDragging ? "none" : "width 0.15s linear",
+            }}
           />
         </div>
 
-        {/* Hover time tooltip — pill with arrow */}
+        {/* Playhead */}
+        {state !== "stopped" && (
+          <div
+            className="pointer-events-none absolute top-1/2"
+            style={{
+              left: `${progress}%`,
+              transform: "translate(-50%, -50%)",
+              width: active ? "14px" : "0px",
+              height: active ? "14px" : "0px",
+              borderRadius: "50%",
+              background: "#fff",
+              boxShadow: active
+                ? "0 0 0 3px rgba(124,58,237,0.5), 0 0 12px rgba(124,58,237,0.4)"
+                : "none",
+              opacity: active ? 1 : 0,
+              transition: "all 0.15s ease-out",
+            }}
+          />
+        )}
+
+        {/* Hover time tooltip */}
         {hoverX !== null && duration > 0 && (
           <div
             className="pointer-events-none absolute z-10 flex flex-col items-center"
-            style={{ left: hoverX, bottom: "calc(100% + 4px)", transform: "translateX(-50%)" }}
+            style={{ left: hoverX, bottom: "calc(100% + 6px)", transform: "translateX(-50%)" }}
           >
-            <div className="rounded-full bg-black/80 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm whitespace-nowrap shadow-lg">
+            <div className="glass-elevated rounded-md px-2 py-0.5 text-[11px] font-semibold text-white tabular-nums whitespace-nowrap shadow-lg">
               {formatTime(hoverTime)}
             </div>
-            {/* Arrow triangle */}
             <div
               style={{
-                width: 0,
-                height: 0,
+                width: 0, height: 0,
                 borderLeft: "4px solid transparent",
                 borderRight: "4px solid transparent",
-                borderTop: "4px solid rgba(0,0,0,0.8)",
+                borderTop: "4px solid var(--bg-elevated, rgba(17,24,39,0.8))",
               }}
             />
           </div>
         )}
-
-        {/* Playhead dot — 12px brand-purple circle with glow, appears on hover */}
-        {state !== "stopped" && (
-          <div
-            className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full transition-all duration-150"
-            style={{
-              left: `${progress}%`,
-              width: isHovering ? "12px" : "0px",
-              height: isHovering ? "12px" : "0px",
-              opacity: isHovering ? 1 : 0,
-              background: "#7C3AED",
-              boxShadow: isHovering ? "0 0 8px 2px rgba(124,58,237,0.55), 0 0 16px 4px rgba(124,58,237,0.25)" : "none",
-            }}
-          />
-        )}
       </div>
 
-      <span className="w-14 text-xs tabular-nums text-white/40">
+      <span className="w-[52px] text-[11px] tabular-nums text-white/30 font-medium">
         {formatTime(duration)}
       </span>
     </div>

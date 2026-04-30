@@ -2,38 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Idle screen: slowly drifting gradient orbs */
+/* ── Idle screen animations ── */
 @keyframes orb-drift-a {
-  0%   { transform: translate(0%, 0%) scale(1); }
-  33%  { transform: translate(6%, -8%) scale(1.08); }
-  66%  { transform: translate(-4%, 6%) scale(0.95); }
-  100% { transform: translate(0%, 0%) scale(1); }
+  0%   { transform: translate(0%, 0%) scale(1); opacity: 0.7; }
+  25%  { transform: translate(8%, -10%) scale(1.12); opacity: 0.9; }
+  50%  { transform: translate(-3%, 5%) scale(0.95); opacity: 0.6; }
+  75%  { transform: translate(5%, -3%) scale(1.05); opacity: 0.85; }
+  100% { transform: translate(0%, 0%) scale(1); opacity: 0.7; }
 }
 @keyframes orb-drift-b {
-  0%   { transform: translate(0%, 0%) scale(1); }
-  33%  { transform: translate(-7%, 5%) scale(1.06); }
-  66%  { transform: translate(5%, -7%) scale(0.97); }
-  100% { transform: translate(0%, 0%) scale(1); }
+  0%   { transform: translate(0%, 0%) scale(1); opacity: 0.6; }
+  25%  { transform: translate(-9%, 7%) scale(1.08); opacity: 0.8; }
+  50%  { transform: translate(4%, -8%) scale(0.93); opacity: 0.55; }
+  75%  { transform: translate(-5%, 3%) scale(1.1); opacity: 0.75; }
+  100% { transform: translate(0%, 0%) scale(1); opacity: 0.6; }
+}
+@keyframes orb-drift-c {
+  0%   { transform: translate(0%, 0%) scale(1); opacity: 0.4; }
+  33%  { transform: translate(6%, 8%) scale(1.15); opacity: 0.6; }
+  66%  { transform: translate(-8%, -4%) scale(0.9); opacity: 0.35; }
+  100% { transform: translate(0%, 0%) scale(1); opacity: 0.4; }
 }
 
-/* Idle screen: animated gradient text */
 @keyframes gradient-shift {
   0%   { background-position: 0% 50%; }
   50%  { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px 4px rgba(124, 58, 237, 0.3), 0 0 6px 2px rgba(219, 39, 119, 0.15); }
+  50%      { box-shadow: 0 0 32px 8px rgba(124, 58, 237, 0.45), 0 0 12px 4px rgba(219, 39, 119, 0.25); }
+}
+
 .idle-title {
-  background: linear-gradient(270deg, #7C3AED, #DB2777, #9333EA, #DB2777, #7C3AED);
+  background: linear-gradient(270deg, #7C3AED, #DB2777, #9333EA, #EC4899, #7C3AED);
   background-size: 300% 300%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: gradient-shift 8s ease infinite;
+  letter-spacing: -0.03em;
 }
 
-/* Open File button hover glow */
+.idle-open-btn {
+  position: relative;
+  overflow: hidden;
+}
+.idle-open-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent 50%);
+  pointer-events: none;
+}
 .idle-open-btn:hover {
-  box-shadow: 0 0 24px 6px rgba(124, 58, 237, 0.45), 0 0 8px 2px rgba(219, 39, 119, 0.25);
+  box-shadow: 0 0 28px 6px rgba(124, 58, 237, 0.4), 0 0 8px 2px rgba(219, 39, 119, 0.2);
+}
+
+.idle-fade-in {
+  animation: fade-in-up 0.6s ease-out both;
+}
+.idle-fade-in-delay {
+  animation: fade-in-up 0.6s ease-out 0.15s both;
+}
+.idle-fade-in-delay-2 {
+  animation: fade-in-up 0.6s ease-out 0.3s both;
+}
+
+/* ── Theme variables ── */
+[data-theme="dark"] {
+  --bg-primary: #030712;
+  --bg-secondary: #111827;
+  --bg-surface: rgba(0, 0, 0, 0.6);
+  --bg-elevated: rgba(17, 24, 39, 0.8);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-medium: rgba(255, 255, 255, 0.1);
+}
+[data-theme="midnight"] {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-surface: rgba(0, 0, 0, 0.8);
+  --bg-elevated: rgba(10, 10, 10, 0.9);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-medium: rgba(255, 255, 255, 0.08);
+}
+[data-theme="purple"] {
+  --bg-primary: #0a0015;
+  --bg-secondary: #140a25;
+  --bg-surface: rgba(20, 5, 40, 0.75);
+  --bg-elevated: rgba(30, 10, 55, 0.85);
+  --border-subtle: rgba(124, 58, 237, 0.08);
+  --border-medium: rgba(124, 58, 237, 0.15);
 }
 
 html,
@@ -43,22 +108,121 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #030712; /* gray-950 */
-  color: #f3f4f6; /* gray-100 */
+  background: transparent;
+  color: #e5e7eb;
   user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar for library panel */
+/* ── Glass morphism surfaces ── */
+.glass-surface {
+  background: var(--bg-surface);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--border-subtle);
+}
+
+.glass-elevated {
+  background: var(--bg-elevated);
+  backdrop-filter: blur(32px) saturate(1.5);
+  -webkit-backdrop-filter: blur(32px) saturate(1.5);
+  border: 1px solid var(--border-medium);
+}
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.3);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* High-contrast scrollbar for scrollable dialogs (Settings, etc.).
+   Apply on a containing element so the scrollbar is always visible
+   and clearly signals "this region scrolls". */
+.settings-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.settings-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  margin: 8px 4px;
+}
+.settings-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.55), rgba(219, 39, 119, 0.45));
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.settings-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.85), rgba(219, 39, 119, 0.75));
+  background-clip: padding-box;
+}
+/* Firefox */
+.settings-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 58, 237, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+/* ── Custom range slider ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #7C3AED;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 6px rgba(124, 58, 237, 0.5);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+}
+
+/* ── Focus ring ── */
+button:focus-visible {
+  outline: 2px solid rgba(124, 58, 237, 0.5);
+  outline-offset: 2px;
+}
+input:focus-visible {
+  outline: none;
+}
+
+/* ── Gradient border trick ── */
+.gradient-border {
+  position: relative;
+}
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(219, 39, 119, 0.2), transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }

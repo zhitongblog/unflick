@@ -330,7 +330,11 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             let output = args.get("output").and_then(|v| v.as_str()).unwrap_or("");
             let gif = args.get("gif").and_then(|v| v.as_bool()).unwrap_or(false);
 
-            match crate::core::player::extract_clip(&input, start, end, output, gif) {
+            let ffmpeg = match crate::core::player::find_ffmpeg() {
+                Some(p) => p.to_string_lossy().to_string(),
+                None => return CommandResult::err("ffmpeg not found".to_string()),
+            };
+            match crate::core::player::extract_clip(&input, start, end, output, gif, &ffmpeg) {
                 Ok(path) => CommandResult::ok_with_data("clip saved", json!({"path": path})),
                 Err(e) => CommandResult::err(e.to_string()),
             }

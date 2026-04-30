@@ -259,10 +259,17 @@ impl MpvHandle {
         let ev = unsafe { &*event };
         (ev.event_id, ev.error)
     }
+
+    /// Send quit command to mpv so it shuts down immediately.
+    pub fn quit(&self) {
+        let _ = self.command(&["quit"]);
+    }
 }
 
 impl Drop for MpvHandle {
     fn drop(&mut self) {
+        // Send quit first so mpv doesn't hang waiting for playback to finish
+        self.quit();
         unsafe { (self.api.destroy)(self.ctx) };
     }
 }

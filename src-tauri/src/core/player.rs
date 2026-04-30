@@ -104,6 +104,10 @@ impl Player {
         self.mpv.get_property_i64(name)
     }
 
+    pub fn set_property_i64(&self, name: &str, value: i64) -> Result<()> {
+        self.mpv.set_property_i64(name, value)
+    }
+
     pub fn get_property_string(&self, name: &str) -> Result<String> {
         self.mpv.get_property_string(name)
     }
@@ -196,13 +200,38 @@ impl Player {
     }
 }
 
+/// Locate ffmpeg by searching alongside the running executable, then PATH.
+/// Used by CLI/daemon code that doesn't have a Tauri AppHandle.
+pub fn find_ffmpeg() -> Option<std::path::PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for sub in ["ffmpeg", ""] {
+                for name in ["ffmpeg.exe", "ffmpeg"] {
+                    let p = if sub.is_empty() {
+                        dir.join(name)
+                    } else {
+                        dir.join(sub).join(name)
+                    };
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+    let candidate = if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" };
+    which::which(candidate).ok()
+}
+
 /// Extract a video clip using ffmpeg (standalone, does not need a Player instance).
+/// `ffmpeg_path` should point to a bundled or system ffmpeg executable.
 pub fn extract_clip(
     input: &str,
     start: f64,
     end: f64,
     output: &str,
     as_gif: bool,
+    ffmpeg_path: &str,
 ) -> Result<String> {
     let duration = end - start;
     if duration <= 0.0 {
@@ -224,27 +253,30 @@ pub fn extract_clip(
     let start_str = format!("{:.3}", start);
     let duration_str = format!("{:.3}", duration);
 
-    let result = if as_gif {
-        std::process::Command::new("ffmpeg")
-            .args([
-                "-y", "-ss", &start_str, "-t", &duration_str,
-                "-i", input,
-                "-vf", "fps=15,scale=480:-1:flags=lanczos",
-                "-loop", "0",
-                &output_path,
-            ])
-            .output()
+    let mut cmd = std::process::Command::new(ffmpeg_path);
+    if as_gif {
+        cmd.args([
+            "-y", "-ss", &start_str, "-t", &duration_str,
+            "-i", input,
+            "-vf", "fps=15,scale=480:-1:flags=lanczos",
+            "-loop", "0",
+            &output_path,
+        ]);
     } else {
-        std::process::Command::new("ffmpeg")
-            .args([
-                "-y", "-ss", &start_str, "-t", &duration_str,
-                "-i", input,
-                "-c", "copy",
-                "-avoid_negative_ts", "make_zero",
-                &output_path,
-            ])
-            .output()
-    };
+        cmd.args([
+            "-y", "-ss", &start_str, "-t", &duration_str,
+            "-i", input,
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            &output_path,
+        ]);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let result = cmd.output();
 
     match result {
         Ok(cmd_output) => {

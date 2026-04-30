@@ -16,21 +16,43 @@
         "height": 640,
         "minWidth": 640,
         "minHeight": 400,
+        "center": true,
         "resizable": true,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "dragDropEnabled": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"]
+        }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/zhitongblog/unflick/releases/latest/download/latest.json"],
+      "dialog": true,
+      "pubkey": ""
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "resources": [
-      "mpv-dev/libmpv-2.dll"
+      "mpv-dev/libmpv-2.dll",
+      "yt-dlp/yt-dlp.exe",
+      "ffmpeg/ffmpeg.exe",
+      "whisper/whisper-cli.exe",
+      "whisper/ggml-tiny.bin",
+      "whisper/whisper.dll",
+      "whisper/ggml.dll",
+      "whisper/ggml-base.dll",
+      "whisper/ggml-cpu.dll"
     ],
     "icon": [
       "icons/32x32.png",
@@ -38,6 +60,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpg", "mpeg", "3gp", "ogv"],
+        "mimeType": "video/*",
+        "description": "Video File"
+      },
+      {
+        "ext": ["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma"],
+        "mimeType": "audio/*",
+        "description": "Audio File"
+      }
     ],
     "windows": {
       "wix": {

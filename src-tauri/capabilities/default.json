@@ -5,16 +5,28 @@
   "permissions": [
     "core:default",
     "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-decorations",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
     "core:window:allow-set-fullscreen",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-resizable",
     "core:window:allow-is-fullscreen",
+    "core:window:allow-is-maximized",
+    "core:window:allow-is-minimized",
     "core:window:allow-is-always-on-top",
     "core:webview:default",
     "core:event:default",
     "core:menu:default",
-    "shell:default"
+    "shell:default",
+    "updater:default"
   ]
 }
