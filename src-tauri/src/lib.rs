@@ -4,6 +4,7 @@ pub mod mpv;
 pub mod cli;
 pub mod mcp;
 pub mod gui;
+pub mod video;
 
 use core::i18n::{menu_strings, read_locale_from_settings};
 use gui::{commands, state::{GuiPlayer, PendingFile}};
