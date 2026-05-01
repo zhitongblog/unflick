@@ -113,14 +113,13 @@ pub fn run() {
             // ── v0.8 video pipeline bring-up ───────────────────────────────
             // Build the embedded video surface beneath the WebView, spin up
             // a render thread that drives mpv → GL, and stash both in the
-            // GuiPlayer state. The surface starts hidden so v0.7's HTML5
-            // playback path keeps working unchanged in this commit; P5
-            // flips it visible and routes commands through render_player.
+            // GuiPlayer state.
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
-                if let Err(e) = bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
-                    eprintln!("[unflick] video pipeline init failed: {e}");
-                    // Falls through — HTML5 path still works.
+                eprintln!("[unflick] bringing up video pipeline...");
+                match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
+                    Ok(()) => eprintln!("[unflick] video pipeline ready"),
+                    Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
                 }
             }
 

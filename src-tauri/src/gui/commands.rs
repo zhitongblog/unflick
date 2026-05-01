@@ -34,11 +34,16 @@ pub fn video_surface_set_geometry(
     h: i32,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<(), String> {
+    eprintln!("[unflick] video_surface_set_geometry x={x} y={y} w={w} h={h}");
     if let Some(rl) = gui_player.render_loop.get() {
-        rl.set_geometry(x, y, w, h).map_err(|e| e.to_string())?;
-        // Idempotent — Win32 ShowWindow with SW_SHOW on an already-visible
-        // window is a no-op, so we don't need a "first call" gate.
+        rl.set_geometry(x, y, w, h).map_err(|e| {
+            eprintln!("[unflick] set_geometry failed: {e}");
+            e.to_string()
+        })?;
         rl.set_visible(true);
+        eprintln!("[unflick] surface visible at {x},{y} {w}x{h}");
+    } else {
+        eprintln!("[unflick] render_loop not yet ready — skipping geometry");
     }
     Ok(())
 }
@@ -451,8 +456,10 @@ pub fn player_play(
     speed: Option<f64>,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<Value, String> {
+    eprintln!("[unflick] player_play file={file:?} seek={seek:?}");
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
+    eprintln!("[unflick] player_play loadfile dispatched");
     Ok(json!({"message": format!("playing {}", file)}))
 }
 

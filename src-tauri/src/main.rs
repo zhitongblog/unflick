@@ -46,8 +46,61 @@ fn main() {
         std::process::exit(run_cli(cli));
     }
 
-    // Mode 3: GUI (no subcommand, no flags)
+    // Mode 3: GUI (no subcommand, no flags).
+    // Try to attach to a parent console when there is one — lets us see
+    // eprintln!() output (render-thread errors, mpv init failures, etc.)
+    // when the user launches from cmd / bash for diagnostics. Returns 0
+    // when there's no console to attach to (normal Explorer launch),
+    // which is harmless.
+    #[cfg(target_os = "windows")]
+    unsafe { winapi_attach_console(); }
+    init_file_log();
     unflick_lib::run();
+}
+
+/// Set up a best-effort log file at `%TEMP%/unflick.log` that captures
+/// eprintln output via a redirected stderr. Useful when there's no parent
+/// console (Explorer / file-association launches). Failures are silent —
+/// running without logs is fine.
+fn init_file_log() {
+    let path = std::env::temp_dir().join("unflick.log");
+    if let Ok(f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        // Line a header so each run is visible in the rolling log.
+        let _ = std::io::Write::write_all(
+            &mut std::io::stderr(),
+            format!(
+                "\n=== unflick {} starting at {} ===\n",
+                env!("CARGO_PKG_VERSION"),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs().to_string())
+                    .unwrap_or_else(|_| "?".into()),
+            )
+            .as_bytes(),
+        );
+        // Best-effort stderr redirect on Windows. We re-open stderr to point
+        // at the log file so all the eprintln in render_loop / lib.rs land
+        // there. If we attached to a parent console above, those eprintlns
+        // will *also* show in the console because of how Windows file
+        // descriptors work — that's fine.
+        #[cfg(target_os = "windows")]
+        unsafe {
+            use std::os::windows::io::AsRawHandle;
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn SetStdHandle(std_handle: u32, handle: *mut std::ffi::c_void) -> i32;
+            }
+            const STD_ERROR_HANDLE: u32 = 0xFFFFFFF4; // -12 as u32
+            let h = f.as_raw_handle() as *mut std::ffi::c_void;
+            SetStdHandle(STD_ERROR_HANDLE, h);
+            // Leak the file handle so it stays open for the program lifetime.
+            std::mem::forget(f);
+        }
+    }
 }
 
 /// Re-attach to the parent console so CLI output is visible

@@ -1,6 +1,6 @@
 {
   "productName": "unflick",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "identifier": "com.unflick.app",
   "build": {
     "frontendDist": "../dist",
@@ -19,7 +19,7 @@
         "center": true,
         "resizable": true,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "dragDropEnabled": true
       }
     ],
@@ -50,13 +50,7 @@
     "resources": [
       "mpv-dev/libmpv-2.dll",
       "ffmpeg/ffmpeg.exe",
-      "yt-dlp/yt-dlp.exe",
-      "whisper/whisper-cli.exe",
-      "whisper/whisper.dll",
-      "whisper/ggml.dll",
-      "whisper/ggml-base.dll",
-      "whisper/ggml-cpu.dll",
-      "whisper/ggml-tiny.bin"
+      "yt-dlp/yt-dlp.exe"
     ],
     "icon": [
       "icons/32x32.png",

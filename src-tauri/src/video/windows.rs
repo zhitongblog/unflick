@@ -14,8 +14,8 @@ use std::sync::Mutex;
 use anyhow::{anyhow, bail, Result};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext,
-    PossiblyCurrentGlContext,
+    ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext,
+    PossiblyCurrentContext, PossiblyCurrentGlContext,
 };
 use glutin::display::{Display, DisplayApiPreference, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface};
@@ -27,7 +27,7 @@ use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, RegisterClassExW, SetWindowPos, ShowWindow, CS_HREDRAW,
-    CS_OWNDC, CS_VREDRAW, SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
+    CS_OWNDC, CS_VREDRAW, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
     WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
 };
 
@@ -83,13 +83,23 @@ unsafe extern "system" fn window_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
+/// Context slot — glutin uses the type-state pattern (NotCurrent vs
+/// PossiblyCurrent) to enforce correct usage at compile time. Our render
+/// thread is the only one that ever binds the context, but the surface
+/// constructor runs on a different thread, so we store it as NotCurrent
+/// initially and transition on the first `make_current` call.
+enum ContextSlot {
+    NotCurrent(NotCurrentContext),
+    Current(PossiblyCurrentContext),
+}
+
 /// A WGL-backed video surface parented to a Tauri window's HWND.
 pub struct WindowsVideoSurface {
     hwnd: HWND,
-    // glutin objects. Order in the struct matters for drop: the surface and
-    // context must drop before the display. Rust drops fields top-to-bottom,
+    // glutin objects. Order in the struct matters for drop: the context and
+    // surface must drop before the display. Rust drops fields top-to-bottom,
     // so list them context → surface → display.
-    context: Mutex<Option<PossiblyCurrentContext>>,
+    context: Mutex<Option<ContextSlot>>,
     surface: Surface<WindowSurface>,
     display: Display,
 }
@@ -188,17 +198,15 @@ impl WindowsVideoSurface {
                 .map_err(|e| anyhow!("create_window_surface: {e}"))?
         };
 
-        // Make current once so WGL knows about us. We'll release before
-        // returning — the renderer thread will make_current itself.
-        let context = not_current
-            .make_current(&surface)
-            .map_err(|e| anyhow!("make_current: {e}"))?;
-
+        // Stay un-current. WGL contexts are thread-affine — binding here on
+        // the Tauri setup thread would make the render thread's first
+        // make_current fail with ERROR_BUSY. Hand the un-current context to
+        // the render thread and let it claim ownership.
         Ok(Self {
             hwnd,
             display,
             surface,
-            context: Mutex::new(Some(context)),
+            context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
         })
     }
 }
@@ -209,15 +217,25 @@ impl VideoSurface for WindowsVideoSurface {
             .context
             .lock()
             .map_err(|_| anyhow!("video surface mutex poisoned"))?;
-        let ctx = guard
-            .as_ref()
-            .ok_or_else(|| anyhow!("context already released"))?;
-        ctx.make_current(&self.surface)
-            .map_err(|e| anyhow!("make_current: {e}"))?;
-        // Re-store same context — we use Option only to satisfy Mutex<Option>
-        // patterns and to leave room for context replacement (PiP).
-        let _ = guard.as_mut();
-        Ok(())
+        // Two-phase: the very first call promotes NotCurrent → Current and
+        // claims the context for the calling (render) thread. Subsequent
+        // calls just rebind on the same thread — cheap.
+        match guard.take() {
+            Some(ContextSlot::NotCurrent(ctx)) => {
+                let now = ctx
+                    .make_current(&self.surface)
+                    .map_err(|e| anyhow!("make_current (first): {e}"))?;
+                *guard = Some(ContextSlot::Current(now));
+                Ok(())
+            }
+            Some(ContextSlot::Current(ctx)) => {
+                ctx.make_current(&self.surface)
+                    .map_err(|e| anyhow!("make_current: {e}"))?;
+                *guard = Some(ContextSlot::Current(ctx));
+                Ok(())
+            }
+            None => Err(anyhow!("context already released")),
+        }
     }
 
     fn get_proc_address(&self, name: &str) -> *mut c_void {
@@ -230,15 +248,19 @@ impl VideoSurface for WindowsVideoSurface {
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
+        // HWND_TOP every call. Tauri's WebView2 child sits in the same
+        // sibling z-order, and at app startup it's above us — without
+        // forcing top-of-z each frame the video region would be hidden
+        // behind the WebView's solid bg in the middle of the window.
         let ok = unsafe {
             SetWindowPos(
                 self.hwnd,
-                ptr::null_mut(), // hwndInsertAfter — ignored due to SWP_NOZORDER
+                HWND_TOP,
                 x,
                 y,
                 w.max(1),
                 h.max(1),
-                SWP_NOZORDER | SWP_NOACTIVATE,
+                SWP_NOACTIVATE,
             )
         };
         if ok == 0 {
@@ -267,12 +289,15 @@ impl VideoSurface for WindowsVideoSurface {
             .context
             .lock()
             .map_err(|_| anyhow!("video surface mutex poisoned"))?;
-        let ctx = guard
-            .as_ref()
-            .ok_or_else(|| anyhow!("context already released"))?;
-        self.surface
-            .swap_buffers(ctx)
-            .map_err(|e| anyhow!("swap_buffers: {e}"))?;
-        Ok(())
+        match guard.as_ref() {
+            Some(ContextSlot::Current(ctx)) => self
+                .surface
+                .swap_buffers(ctx)
+                .map_err(|e| anyhow!("swap_buffers: {e}")),
+            Some(ContextSlot::NotCurrent(_)) => {
+                Err(anyhow!("swap_buffers before first make_current"))
+            }
+            None => Err(anyhow!("context already released")),
+        }
     }
 }

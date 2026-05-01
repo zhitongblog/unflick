@@ -177,6 +177,7 @@ fn run_render_thread(
         surface_ctx,
     )
     .map_err(|e| anyhow!("create render context: {e}"))?;
+    eprintln!("[unflick-render] render context created");
 
     // Wire up mpv's "frame ready" notifier. We Arc::into_raw to get a stable
     // pointer for mpv's void* slot; the matching from_raw on exit reclaims
@@ -184,7 +185,9 @@ fn run_render_thread(
     let signal_ptr = Arc::into_raw(Arc::clone(&signal)) as *mut c_void;
     let cb: MpvRenderUpdateFn = update_callback_trampoline;
     ctx.set_update_callback(cb, signal_ptr);
+    eprintln!("[unflick-render] update callback wired, entering loop");
 
+    let mut frames_rendered: u64 = 0;
     loop {
         // Wait for either a frame, a forced redraw, or shutdown.
         let mut state = signal
@@ -209,15 +212,21 @@ fn run_render_thread(
 
         let (w, h) = surface.size();
         if let Err(e) = ctx.render_to_fbo(0, w, h) {
-            // A single-frame failure shouldn't kill the loop — log and try
-            // the next signal. Logs to stderr since console is detached on
-            // Windows release builds; will surface in attached terminals
-            // (CLI mode) or via Tauri devtools (dev builds).
             eprintln!("[unflick-render] render_to_fbo: {e}");
             continue;
         }
         if let Err(e) = surface.swap_buffers() {
             eprintln!("[unflick-render] swap_buffers: {e}");
+            continue;
+        }
+        frames_rendered += 1;
+        // Log every 30 frames so we can tell whether the loop is alive
+        // without flooding the log when playback is steady.
+        if frames_rendered == 1 || frames_rendered % 30 == 0 {
+            eprintln!(
+                "[unflick-render] frame #{frames_rendered} rendered ({}x{})",
+                w, h
+            );
         }
     }
 
