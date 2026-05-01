@@ -24,6 +24,27 @@ impl Player {
         })
     }
 
+    /// Build an mpv handle wired for render-context output. Sets vo=libmpv so
+    /// frames are NOT written to a window mpv owns — they're held until
+    /// our render thread calls `mpv_render_context_render()` into the GL
+    /// context we provide. This is the v0.8 GUI playback path.
+    ///
+    /// If no render context is bound, frames silently pile up. Callers must
+    /// pair this with an MpvRenderContext on a live GL thread.
+    pub fn new_for_render() -> Result<Self> {
+        let mpv = MpvHandle::new("libmpv")?;
+        Ok(Self {
+            mpv,
+            current_file: Mutex::new(None),
+        })
+    }
+
+    /// Borrow the underlying mpv handle. Used by the render loop to bind a
+    /// render context to this player's mpv instance.
+    pub fn mpv_handle(&self) -> &MpvHandle {
+        &self.mpv
+    }
+
     /// Create a player with video output (mpv opens its own window).
     pub fn new_with_video() -> Result<Self> {
         let mpv = MpvHandle::new_with_video()?;

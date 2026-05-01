@@ -6,8 +6,13 @@ pub mod mcp;
 pub mod gui;
 pub mod video;
 
+use std::sync::Arc;
+
 use core::i18n::{menu_strings, read_locale_from_settings};
+use core::player::Player;
+use core::render_loop::RenderLoop;
 use gui::{commands, state::{GuiPlayer, PendingFile}};
+use video::VideoSurface;
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -105,6 +110,20 @@ pub fn run() {
             let menu = Menu::with_items(handle, &[&file_menu, &playback_menu, &view_menu, &help_menu])?;
             app.set_menu(menu)?;
 
+            // ── v0.8 video pipeline bring-up ───────────────────────────────
+            // Build the embedded video surface beneath the WebView, spin up
+            // a render thread that drives mpv → GL, and stash both in the
+            // GuiPlayer state. The surface starts hidden so v0.7's HTML5
+            // playback path keeps working unchanged in this commit; P5
+            // flips it visible and routes commands through render_player.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
+                    eprintln!("[unflick] video pipeline init failed: {e}");
+                    // Falls through — HTML5 path still works.
+                }
+            }
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -127,6 +146,7 @@ pub fn run() {
             commands::player_init,
             commands::consume_pending_file,
             commands::open_default_apps_settings,
+            commands::video_surface_set_geometry,
             commands::player_play,
             commands::player_pause,
             commands::player_resume,
@@ -203,4 +223,57 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Bring up the v0.8 video pipeline on the main window.
+///
+/// Order matters: surface must be created before the render thread starts
+/// (the thread immediately calls `make_current` on it), and the player needs
+/// to exist before render-context construction (the context binds to mpv).
+/// We tolerate any error here — the GUI will simply fall back to the
+/// HTML5 path that's still wired up. The surface starts hidden.
+#[cfg(target_os = "windows")]
+fn bring_up_video_pipeline(
+    window: &tauri::WebviewWindow,
+    state: tauri::State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::HWND;
+
+    // Tauri's `hwnd()` returns the `windows` crate's HWND newtype; our
+    // video surface wants windows-sys's HWND alias (`*mut c_void`). Both
+    // wrap the same kernel handle — extract the raw pointer through the
+    // newtype's `.0` field.
+    let tauri_hwnd = window
+        .hwnd()
+        .map_err(|e| format!("get_hwnd: {e}"))?;
+    let hwnd: HWND = tauri_hwnd.0 as HWND;
+    let size = window
+        .inner_size()
+        .map_err(|e| format!("inner_size: {e}"))?;
+
+    // Hidden child window beneath WebView. Geometry is bogus until the
+    // frontend calls video_surface_set_geometry once it's mounted.
+    let surface = video::windows::WindowsVideoSurface::new(
+        hwnd,
+        size.width as i32,
+        size.height as i32,
+    )
+    .map_err(|e| format!("create video surface: {e}"))?;
+    let surface: Arc<dyn VideoSurface> = Arc::new(surface);
+
+    let player = Arc::new(Player::new_for_render().map_err(|e| format!("create render player: {e}"))?);
+
+    let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
+        .map_err(|e| format!("start render loop: {e}"))?;
+
+    state
+        .render_player
+        .set(player)
+        .map_err(|_| "render_player already initialised".to_string())?;
+    state
+        .render_loop
+        .set(render_loop)
+        .map_err(|_| "render_loop already initialised".to_string())?;
+
+    Ok(())
 }

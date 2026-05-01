@@ -28,7 +28,7 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, RegisterClassExW, SetWindowPos, ShowWindow, CS_HREDRAW,
     CS_OWNDC, CS_VREDRAW, SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+    WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
 };
 
 use super::VideoSurface;
@@ -114,8 +114,11 @@ impl WindowsVideoSurface {
                 title.as_ptr(),
                 // WS_CHILD: parented inside Tauri's HWND.
                 // WS_CLIPSIBLINGS/CHILDREN: don't paint over WebView2's HWND.
-                // WS_VISIBLE: show immediately; callers can still hide via set_visible.
-                WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE,
+                // No WS_VISIBLE — the surface starts hidden so the GUI's
+                // existing rendering path (HTML5 video, until P5) keeps
+                // working unchanged. Callers flip visibility via
+                // `set_visible(true)` after the WebView region is laid out.
+                WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                 0,
                 0,
                 w.max(1),

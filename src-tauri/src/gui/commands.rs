@@ -20,6 +20,27 @@ pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<String> {
     pending.0.lock().ok().and_then(|mut g| g.take())
 }
 
+/// Move + resize the embedded video surface in physical pixels relative to
+/// the parent window's client area. Frontend calls this whenever the
+/// transparent video region in the WebView reflows: window resize, panel
+/// slide-in, fullscreen toggle.
+///
+/// No-op until P5 makes the surface visible — wiring it up now so the
+/// frontend code path stays valid as we cut over.
+#[command]
+pub fn video_surface_set_geometry(
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    if let Some(rl) = gui_player.render_loop.get() {
+        rl.set_geometry(x, y, w, h).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// User-data path for an auto-updated copy of yt-dlp. Updates are written here
 /// so the bundled (read-only) resource stays untouched.
 fn yt_dlp_user_path() -> Option<std::path::PathBuf> {

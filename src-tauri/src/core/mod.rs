@@ -1,5 +1,6 @@
 pub mod player;
 pub mod playlist;
+pub mod render_loop;
 pub mod types;
 pub mod daemon;
 pub mod i18n;

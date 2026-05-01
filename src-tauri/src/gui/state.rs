@@ -1,10 +1,28 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+use std::sync::Arc;
+
 use crate::core::player::Player;
 use crate::core::playlist::Playlist;
+use crate::core::render_loop::RenderLoop;
 use crate::db::Database;
 
 pub struct GuiPlayer {
+    /// Legacy headless Player (vo=null) used by the HTML5 path. Will be
+    /// removed in P5 once render-context playback is wired up to all GUI
+    /// commands.
     pub player: Mutex<Option<Player>>,
+
+    /// New render-context-backed Player (vo=libmpv). Created at app startup
+    /// in the Tauri setup hook, shared across the render thread (which holds
+    /// the GL context current) and command handlers (which call play/pause/
+    /// seek). The OnceLock makes startup ordering explicit — any caller
+    /// before setup completes gets None and falls back to the legacy path.
+    pub render_player: OnceLock<Arc<Player>>,
+
+    /// Owns the dedicated render thread. Drop this to stop the thread and
+    /// release the GL context cleanly. Lives the whole app lifetime.
+    pub render_loop: OnceLock<RenderLoop>,
+
     pub playlist: Playlist,
     pub db: Mutex<Option<Database>>,
 }
@@ -16,6 +34,8 @@ impl GuiPlayer {
         let db = Database::open().ok();
         Self {
             player: Mutex::new(None),
+            render_player: OnceLock::new(),
+            render_loop: OnceLock::new(),
             playlist: Playlist::new(),
             db: Mutex::new(db),
         }
