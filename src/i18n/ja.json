@@ -118,7 +118,10 @@
     "filters": "ビデオフィルター",
     "openLibrary": "ライブラリを表示",
     "openPlaylist": "プレイリストを表示",
-    "settings": "設定"
+    "settings": "設定",
+    "incognito": "シークレットモード",
+    "incognitoOn": "シークレットを終了",
+    "clearPlaylist": "プレイリストをクリア"
   },
   "settings": {
     "title": "設定",
@@ -151,6 +154,12 @@
       "updating": "更新中…",
       "updated": "更新済み"
     },
-    "savedToast": "保存しました"
+    "savedToast": "保存しました",
+    "fileAssoc": {
+      "section": "ファイル関連付け",
+      "body": "unflick は mp4、mkv、avi、mov、webm など 13 種類の動画形式と、mp3、flac、wav など 7 種類の音声形式を開けます。下のボタンで Windows の既定アプリに設定できます。",
+      "button": "Windows 設定を開く",
+      "hint": "Windows が拡張子の一覧を表示します。unflick を使いたい拡張子をオンにしてください。"
+    }
   }
 }

@@ -125,6 +125,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::player_init,
             commands::consume_pending_file,
+            commands::open_default_apps_settings,
             commands::player_play,
             commands::player_pause,
             commands::player_resume,

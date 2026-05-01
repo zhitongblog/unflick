@@ -15,6 +15,7 @@ import { usePlayerStore } from "./stores/playerStore";
 import { useLibraryStore } from "./stores/libraryStore";
 import { usePlaylistStore } from "./stores/playlistStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useIncognitoStore } from "./stores/incognitoStore";
 import { checkForUpdate, type UpdateResult } from "./lib/checkUpdate";
 import { useStrings } from "./i18n/utils";
 
@@ -30,6 +31,8 @@ function App() {
   const { showLibrary, toggleLibrary } = useLibraryStore();
   const { showPlaylist, togglePlaylist } = usePlaylistStore();
   const { showSettings, toggleSettings, loadSettings, theme } = useSettingsStore();
+  const incognito = useIncognitoStore((s) => s.enabled);
+  const toggleIncognito = useIncognitoStore((s) => s.toggle);
   const [isDragging, setIsDragging] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -250,6 +253,13 @@ function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
         toggleSettings();
+        return;
+      }
+
+      // Ctrl+Shift+P / Cmd+Shift+P to toggle incognito mode
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "P" || e.key === "p")) {
+        e.preventDefault();
+        useIncognitoStore.getState().toggle();
         return;
       }
 
@@ -519,18 +529,18 @@ useEffect(() => {
   // Context menu items
   const contextMenuItems: ContextMenuEntry[] = [
     {
-      label: "Open File...",
+      label: t.context.openFile,
       shortcut: "Ctrl+O",
       onClick: handleOpenFile,
     },
     {
-      label: "Open URL...",
+      label: t.context.openUrl,
       shortcut: "Ctrl+U",
       onClick: () => setShowUrlDialog(true),
     },
     { separator: true },
     {
-      label: state === "playing" ? "Pause" : "Play",
+      label: state === "playing" ? t.context.pause : t.context.play,
       shortcut: "Space",
       onClick: () => {
         if (state === "playing") pause();
@@ -539,47 +549,57 @@ useEffect(() => {
       disabled: state === "stopped",
     },
     {
-      label: "Stop",
+      label: t.context.stop,
       onClick: () => usePlayerStore.getState().stop(),
       disabled: state === "stopped",
     },
     { separator: true },
     {
-      label: "Screenshot",
+      label: t.context.screenshot,
       shortcut: "S",
       onClick: () => captureScreenshot(),
       disabled: state === "stopped",
     },
     {
-      label: "Extract Clip...",
+      label: t.context.clip,
       shortcut: "C",
       onClick: () => setShowClipDialog(true),
       disabled: state === "stopped",
     },
     { separator: true },
     {
-      label: "Toggle Fullscreen",
+      label: t.context.fullscreen,
       shortcut: "F",
       onClick: () => invoke("set_fullscreen").catch(console.error),
     },
     {
-      label: "Picture in Picture",
+      label: t.context.pip,
       shortcut: "P",
       onClick: () => invoke("toggle_pip").catch(console.error),
     },
     {
-      label: "Toggle Library",
+      label: t.context.openLibrary,
       shortcut: "L",
       onClick: toggleLibrary,
     },
     {
-      label: "Toggle Playlist",
+      label: t.context.openPlaylist,
       shortcut: "N",
       onClick: togglePlaylist,
     },
     { separator: true },
     {
-      label: "Settings",
+      label: incognito ? t.context.incognitoOn : t.context.incognito,
+      shortcut: "Ctrl+Shift+P",
+      onClick: toggleIncognito,
+    },
+    {
+      label: t.context.clearPlaylist,
+      onClick: () => usePlaylistStore.getState().clear(),
+    },
+    { separator: true },
+    {
+      label: t.context.settings,
       shortcut: "Ctrl+,",
       onClick: toggleSettings,
     },

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useIncognitoStore } from "./incognitoStore";
 
 export interface SubtitleTrack {
   id: string;
@@ -234,8 +235,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         videoEl.addEventListener("loadedmetadata", startPlayback, { once: true });
       }
 
-      // Record play history (fire-and-forget) — store the user-facing input
-      invoke("record_play", { path: file }).catch(() => {});
+      // Record play history (fire-and-forget) — store the user-facing input.
+      // Skip in incognito mode so private viewing doesn't leak into history.
+      if (!useIncognitoStore.getState().enabled) {
+        invoke("record_play", { path: file }).catch(() => {});
+      }
 
       // Auto-load any sidecar subtitle files (movie.srt, movie.en.srt, …)
       // sitting next to a local video — fire-and-forget, runs in background.
@@ -276,8 +280,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   stop: async () => {
     const { file, position, duration } = get();
     if (file && position > 0) {
+      // Don't save resume points in incognito mode — leaving no trace is
+      // the whole point. Still call clear_position on near-end stops so
+      // we tidy up positions that *were* saved before incognito got
+      // toggled on.
+      const incognito = useIncognitoStore.getState().enabled;
       if (duration <= 0 || position < duration - 1) {
-        invoke("save_position", { path: file, position }).catch(() => {});
+        if (!incognito) {
+          invoke("save_position", { path: file, position }).catch(() => {});
+        }
       } else {
         invoke("clear_position", { path: file }).catch(() => {});
       }

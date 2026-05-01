@@ -179,6 +179,27 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               </p>
             </div>
 
+            {/* File Associations */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.fileAssoc.section}
+              </p>
+              <p className="mb-3 text-[11px] leading-relaxed text-white/55">
+                {t.settings.fileAssoc.body}
+              </p>
+              <button
+                className="rounded-lg border border-white/10 bg-white/4 px-4 py-2 text-[11px] font-medium text-white hover:border-white/20 hover:bg-white/8 transition"
+                onClick={() => {
+                  invoke("open_default_apps_settings").catch((e) => console.error(e));
+                }}
+              >
+                {t.settings.fileAssoc.button}
+              </button>
+              <p className="mt-2 text-[10px] leading-relaxed text-white/30">
+                {t.settings.fileAssoc.hint}
+              </p>
+            </div>
+
             {/* Screenshots */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
@@ -221,12 +242,12 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             {/* AI Subtitles */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                AI Subtitles
+                {t.settings.ai.section}
               </p>
 
               <div className="mb-4 flex gap-2">
                 {(["off", "local"] as const).map((mode) => {
-                  const labels = { off: "Off", local: "Local Whisper" };
+                  const labels = { off: t.settings.ai.modeOff, local: t.settings.ai.modeLocal };
                   const active = draftMode === mode;
                   return (
                     <button
@@ -250,7 +271,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    <span className="font-medium">Bundled Whisper ready</span>
+                    <span className="font-medium">{t.settings.ai.bundledReady}</span>
                   </div>
                   <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
                     AI subtitle generation works out of the box. No configuration needed.
@@ -417,7 +438,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             {/* Theme */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Theme
+                {t.settings.theme}
               </p>
               <div className="flex gap-2">
                 {([
@@ -448,7 +469,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               className="rounded-lg px-4 py-2 text-[11px] font-medium text-white/30 transition-colors hover:bg-white/6 hover:text-white/50"
               onClick={onClose}
             >
-              Cancel
+              {t.common.cancel}
             </button>
             <button
               className="rounded-xl px-5 py-2 text-[11px] font-semibold text-white transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
@@ -459,9 +480,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               {saveStatus === "saving" ? (
                 <span className="flex items-center gap-2">
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Saving...
+                  {t.common.loading}
                 </span>
-              ) : saveStatus === "saved" ? "Saved!" : "Save"}
+              ) : saveStatus === "saved" ? t.settings.savedToast : t.common.save}
             </button>
           </div>
         </motion.div>

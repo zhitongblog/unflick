@@ -118,7 +118,10 @@
     "filters": "Video filters",
     "openLibrary": "Show library",
     "openPlaylist": "Show playlist",
-    "settings": "Settings"
+    "settings": "Settings",
+    "incognito": "Incognito Mode",
+    "incognitoOn": "Turn off incognito",
+    "clearPlaylist": "Clear playlist"
   },
   "settings": {
     "title": "Settings",
@@ -151,6 +154,12 @@
       "updating": "Updating…",
       "updated": "Updated"
     },
-    "savedToast": "Saved"
+    "savedToast": "Saved",
+    "fileAssoc": {
+      "section": "File Associations",
+      "body": "unflick can open mp4, mkv, avi, mov, webm and 9 more video formats, plus mp3, flac, wav and 4 more audio formats. Click below to make it the default in Windows.",
+      "button": "Open Windows Settings",
+      "hint": "Windows opens a list of file types — flip each one to use unflick."
+    }
   }
 }

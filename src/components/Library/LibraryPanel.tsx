@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { useLibraryStore, MediaEntry } from "../../stores/libraryStore";
+import { useStrings } from "../../i18n/utils";
 import { usePlayerStore } from "../../stores/playerStore";
 
 function formatDuration(seconds: number | null): string {
@@ -73,6 +74,7 @@ export default function LibraryPanel() {
   const hasFetchedRef = useRef(false);
   const [isScanning, setIsScanning] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const t = useStrings();
 
   const handleScanFolder = useCallback(async () => {
     const result = await invoke<{ path: string | null }>("open_folder_dialog");
@@ -141,7 +143,7 @@ export default function LibraryPanel() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">
-            Library
+            {t.library.title}
           </h2>
           <div className="flex items-center gap-1">
             {entries.length > 0 && (
@@ -152,9 +154,9 @@ export default function LibraryPanel() {
                     : "text-white/35 hover:bg-white/6 hover:text-white/60"
                 }`}
                 onClick={handleClear}
-                title={confirmClear ? "Click again to confirm" : "Clear library"}
+                title={confirmClear ? "Click again to confirm" : t.library.clearAll}
               >
-                {confirmClear ? "Confirm?" : "Clear"}
+                {confirmClear ? "Confirm?" : t.common.clear}
               </button>
             )}
             <button
@@ -163,7 +165,7 @@ export default function LibraryPanel() {
               onClick={handleScanFolder}
               disabled={isScanning}
             >
-              {isScanning ? "Scanning..." : "Scan"}
+              {isScanning ? t.common.loading : t.library.scan}
             </button>
             <button
               className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
@@ -184,7 +186,7 @@ export default function LibraryPanel() {
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Search..."
+              placeholder={t.library.search}
               className="w-full bg-transparent text-[12px] text-white/70 placeholder-white/20 outline-none"
             />
           </div>
@@ -206,14 +208,14 @@ export default function LibraryPanel() {
                 <line x1="17" y1="2" x2="17" y2="22" />
                 <line x1="2" y1="12" x2="22" y2="12" />
               </svg>
-              <p className="text-[12px] text-white/25">No media found</p>
+              <p className="text-[12px] text-white/25">{t.library.empty}</p>
               <button
                 className="rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all hover:opacity-80 active:scale-95 disabled:opacity-40"
                 style={{ background: "linear-gradient(135deg, #7C3AED, #DB2777)" }}
                 onClick={handleScanFolder}
                 disabled={isScanning}
               >
-                {isScanning ? "Scanning..." : "Scan Folder"}
+                {isScanning ? t.common.loading : t.library.scan}
               </button>
             </div>
           )}

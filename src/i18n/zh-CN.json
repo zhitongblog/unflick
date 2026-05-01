@@ -118,7 +118,10 @@
     "filters": "视频滤镜",
     "openLibrary": "显示媒体库",
     "openPlaylist": "显示播放列表",
-    "settings": "设置"
+    "settings": "设置",
+    "incognito": "无痕模式",
+    "incognitoOn": "关闭无痕模式",
+    "clearPlaylist": "清空播放列表"
   },
   "settings": {
     "title": "设置",
@@ -151,6 +154,12 @@
       "updating": "更新中…",
       "updated": "已更新"
     },
-    "savedToast": "已保存"
+    "savedToast": "已保存",
+    "fileAssoc": {
+      "section": "文件关联",
+      "body": "unflick 可以打开 mp4、mkv、avi、mov、webm 等 13 种视频格式，以及 mp3、flac、wav 等 7 种音频格式。点下面的按钮把它设为 Windows 默认。",
+      "button": "打开 Windows 设置",
+      "hint": "Windows 会列出所有文件类型，把要用 unflick 的逐个切换。"
+    }
   }
 }

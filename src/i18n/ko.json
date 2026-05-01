@@ -118,7 +118,10 @@
     "filters": "비디오 필터",
     "openLibrary": "라이브러리 보기",
     "openPlaylist": "재생목록 보기",
-    "settings": "설정"
+    "settings": "설정",
+    "incognito": "시크릿 모드",
+    "incognitoOn": "시크릿 모드 끄기",
+    "clearPlaylist": "재생목록 지우기"
   },
   "settings": {
     "title": "설정",
@@ -151,6 +154,12 @@
       "updating": "업데이트 중…",
       "updated": "업데이트 완료"
     },
-    "savedToast": "저장됨"
+    "savedToast": "저장됨",
+    "fileAssoc": {
+      "section": "파일 연결",
+      "body": "unflick 은 mp4, mkv, avi, mov, webm 등 13 개 비디오 형식과 mp3, flac, wav 등 7 개 오디오 형식을 열 수 있습니다. 아래 버튼으로 Windows 기본 앱으로 설정하세요.",
+      "button": "Windows 설정 열기",
+      "hint": "Windows 가 파일 형식 목록을 표시합니다. unflick 으로 열고 싶은 형식을 켜세요."
+    }
   }
 }

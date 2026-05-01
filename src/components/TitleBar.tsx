@@ -1,8 +1,12 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useIncognitoStore } from "../stores/incognitoStore";
+import { useStrings } from "../i18n/utils";
 
 const appWindow = getCurrentWebviewWindow();
 
 export default function TitleBar() {
+  const incognito = useIncognitoStore((s) => s.enabled);
+  const t = useStrings();
   return (
     <div
       data-tauri-drag-region
@@ -11,12 +15,23 @@ export default function TitleBar() {
         background: "linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.15))",
       }}
     >
-      {/* Left: brand name */}
+      {/* Left: brand name + optional incognito badge */}
       <span
         data-tauri-drag-region
-        className="idle-title text-[11px] font-bold tracking-wide pointer-events-none uppercase"
+        className="idle-title flex items-center gap-2 text-[11px] font-bold tracking-wide pointer-events-none uppercase"
       >
         unflick
+        {incognito && (
+          <span
+            className="flex items-center gap-1 rounded-full border border-violet-400/30 bg-violet-500/15 px-2 py-0.5 text-[9px] font-semibold tracking-wider text-violet-200 normal-case"
+            title={t.context.incognito}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 4a4 4 0 0 1 4 4v2H8V8a4 4 0 0 1 4-4Zm-6 8h12a2 2 0 0 1 2 2v3a4 4 0 0 1-4 4 4 4 0 0 1-4-2.5A4 4 0 0 1 8 21a4 4 0 0 1-4-4v-3a2 2 0 0 1 2-2Z"/>
+            </svg>
+            {t.context.incognito}
+          </span>
+        )}
       </span>
 
       {/* Right: window controls */}

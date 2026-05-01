@@ -574,6 +574,40 @@ pub async fn open_folder_dialog() -> Result<Value, String> {
     }
 }
 
+/// Open the Windows "Default apps" Settings page, filtered to unflick on
+/// Windows 11. Modern Windows refuses to set associations programmatically
+/// (anti-malware), so the most we can do is jump the user to the page where
+/// they can flip the toggles per file type.
+///
+/// On Windows 10 the registeredAppUser query is ignored and the user lands
+/// on the generic page, which is still better than nothing.
+#[command]
+pub fn open_default_apps_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // `ms-settings:` is a URI handler, not an executable, so we route
+        // through `cmd /c start` which dispatches it to the OS shell.
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args([
+            "/c",
+            "start",
+            "",
+            "ms-settings:defaultapps?registeredAppUser=unflick",
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the cmd flash
+        }
+        cmd.spawn().map_err(|e| format!("failed to open settings: {}", e))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Setting default app from inside the app is Windows-only for now".to_string());
+    }
+    Ok(())
+}
+
 // ─── Library commands ────────────────────────────────────────────────────────
 
 #[command]

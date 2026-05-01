@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlaylistStore, PlaylistItem } from "../../stores/playlistStore";
+import { useStrings } from "../../i18n/utils";
 import { usePlayerStore } from "../../stores/playerStore";
 
 function extractFileName(path: string): string {
@@ -68,6 +69,7 @@ function PlaylistEntry({
 export default function PlaylistPanel() {
   const { items, isLoading, fetchPlaylist, add, remove, clear, playAt, togglePlaylist } =
     usePlaylistStore();
+  const t = useStrings();
   const play = usePlayerStore((s) => s.play);
   const hasFetchedRef = useRef(false);
 
@@ -120,22 +122,22 @@ export default function PlaylistPanel() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">
-            Playlist
+            {t.playlist.title}
           </h2>
           <div className="flex items-center gap-1">
             {items.length > 0 && (
               <button
                 className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
                 onClick={clear}
-                title="Clear playlist"
+                title={t.playlist.clear}
               >
-                Clear
+                {t.common.clear}
               </button>
             )}
             <button
               className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/6 hover:text-white/60"
               onClick={handleAddFile}
-              title="Add file"
+              title={t.playlist.addFile}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             </button>
@@ -163,12 +165,12 @@ export default function PlaylistPanel() {
                 <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
                 <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
               </svg>
-              <p className="text-[12px] text-white/25">Playlist is empty</p>
+              <p className="text-[12px] text-white/25">{t.playlist.empty}</p>
               <button
                 onClick={handleAddFile}
                 className="rounded-lg bg-white/5 px-4 py-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/8 hover:text-white/60"
               >
-                Add a file
+                {t.playlist.addFile}
               </button>
             </div>
           )}
