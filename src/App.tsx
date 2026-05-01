@@ -587,14 +587,13 @@ useEffect(() => {
       style={{ backgroundColor: state === "stopped" ? "var(--bg-primary, #030712)" : "transparent" }}
       onMouseMove={handleMouseMove}
     >
-      {/* Custom title bar */}
-      <motion.div
-        animate={{ opacity: controlsVisible ? 1 : 0, y: controlsVisible ? 0 : -8 }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-        className={!controlsVisible ? "pointer-events-none" : ""}
-      >
-        <TitleBar />
-      </motion.div>
+      {/* Custom title bar.
+          v0.8: always visible. Auto-hide is unsafe with transparent: true
+          + an mpv child window beneath — opacity:0 leaves a transparent
+          gap that lets the OS desktop bleed through. The proper "cinema
+          mode" (fullscreen + child window expansion to occupy chrome
+          space) lands in v0.8.x. */}
+      <TitleBar />
 
       {/* Update available banner */}
       <AnimatePresence>
@@ -823,14 +822,8 @@ useEffect(() => {
         {showPlaylist && <PlaylistPanel />}
       </AnimatePresence>
 
-      {/* Player bar at bottom — auto-hides during playback */}
-      <motion.div
-        animate={{ opacity: controlsVisible ? 1 : 0, y: controlsVisible ? 0 : 8 }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-        className={!controlsVisible ? "pointer-events-none" : ""}
-      >
-        <PlayerBar />
-      </motion.div>
+      {/* Player bar — always visible in v0.8 (see TitleBar comment). */}
+      <PlayerBar />
     </div>
   );
 }

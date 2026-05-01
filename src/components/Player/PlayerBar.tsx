@@ -103,8 +103,14 @@ export default function PlayerBar() {
       data-player-bar
       className="flex flex-col"
       style={{
-        background: "linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.3))",
-        backdropFilter: "blur(24px) saturate(1.3)",
+        // v0.8: opaque chrome. mpv renders directly to a child window
+        // beneath the WebView, and Win32 doesn't blend WebView's α with
+        // a sibling DX surface. Anything not fully opaque on top of the
+        // video region would let the GL clear color bleed through. The
+        // gradient goes from full-black at the bottom to a slightly
+        // lighter solid at the top so the bar still has visual weight
+        // and a clean edge against the video region above it.
+        background: "linear-gradient(to top, #0a0a0f, #1a1a26)",
         borderTop: "1px solid var(--border-subtle)",
       }}
     >

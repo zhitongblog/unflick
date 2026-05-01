@@ -79,24 +79,30 @@
 [data-theme="dark"] {
   --bg-primary: #030712;
   --bg-secondary: #111827;
-  --bg-surface: rgba(0, 0, 0, 0.6);
-  --bg-elevated: rgba(17, 24, 39, 0.8);
+  /* v0.8: opaque surfaces. mpv renders to a child window beneath the
+     transparent WebView; backdrop-filter on a translucent surface would
+     reveal the video underneath the menu/dialog (or worse, look black
+     because Win32 doesn't blend WebView2's α with a sibling DX surface
+     for blur passes). Solid colours keep the chrome readable and the
+     intent (UI > video) honest. */
+  --bg-surface: #0d0d12;
+  --bg-elevated: #15151e;
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-medium: rgba(255, 255, 255, 0.1);
 }
 [data-theme="midnight"] {
   --bg-primary: #000000;
   --bg-secondary: #0a0a0a;
-  --bg-surface: rgba(0, 0, 0, 0.8);
-  --bg-elevated: rgba(10, 10, 10, 0.9);
+  --bg-surface: #050507;
+  --bg-elevated: #0a0a0d;
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-medium: rgba(255, 255, 255, 0.08);
 }
 [data-theme="purple"] {
   --bg-primary: #0a0015;
   --bg-secondary: #140a25;
-  --bg-surface: rgba(20, 5, 40, 0.75);
-  --bg-elevated: rgba(30, 10, 55, 0.85);
+  --bg-surface: #14052a;
+  --bg-elevated: #1e0a37;
   --border-subtle: rgba(124, 58, 237, 0.08);
   --border-medium: rgba(124, 58, 237, 0.15);
 }
@@ -116,18 +122,17 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Glass morphism surfaces ── */
+/* ── Surfaces ──
+   Naming kept (.glass-*) for backwards compatibility with existing class
+   refs across components, but they're no longer translucent — see the
+   --bg-surface / --bg-elevated comment for why. */
 .glass-surface {
   background: var(--bg-surface);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
   border: 1px solid var(--border-subtle);
 }
 
 .glass-elevated {
   background: var(--bg-elevated);
-  backdrop-filter: blur(32px) saturate(1.5);
-  -webkit-backdrop-filter: blur(32px) saturate(1.5);
   border: 1px solid var(--border-medium);
 }
 

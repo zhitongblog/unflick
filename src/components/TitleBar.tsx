@@ -12,7 +12,10 @@ export default function TitleBar() {
       data-tauri-drag-region
       className="flex h-9 shrink-0 items-center justify-between px-3 select-none"
       style={{
-        background: "linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.15))",
+        // v0.8: opaque so it cleanly occludes the video region above the
+        // mpv child window. Subtle gradient retains depth without trying
+        // to blend with what's below.
+        background: "linear-gradient(to bottom, #1a1a26, #0a0a0f)",
       }}
     >
       {/* Left: brand name + optional incognito badge */}
