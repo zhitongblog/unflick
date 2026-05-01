@@ -82,8 +82,11 @@ export default function PlaylistPanel() {
 
   const handleAddFile = async () => {
     try {
-      const result = await invoke<{ path: string | null }>("open_file_dialog");
-      if (result.path) await add(result.path);
+      // Multi-select — Shift/Ctrl-click in the dialog to pick a batch.
+      const result = await invoke<{ paths: string[] }>("open_files_dialog");
+      for (const p of result.paths) {
+        await add(p);
+      }
     } catch (e) {
       console.error("Failed to open file dialog:", e);
     }
@@ -97,17 +100,8 @@ export default function PlaylistPanel() {
 
   return (
     <>
-      {/* Backdrop */}
-      <motion.div
-        className="absolute inset-0 z-20 bg-black/60"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={togglePlaylist}
-      />
-
-      {/* Panel */}
+      {/* Panel — slides in from the right and shares space with the
+          video region instead of overlapping it. No backdrop. */}
       <motion.div
         className="absolute bottom-0 right-0 top-0 z-30 flex w-72 flex-col"
         style={{

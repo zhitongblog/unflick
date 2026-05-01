@@ -160,6 +160,8 @@
       "updated": "업데이트 완료"
     },
     "savedToast": "저장됨",
+    "alwaysOnTop": "항상 위에 표시",
+    "alwaysOnTopHint": "unflick 창을 항상 다른 앱 위에 고정합니다. 작업하면서 영상을 볼 때 편리합니다.",
     "fileAssoc": {
       "section": "파일 연결",
       "body": "unflick 은 mp4, mkv, avi, mov, webm 등 13 개 비디오 형식과 mp3, flac, wav 등 7 개 오디오 형식을 열 수 있습니다. 아래 버튼으로 Windows 기본 앱으로 설정하세요.",

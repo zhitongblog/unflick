@@ -7,7 +7,7 @@ import PlayerBar from "./components/Player/PlayerBar";
 import TitleBar from "./components/TitleBar";
 import LibraryPanel from "./components/Library/LibraryPanel";
 import PlaylistPanel from "./components/Playlist/PlaylistPanel";
-import ContextMenu, { type ContextMenuEntry } from "./components/ContextMenu";
+import { type ContextMenuEntry } from "./components/ContextMenu";
 import ClipDialog from "./components/ClipDialog";
 import UrlDialog from "./components/UrlDialog";
 import SettingsPanel from "./components/Settings/SettingsPanel";
@@ -35,12 +35,26 @@ function App() {
   const incognito = useIncognitoStore((s) => s.enabled);
   const toggleIncognito = useIncognitoStore((s) => s.toggle);
   const [isDragging, setIsDragging] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // Right-click menu is rendered via Win32 TrackPopupMenu — no React state needed.
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateResult | null>(null);
   const [toast, setToast] = useState<{ id: number; kind: "success" | "error"; message: string } | null>(null);
+  // Default-player prompt: show once after first launch unless dismissed.
+  // Stored in localStorage so it survives reinstalls but not "clear data."
+  const [showDefaultPrompt, setShowDefaultPrompt] = useState<boolean>(
+    () => typeof window !== "undefined" && !localStorage.getItem("default-prompt-dismissed")
+  );
+  // Subtitle generation status — persistent banner that stays visible
+  // throughout the (multi-minute) whisper run, replacing the toast that
+  // auto-dismissed before the user could read it.
+  const [genStatus, setGenStatus] = useState<
+    | { kind: "running" }
+    | { kind: "success" }
+    | { kind: "error"; message: string }
+    | null
+  >(null);
   const t = useStrings();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRegionRef = useRef<HTMLDivElement | null>(null);
@@ -85,6 +99,7 @@ function App() {
     const el = videoRegionRef.current;
     if (!el) return;
 
+    let last: { x: number; y: number; w: number; h: number } | null = null;
     const sync = () => {
       const rect = el.getBoundingClientRect();
       // Tauri's main HWND on Windows reports its rect in logical (CSS-
@@ -96,6 +111,20 @@ function App() {
       const y = Math.round(rect.top);
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
+      // Idempotence: ResizeObserver / window-resize listeners fire freely;
+      // skip if the rect is unchanged. Each set_geometry call hits Win32
+      // SetWindowPos AND signals the render thread to redraw, so spamming
+      // it produces visible flicker on the layered popup.
+      if (
+        last &&
+        last.x === x &&
+        last.y === y &&
+        last.w === w &&
+        last.h === h
+      ) {
+        return;
+      }
+      last = { x, y, w, h };
       invoke("video_surface_set_geometry", { x, y, w, h }).catch(() => {});
     };
 
@@ -129,27 +158,88 @@ function App() {
       window.removeEventListener("unflick:popover-close", onClose);
     };
   }, []);
+  const desiredVisibleRef = useRef(false);
+  const lastVisibleRef = useRef<boolean | null>(null);
   useEffect(() => {
-    const anyPanelOpen =
-      showLibrary ||
-      showPlaylist ||
-      showSettings ||
-      showClipDialog ||
-      showUrlDialog ||
-      contextMenu !== null ||
-      popoverOpen;
-    const visible = state !== "stopped" && !anyPanelOpen;
+    // Hide the popup for full-screen modals + popovers + context-menu
+    // states. Right-click menus now go through TrackPopupMenu (an
+    // OS-level menu that floats above the popup automatically), so the
+    // React contextMenu state path is dead code now — but we still hide
+    // for popoverOpen because Subtitle/Audio/Filters menus anchor inside
+    // the player bar and don't actually need the popup gone. Revisit if
+    // the popoverOpen-hides behaviour annoys anyone.
+    const blocking = showSettings || showClipDialog || showUrlDialog || popoverOpen;
+    const visible = state !== "stopped" && !blocking;
+    desiredVisibleRef.current = visible;
+    if (lastVisibleRef.current === visible) return;
+    lastVisibleRef.current = visible;
     invoke("video_surface_set_visible", { visible }).catch(() => {});
-  }, [
-    state,
-    showLibrary,
-    showPlaylist,
-    showSettings,
-    showClipDialog,
-    showUrlDialog,
-    contextMenu,
-    popoverOpen,
-  ]);
+  }, [state, showSettings, showClipDialog, showUrlDialog, popoverOpen]);
+
+  // Re-assert popup visibility on a couple of "things may have gone
+  // wrong" triggers. The Rust side hides the popup when the main window
+  // is minimized; the visibility effect's idempotence cache keeps it
+  // from re-pushing the same `visible:true` value, so we need an
+  // explicit poke. The `main-restored` event fires from on_window_event
+  // when the main window comes back from a minimize / size-zero state.
+  useEffect(() => {
+    const reassert = () => {
+      if (desiredVisibleRef.current) {
+        lastVisibleRef.current = null; // bust the cache so next push lands
+        invoke("video_surface_set_visible", { visible: true }).catch(() => {});
+      }
+    };
+    const unlisten = listen("main-restored", reassert);
+    window.addEventListener("focus", reassert);
+    return () => {
+      window.removeEventListener("focus", reassert);
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
+  // Subtitle generation lifecycle — listen for events from PlayerBar's
+  // generate handler. Keep the banner up the entire time so the user
+  // doesn't think the click was a no-op while whisper is grinding.
+  useEffect(() => {
+    const onStart = () => setGenStatus({ kind: "running" });
+    const onSuccess = () => {
+      setGenStatus({ kind: "success" });
+      setTimeout(() => setGenStatus((s) => (s?.kind === "success" ? null : s)), 4000);
+    };
+    const onError = (e: Event) => {
+      const detail = (e as CustomEvent<{ message: string }>).detail;
+      setGenStatus({ kind: "error", message: detail?.message ?? "" });
+      setTimeout(() => setGenStatus((s) => (s?.kind === "error" ? null : s)), 8000);
+    };
+    window.addEventListener("unflick:gen-start", onStart);
+    window.addEventListener("unflick:gen-success", onSuccess);
+    window.addEventListener("unflick:gen-error", onError as EventListener);
+    return () => {
+      window.removeEventListener("unflick:gen-start", onStart);
+      window.removeEventListener("unflick:gen-success", onSuccess);
+      window.removeEventListener("unflick:gen-error", onError as EventListener);
+    };
+  }, []);
+
+  // Page Visibility API: the WebView's `document.hidden` flips to true
+  // whenever the OS considers the window non-visible — minimized,
+  // taskbar-hidden, etc. Tauri's WindowEvent::Resized doesn't always
+  // fire (0,0) on minimize across Win11 builds, so we use this as the
+  // primary minimize/restore signal. Hide popup when hidden, replay
+  // desired visibility when visible.
+  useEffect(() => {
+    const onVisChange = () => {
+      if (document.hidden) {
+        lastVisibleRef.current = false;
+        invoke("video_surface_set_visible", { visible: false }).catch(() => {});
+      } else if (desiredVisibleRef.current) {
+        lastVisibleRef.current = null;
+        invoke("video_surface_set_visible", { visible: true }).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisChange);
+    return () => document.removeEventListener("visibilitychange", onVisChange);
+  }, []);
 
   const handleOpenFile = useCallback(async () => {
     const path = await openFileDialog();
@@ -287,7 +377,7 @@ function App() {
           break;
         case "ArrowUp":
           e.preventDefault();
-          setVolume(Math.min(100, volume + 5));
+          setVolume(Math.min(150, volume + 5));
           break;
         case "ArrowDown":
           e.preventDefault();
@@ -369,6 +459,14 @@ function App() {
       const savedVolume = useSettingsStore.getState().volume;
       if (savedVolume !== undefined && savedVolume !== 100) {
         setVolume(savedVolume);
+      }
+
+      // Apply persisted always-on-top preference. The Tauri window
+      // doesn't auto-restore this from any config so we tell Rust to
+      // re-apply once settings have loaded.
+      const aot = useSettingsStore.getState().alwaysOnTop;
+      if (aot) {
+        invoke("set_always_on_top", { enabled: true }).catch(() => {});
       }
 
       // Auto-detect bundled whisper whenever the local paths are not configured.
@@ -475,7 +573,7 @@ useEffect(() => {
           break;
         case "volume_up":
           usePlayerStore.getState().setVolume(
-            Math.min(100, usePlayerStore.getState().volume + 5)
+            Math.min(150, usePlayerStore.getState().volume + 5)
           );
           break;
         case "volume_down":
@@ -613,7 +711,7 @@ useEffect(() => {
     },
   ];
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+  const handleContextMenu = useCallback(async (e: React.MouseEvent) => {
     // Don't override the native context menu (paste/copy) when the user
     // right-clicks inside an input or contenteditable element
     const t = e.target as HTMLElement;
@@ -625,8 +723,37 @@ useEffect(() => {
       return;
     }
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  }, []);
+
+    // Right-click goes through Win32 TrackPopupMenu instead of the
+    // React ContextMenu component. The video popup is a top-level
+    // window above the WebView, so a React menu would render *behind*
+    // it; OS-level menus float above every app window automatically,
+    // so the video keeps playing and the menu is always visible.
+    // Native styling (Win11 default) is the cost.
+    const items = contextMenuItems.map((item) =>
+      "separator" in item && item.separator
+        ? { label: "", separator: true, disabled: false }
+        : {
+            label: (item as { label: string }).label,
+            separator: false,
+            disabled: (item as { disabled?: boolean }).disabled ?? false,
+          }
+    );
+    try {
+      const selected = await invoke<number | null>(
+        "show_native_context_menu",
+        { items, x: e.screenX, y: e.screenY }
+      );
+      if (selected != null) {
+        const item = contextMenuItems[selected];
+        if (item && !("separator" in item && item.separator)) {
+          (item as { onClick: () => void }).onClick();
+        }
+      }
+    } catch (err) {
+      console.error("[contextmenu] native menu failed:", err);
+    }
+  }, [contextMenuItems]);
 
   return (
     <div
@@ -669,6 +796,105 @@ useEffect(() => {
                   localStorage.setItem("update-dismissed-version", updateInfo.latest);
                 }
                 setUpdateInfo(null);
+              }}
+              className="text-white/70 hover:text-white transition"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Subtitle generation status — persistent until success/error
+          dismissal. Whisper runs can take minutes; a transient toast
+          would auto-hide and leave the user wondering whether the click
+          even worked. */}
+      <AnimatePresence>
+        {genStatus && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={`flex items-center gap-3 px-4 py-2 text-sm text-white ${
+              genStatus.kind === "running"
+                ? "bg-gradient-to-r from-violet-600/90 to-pink-600/90"
+                : genStatus.kind === "success"
+                ? "bg-emerald-600/90"
+                : "bg-red-600/90"
+            }`}
+          >
+            {genStatus.kind === "running" && (
+              <>
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span>Generating subtitles… (whisper, may take several minutes)</span>
+              </>
+            )}
+            {genStatus.kind === "success" && (
+              <>
+                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 0 1 1.4-1.4L8.5 12 15.3 5.3a1 1 0 0 1 1.4 0z"/></svg>
+                <span>Subtitles generated and loaded</span>
+              </>
+            )}
+            {genStatus.kind === "error" && (
+              <>
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 4v5h2V6H9zm0 7v2h2v-2H9z"/></svg>
+                <span className="truncate">
+                  Subtitle generation failed:{" "}
+                  {genStatus.message.length > 100
+                    ? genStatus.message.slice(0, 100) + "…"
+                    : genStatus.message}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setGenStatus(null)}
+                  className="ml-auto text-white/70 hover:text-white"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z"/></svg>
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Default-player prompt — first-launch banner offering to make unflick
+          the default for video extensions. Tauri registers the file
+          associations at install time, but Windows still requires the user
+          to confirm via Settings → Default apps before they take effect. */}
+      <AnimatePresence>
+        {showDefaultPrompt && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex items-center gap-3 px-4 py-2 text-sm bg-gradient-to-r from-purple-600/85 to-fuchsia-600/85 text-white"
+          >
+            <span className="font-medium">{t.settings.fileAssoc.section}</span>
+            <span className="text-white/80 truncate">
+              {t.settings.fileAssoc.body}
+            </span>
+            <button
+              type="button"
+              className="ml-auto whitespace-nowrap px-3 py-0.5 rounded-md bg-white/15 hover:bg-white/25 transition text-xs font-medium"
+              onClick={() => {
+                invoke("open_default_apps_settings").catch((e) => console.error(e));
+                localStorage.setItem("default-prompt-dismissed", "1");
+                setShowDefaultPrompt(false);
+              }}
+            >
+              {t.settings.fileAssoc.button}
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => {
+                localStorage.setItem("default-prompt-dismissed", "1");
+                setShowDefaultPrompt(false);
               }}
               className="text-white/70 hover:text-white transition"
             >
@@ -795,18 +1021,21 @@ useEffect(() => {
         )}
 
         {/* Punch-through video region.
-            mpv renders to a native child window underneath the WebView; this
-            div's CSS transparency exposes that region. ResizeObserver above
-            keeps the native window aligned with this rect. The chrome
-            (TitleBar, PlayerBar, panels, dialogs) sits in opaque siblings or
-            absolute overlays so they obscure the native window where the UI
-            wants pixels. */}
+            mpv renders to a top-level overlay popup; this div's
+            getBoundingClientRect drives where Rust positions that
+            popup. Side panels (Library / Playlist) shrink the rect
+            instead of overlapping it, so video stays visible while
+            the user browses. ResizeObserver picks up width changes
+            and forwards them to Rust automatically. */}
         <div
           ref={videoRegionRef}
-          className="absolute inset-0 h-full w-full"
+          className="absolute h-full"
           style={{
-            background: state === "stopped" ? "black" : "transparent",
-            // pointer events still go to React for click/dblclick handlers.
+            top: 0,
+            bottom: 0,
+            left: showLibrary ? 320 : 0,
+            right: showPlaylist ? 288 : 0,
+            background: "transparent",
           }}
           aria-label="video region"
         />
@@ -849,15 +1078,8 @@ useEffect(() => {
         )}
       </AnimatePresence>
 
-      {/* Context menu */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={contextMenuItems}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {/* Right-click menu is now rendered via Win32 TrackPopupMenu in
+          handleContextMenu — see show_native_context_menu command. */}
 
       {/* Library panel — slides from left */}
       <AnimatePresence>

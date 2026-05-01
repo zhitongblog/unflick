@@ -160,6 +160,8 @@
       "updated": "Updated"
     },
     "savedToast": "Saved",
+    "alwaysOnTop": "Always on top",
+    "alwaysOnTopHint": "Pin the unflick window above all other apps. Useful for watching while working in another window.",
     "fileAssoc": {
       "section": "File Associations",
       "body": "unflick can open mp4, mkv, avi, mov, webm and 9 more video formats, plus mp3, flac, wav and 4 more audio formats. Click below to make it the default in Windows.",

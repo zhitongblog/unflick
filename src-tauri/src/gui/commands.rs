@@ -56,6 +56,148 @@ pub fn video_surface_set_visible(
     Ok(())
 }
 
+/// Set the main window — and the video popup — to always-on-top mode.
+/// Settings persists this; on app start the frontend re-applies the
+/// stored preference once the window is up.
+#[command]
+pub fn set_always_on_top(
+    enabled: bool,
+    app: AppHandle,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    window
+        .set_always_on_top(enabled)
+        .map_err(|e| e.to_string())?;
+    if let Some(rl) = gui_player.render_loop.get() {
+        rl.set_always_on_top(enabled);
+    }
+    Ok(())
+}
+
+/// Fade the video popup to a given alpha (0–255). Called by the frontend
+/// when context menus / popovers open in the WebView so the menu shows
+/// through the otherwise-opaque popup. 255 restores normal playback.
+#[command]
+pub fn video_surface_set_alpha(
+    alpha: u8,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    if let Some(rl) = gui_player.render_loop.get() {
+        rl.set_alpha(alpha);
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+pub struct NativeMenuItem {
+    pub label: String,
+    #[serde(default)]
+    pub separator: bool,
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+/// Show a Win32 TrackPopupMenu at the given screen coordinates and
+/// return the index of the selected item (or `null` for dismiss).
+///
+/// This bypasses the React-rendered context menu for one reason: the
+/// React menu lives in the WebView, but the video popup is a separate
+/// top-level WS_POPUP window stacked above the WebView. A React menu
+/// renders behind the popup → invisible while the popup is opaque,
+/// while hiding the popup blacks out the video. The OS-level menu sits
+/// above every app-owned window automatically, so the video keeps
+/// playing and the menu is always readable. We accept the visual
+/// styling tradeoff (Windows-native vs unflick's purple theme) for the
+/// z-order win.
+#[cfg(target_os = "windows")]
+#[command]
+pub async fn show_native_context_menu(
+    items: Vec<NativeMenuItem>,
+    x: i32,
+    y: i32,
+    above: Option<bool>,
+    app: AppHandle,
+) -> Result<Option<u32>, String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr;
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        AppendMenuW, CreatePopupMenu, DestroyMenu, GetForegroundWindow, SetForegroundWindow,
+        TrackPopupMenu, MF_GRAYED, MF_SEPARATOR, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
+        TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN,
+    };
+
+    let main = app.get_webview_window("main").ok_or("no main window")?;
+
+    // TrackPopupMenu MUST run on the message-pump thread, so dispatch it
+    // through the main window's runtime and return the selection via a
+    // oneshot. The call blocks the UI thread for the duration of the
+    // menu (the user is interacting with it — that's expected).
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    main.run_on_main_thread(move || {
+        let result = unsafe {
+            let menu = CreatePopupMenu();
+            if menu.is_null() {
+                let _ = tx.send(Err("CreatePopupMenu failed".to_string()));
+                return;
+            }
+            for (i, item) in items.iter().enumerate() {
+                if item.separator {
+                    AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
+                } else {
+                    let wide: Vec<u16> = OsStr::new(&item.label)
+                        .encode_wide()
+                        .chain(std::iter::once(0))
+                        .collect();
+                    let mut flags = MF_STRING;
+                    if item.disabled {
+                        flags |= MF_GRAYED;
+                    }
+                    // Use 1-based IDs so 0 can mean "dismissed".
+                    AppendMenuW(menu, flags, (i + 1) as usize, wide.as_ptr());
+                }
+            }
+
+            // TrackPopupMenu wants a foreground window as owner so the
+            // menu blocks correctly. Use the *current* foreground window
+            // (which should be unflick's main HWND because the user just
+            // right-clicked it).
+            let owner: HWND = GetForegroundWindow();
+            // Quirk per MSDN: foreground window must be re-set when
+            // showing menu from a non-foreground process to avoid menu
+            // dismissing immediately.
+            SetForegroundWindow(owner);
+
+            let v_align = if above.unwrap_or(false) {
+                TPM_BOTTOMALIGN
+            } else {
+                TPM_TOPALIGN
+            };
+            let chosen = TrackPopupMenu(
+                menu,
+                TPM_LEFTALIGN | v_align | TPM_RETURNCMD | TPM_NONOTIFY,
+                x,
+                y,
+                0,
+                owner,
+                ptr::null(),
+            );
+            DestroyMenu(menu);
+            Ok::<Option<u32>, String>(if chosen == 0 {
+                None
+            } else {
+                Some(chosen as u32 - 1)
+            })
+        };
+        let _ = tx.send(result);
+    })
+    .map_err(|e| e.to_string())?;
+
+    rx.await.map_err(|e| e.to_string())?
+}
+
 /// User-data path for an auto-updated copy of yt-dlp. Updates are written here
 /// so the bundled (read-only) resource stays untouched.
 fn yt_dlp_user_path() -> Option<std::path::PathBuf> {
@@ -535,23 +677,48 @@ pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer
 }
 
 #[command]
-pub fn toggle_pip(app: AppHandle) -> Result<Value, String> {
-    let window = app.get_webview_window("main").ok_or("no main window")?;
-    let is_on_top = window.is_always_on_top().map_err(|e| e.to_string())?;
+pub fn toggle_pip(app: AppHandle, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::OnceLock;
+    // Track PiP state independently of always-on-top. The previous
+    // implementation inferred "in PiP" from is_always_on_top(), which
+    // breaks the moment the user enables the global Always-on-Top
+    // setting — toggle_pip then routes into the *exit* branch even
+    // when not in PiP, so the button visibly does nothing the second
+    // time it's pressed and PiP can only be undone via the right-click
+    // menu's separate handler.
+    static IN_PIP: OnceLock<AtomicBool> = OnceLock::new();
+    static PRE_AOT: OnceLock<AtomicBool> = OnceLock::new();
+    let in_pip = IN_PIP.get_or_init(|| AtomicBool::new(false));
+    let pre_aot = PRE_AOT.get_or_init(|| AtomicBool::new(false));
 
-    if is_on_top {
-        // Exit PiP: restore normal size, disable always-on-top
-        window.set_always_on_top(false).map_err(|e| e.to_string())?;
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+
+    if in_pip.load(Ordering::Relaxed) {
+        // Exit PiP: restore the AOT state we captured on entry + normal size
+        let restore_aot = pre_aot.load(Ordering::Relaxed);
+        window
+            .set_always_on_top(restore_aot)
+            .map_err(|e| e.to_string())?;
+        if let Some(rl) = gui_player.render_loop.get() {
+            rl.set_always_on_top(restore_aot);
+        }
         let _ = window.set_size(tauri::LogicalSize::new(1024.0, 640.0));
-        // Center the window on screen
         let _ = window.center();
+        in_pip.store(false, Ordering::Relaxed);
         Ok(json!({"pip": false}))
     } else {
-        // Enter PiP: small window, always-on-top
+        // Enter PiP: capture current AOT so we can restore on exit,
+        // then force AOT on + shrink + park bottom-right.
+        let cur_aot = window.is_always_on_top().unwrap_or(false);
+        pre_aot.store(cur_aot, Ordering::Relaxed);
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        if let Some(rl) = gui_player.render_loop.get() {
+            rl.set_always_on_top(true);
+        }
         let _ = window.set_size(tauri::LogicalSize::new(400.0, 250.0));
-        // Move to bottom-right corner
         let _ = window.set_position(tauri::LogicalPosition::new(1400.0, 700.0));
+        in_pip.store(true, Ordering::Relaxed);
         Ok(json!({"pip": true}))
     }
 }
@@ -588,6 +755,32 @@ pub async fn open_file_dialog() -> Result<Value, String> {
     match result {
         Some(path) => Ok(json!({"path": path.to_string_lossy().to_string()})),
         None => Ok(json!({"path": null})),
+    }
+}
+
+/// Multi-select variant of the open dialog. Used by the Playlist panel
+/// so the user can hold Shift / Ctrl to drop a batch of files in at
+/// once instead of clicking Add → Browse → pick one over and over.
+#[command]
+pub async fn open_files_dialog() -> Result<Value, String> {
+    let result = tokio::task::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .add_filter("Video", &["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpg", "mpeg"])
+            .add_filter("All Files", &["*"])
+            .pick_files()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(paths) => {
+            let stringified: Vec<String> = paths
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            Ok(json!({ "paths": stringified }))
+        }
+        None => Ok(json!({ "paths": [] })),
     }
 }
 

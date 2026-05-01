@@ -1,15 +1,39 @@
-import { useState } from "react";
-import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useLibraryStore } from "../../stores/libraryStore";
 import { usePlaylistStore } from "../../stores/playlistStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import ProgressBar from "./ProgressBar";
 import PlaybackControls from "./PlaybackControls";
 import VolumeControl from "./VolumeControl";
 import VideoFilters from "../VideoFilters";
-import SubtitleMenu from "../SubtitleMenu";
-import AudioMenu from "../AudioMenu";
+
+type NativeItem = { label: string; separator: boolean; disabled: boolean };
+type NativeAction = (() => void | Promise<void>) | null;
+
+async function showNativeMenuAt(
+  btn: HTMLElement,
+  items: NativeItem[],
+  actions: NativeAction[],
+) {
+  const rect = btn.getBoundingClientRect();
+  const x = Math.round(window.screenX + rect.left);
+  const y = Math.round(window.screenY + rect.top); // top of button; menu opens above
+  try {
+    const selected = await invoke<number | null>("show_native_context_menu", {
+      items,
+      x,
+      y,
+      above: true,
+    });
+    if (selected != null) {
+      const a = actions[selected];
+      if (a) await a();
+    }
+  } catch (err) {
+    console.error("[native menu] failed:", err);
+  }
+}
 
 function LibraryIcon() {
   return (
@@ -95,8 +119,107 @@ export default function PlayerBar() {
   const { file, state } = usePlayerStore();
   const toggleLibrary = useLibraryStore((s) => s.toggleLibrary);
   const { togglePlaylist, items: playlistItems } = usePlaylistStore();
-  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
-  const [showAudioMenu, setShowAudioMenu] = useState(false);
+
+  // Native menu helpers: build the items + actions for subtitle/audio buttons.
+  // Done at click time so the lists reflect current state.
+  const handleSubtitleButton = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    const btn = e.currentTarget;
+    const ps = usePlayerStore.getState();
+    const ss = useSettingsStore.getState();
+    const subs = ps.subtitles;
+    const hasActive = subs.some((t) => t.active);
+
+    const items: NativeItem[] = [];
+    const actions: NativeAction[] = [];
+
+    items.push({ label: hasActive ? "Off" : "✓ Off", separator: false, disabled: false });
+    actions.push(() => ps.selectSubtitle(null));
+
+    for (const t of subs) {
+      items.push({
+        label: (t.active ? "✓ " : "") + t.label,
+        separator: false,
+        disabled: false,
+      });
+      actions.push(() => ps.selectSubtitle(t.id));
+    }
+
+    items.push({ label: "", separator: true, disabled: false });
+    actions.push(null);
+
+    items.push({ label: "Load subtitle file…", separator: false, disabled: false });
+    actions.push(async () => {
+      try {
+        const r = await invoke<{ path: string | null }>("open_subtitle_dialog");
+        if (r.path) await ps.loadSubtitle(r.path);
+      } catch (err) {
+        window.dispatchEvent(new CustomEvent("unflick:toast", {
+          detail: { kind: "error", message: `Load failed: ${String(err).slice(0, 100)}` },
+        }));
+      }
+    });
+
+    if (ss.whisperMode === "local" && ps.file) {
+      items.push({ label: "Generate AI Subtitles", separator: false, disabled: false });
+      const args = {
+        videoPath: ps.file,
+        mode: "local" as const,
+        whisperBinary: ss.whisperBinaryPath ?? undefined,
+        modelPath: ss.whisperModelPath ?? undefined,
+      };
+      actions.push(async () => {
+        // Dispatch lifecycle events to App.tsx's persistent banner.
+        // Toasts auto-dismiss too fast for a multi-minute whisper run.
+        console.log("[unflick] subtitle generation invoked", args);
+        window.dispatchEvent(new CustomEvent("unflick:gen-start"));
+        try {
+          const result = await invoke<{ srt_path: string }>("generate_subtitles", args);
+          console.log("[unflick] generate_subtitles returned", result);
+          await usePlayerStore.getState().loadSubtitle(result.srt_path);
+          window.dispatchEvent(new CustomEvent("unflick:gen-success"));
+        } catch (err) {
+          console.error("[unflick] generate_subtitles failed:", err);
+          window.dispatchEvent(new CustomEvent("unflick:gen-error", {
+            detail: { message: String(err) },
+          }));
+        }
+      });
+    }
+
+    await showNativeMenuAt(btn, items, actions);
+  };
+
+  const handleAudioButton = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    const btn = e.currentTarget;
+    type AudioTrack = { id: number; label: string; active: boolean };
+    let tracks: AudioTrack[] = [];
+    try {
+      tracks = await invoke<AudioTrack[]>("audio_list");
+    } catch {
+      tracks = [];
+    }
+
+    const items: NativeItem[] = [];
+    const actions: NativeAction[] = [];
+
+    if (tracks.length === 0) {
+      items.push({ label: "No audio tracks", separator: false, disabled: true });
+      actions.push(null);
+    } else {
+      for (const t of tracks) {
+        items.push({
+          label: (t.active ? "✓ " : "") + t.label,
+          separator: false,
+          disabled: false,
+        });
+        actions.push(() => {
+          invoke("audio_select", { id: t.id }).catch(console.error);
+        });
+      }
+    }
+
+    await showNativeMenuAt(btn, items, actions);
+  };
 
   return (
     <div
@@ -145,35 +268,25 @@ export default function PlayerBar() {
         <div className="flex flex-1 items-center justify-end gap-0.5">
           <VolumeControl />
 
-          {/* Audio */}
-          <div className="relative">
-            <button
-              className={barBtnClass(showAudioMenu)}
-              onClick={() => { setShowAudioMenu((v) => !v); setShowSubtitleMenu(false); }}
-              title="Audio Tracks"
-              disabled={state === "stopped"}
-            >
-              <AudioIcon />
-            </button>
-            <AnimatePresence>
-              {showAudioMenu && <AudioMenu onClose={() => setShowAudioMenu(false)} />}
-            </AnimatePresence>
-          </div>
+          {/* Audio — Win32 native menu (avoids popup occlusion) */}
+          <button
+            className={barBtnClass()}
+            onClick={handleAudioButton}
+            title="Audio Tracks"
+            disabled={state === "stopped"}
+          >
+            <AudioIcon />
+          </button>
 
-          {/* Subtitles */}
-          <div className="relative">
-            <button
-              className={barBtnClass(showSubtitleMenu)}
-              onClick={() => { setShowSubtitleMenu((v) => !v); setShowAudioMenu(false); }}
-              title="Subtitles"
-              disabled={state === "stopped"}
-            >
-              <SubtitleIcon />
-            </button>
-            <AnimatePresence>
-              {showSubtitleMenu && <SubtitleMenu onClose={() => setShowSubtitleMenu(false)} />}
-            </AnimatePresence>
-          </div>
+          {/* Subtitles — Win32 native menu */}
+          <button
+            className={barBtnClass()}
+            onClick={handleSubtitleButton}
+            title="Subtitles"
+            disabled={state === "stopped"}
+          >
+            <SubtitleIcon />
+          </button>
 
           {/* Playlist */}
           <button

@@ -45,6 +45,19 @@ pub trait VideoSurface: Send + Sync {
     /// the WebView covers the whole window with a modal dialog.
     fn set_visible(&self, visible: bool);
 
+    /// Pin / unpin the surface above all other windows. Mirrors the main
+    /// window's always-on-top toggle so the video stays attached.
+    /// Default: no-op (platform stub).
+    fn set_always_on_top(&self, _enabled: bool) {}
+
+    /// Set the surface's overall opacity (0–255). 255 is fully opaque,
+    /// 0 is fully transparent. Used to fade the video popup when an
+    /// in-app menu or dialog opens — the menu is rendered in the
+    /// WebView *below* the popup in z-order, so lowering the popup
+    /// alpha lets the menu show through without hiding the video
+    /// completely. Default: no-op (platform stub).
+    fn set_alpha(&self, _alpha: u8) {}
+
     /// Current framebuffer size in physical pixels — pass into mpv's FBO param.
     fn size(&self) -> (i32, i32);
 

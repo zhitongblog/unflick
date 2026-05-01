@@ -160,6 +160,8 @@
       "updated": "Mis à jour"
     },
     "savedToast": "Enregistré",
+    "alwaysOnTop": "Toujours au premier plan",
+    "alwaysOnTopHint": "Garde la fenêtre unflick au-dessus de toutes les autres apps. Pratique pour regarder pendant que tu travailles ailleurs.",
     "fileAssoc": {
       "section": "Associations de fichiers",
       "body": "unflick ouvre mp4, mkv, avi, mov, webm et 9 autres formats vidéo, plus mp3, flac, wav et 4 autres formats audio. Clique ci-dessous pour le définir comme défaut dans Windows.",

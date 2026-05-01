@@ -91,6 +91,16 @@ impl Player {
     }
 
     pub fn resume(&self) -> Result<()> {
+        // After EOF mpv stays paused at duration. A naive unpause is a
+        // no-op there, which feels like "the play button is broken" —
+        // so when the user hits resume from end-of-file, rewind to the
+        // start. Half-second tolerance handles float drift between
+        // time-pos and duration.
+        let pos = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
+        let dur = self.mpv.get_property_f64("duration").unwrap_or(0.0);
+        if dur > 0.0 && pos >= dur - 0.5 {
+            let _ = self.mpv.set_property_f64("time-pos", 0.0);
+        }
         self.mpv.set_property_bool("pause", false)
     }
 

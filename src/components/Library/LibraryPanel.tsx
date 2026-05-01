@@ -118,17 +118,9 @@ export default function LibraryPanel() {
 
   return (
     <>
-      {/* Backdrop */}
-      <motion.div
-        className="absolute inset-0 z-20 bg-black/60"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={toggleLibrary}
-      />
-
-      {/* Panel */}
+      {/* Panel — slides in from left and *displaces* the video region
+          so they share screen space side-by-side. No backdrop because
+          the panel doesn't overlap the video any more. */}
       <motion.div
         className="absolute bottom-0 left-0 top-0 z-30 flex w-80 flex-col"
         style={{

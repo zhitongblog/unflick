@@ -123,6 +123,18 @@ pub fn run() {
                 }
             }
 
+            // ── Windows file-association registration ──────────────────────
+            // Tauri's NSIS bundling only writes basic OpenWithProgIDs entries.
+            // We additionally register unflick under HKCU\Software\
+            // RegisteredApplications so it appears in Settings → Default apps
+            // for the user. Idempotent, runs every launch.
+            #[cfg(target_os = "windows")]
+            {
+                if let Err(e) = core::win_assoc::register_default_program() {
+                    eprintln!("[unflick] file-assoc registration failed: {e}");
+                }
+            }
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -147,6 +159,9 @@ pub fn run() {
             commands::open_default_apps_settings,
             commands::video_surface_set_geometry,
             commands::video_surface_set_visible,
+            commands::video_surface_set_alpha,
+            commands::show_native_context_menu,
+            commands::set_always_on_top,
             commands::player_play,
             commands::player_pause,
             commands::player_resume,
@@ -160,6 +175,7 @@ pub fn run() {
             commands::set_fullscreen,
             commands::exit_fullscreen,
             commands::open_file_dialog,
+            commands::open_files_dialog,
             commands::open_folder_dialog,
             // Library
             commands::library_list,
@@ -213,18 +229,66 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.
-            // Owner relationship handles z-order automatically, but Windows
-            // doesn't move/resize the popup when the owner moves/resizes —
-            // we have to drive that ourselves by re-applying the cached
-            // client-coord geometry on every owner reflow.
+            // Owner relationship gives us z-order tracking *within* an
+            // app's window stack, but Windows still keeps the popup above
+            // every other app while *this* app is the foreground process.
+            // When the user alt-tabs to a different app, Win32 doesn't
+            // automatically dismiss the popup — and because the popup is
+            // a layered window with mpv painting at full opacity, the
+            // other app gets occluded. We compensate by hiding the popup
+            // on focus loss and re-showing it when focus returns.
+            //
+            // Geometry tracking on Move/Resize stays the same: re-apply
+            // the cached client rect so the popup follows the owner.
             match event {
-                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                tauri::WindowEvent::Moved(_) => {
                     if let Some(gp) = window.try_state::<GuiPlayer>() {
                         if let Some(rl) = gp.render_loop.get() {
                             let _ = rl.refresh_geometry();
                         }
                     }
                 }
+                tauri::WindowEvent::Resized(size) => {
+                    if let Some(gp) = window.try_state::<GuiPlayer>() {
+                        if let Some(rl) = gp.render_loop.get() {
+                            // Tauri reports a (0, 0) inner size when the
+                            // main window is minimized. The popup needs
+                            // to vanish in that case — otherwise it stays
+                            // floating on screen at its old screen-coords,
+                            // covering whatever is now beneath. Frontend
+                            // can't detect this either: ResizeObserver
+                            // doesn't fire on minimize because the
+                            // WebView itself stops painting.
+                            //
+                            // On restore (size goes from 0 back to a real
+                            // value) the frontend's ResizeObserver fires
+                            // again and re-pushes geometry, but it does
+                            // *not* re-push visibility — it sees its own
+                            // lastVisibleRef as already-true and skips.
+                            // We emit a "main-restored" event so the
+                            // frontend re-asserts visibility from its
+                            // desired-state ref, bypassing the cache.
+                            if size.width == 0 || size.height == 0 {
+                                rl.set_visible(false);
+                            } else {
+                                let _ = rl.refresh_geometry();
+                                let _ = window.emit("main-restored", ());
+                            }
+                        }
+                    }
+                }
+                // Focus-based hiding has been removed entirely. The
+                // earlier implementation hid the popup whenever Tauri
+                // fired Focused(false), which triggered on every transient
+                // focus blip on Win11 (notification toasts, IME panels,
+                // hover-activated taskbar previews). The resulting
+                // show/hide cycle was the user-visible "flicker." A 300 ms
+                // debounce wasn't enough — some Win11 focus blips outlast
+                // it. The popup is owned by the main window, so Win32's
+                // owner z-order handles alt-tabs in normal cases. For the
+                // "always-on-top" case the user explicitly asked for, the
+                // popup *should* stay above other apps — that's the whole
+                // feature.
                 _ => {}
             }
         })

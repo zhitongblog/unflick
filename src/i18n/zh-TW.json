@@ -160,6 +160,8 @@
       "updated": "已更新"
     },
     "savedToast": "已儲存",
+    "alwaysOnTop": "視窗置頂",
+    "alwaysOnTopHint": "讓 unflick 視窗永遠位於其他應用之上，方便邊工作邊看影片。",
     "fileAssoc": {
       "section": "檔案關聯",
       "body": "unflick 可以開啟 mp4、mkv、avi、mov、webm 等 13 種影片格式，以及 mp3、flac、wav 等 7 種音訊格式。點下面的按鈕把它設為 Windows 預設。",

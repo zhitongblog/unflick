@@ -16,6 +16,9 @@ interface SettingsState {
   /** When non-null, captureScreenshot() saves into this folder directly
    *  with an auto-generated filename, no save dialog. */
   screenshotDir: string | null;
+  /** Pin the unflick window above all other apps. Useful for watching
+   *  a tutorial / video chat while doing something else. Persisted. */
+  alwaysOnTop: boolean;
   toggleSettings: () => void;
   setWhisperMode: (mode: "off" | "local" | "api") => void;
   setWhisperModelPath: (path: string | null) => void;
@@ -26,6 +29,7 @@ interface SettingsState {
   setProxy: (p: string | null) => void;
   setLocale: (locale: Locale) => void;
   setScreenshotDir: (dir: string | null) => void;
+  setAlwaysOnTop: (v: boolean) => void;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
 }
@@ -44,6 +48,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // first paint reasonable even before that runs.
   locale: detectLocale(typeof navigator !== "undefined" ? navigator.language : undefined),
   screenshotDir: null,
+  alwaysOnTop: false,
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
 
@@ -56,6 +61,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setProxy: (p) => set({ proxy: p }),
   setLocale: (locale) => set({ locale }),
   setScreenshotDir: (dir) => set({ screenshotDir: dir }),
+  setAlwaysOnTop: (v) => set({ alwaysOnTop: v }),
 
   loadSettings: async () => {
     try {
@@ -91,6 +97,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         if (typeof data.screenshotDir === "string" || data.screenshotDir === null) {
           updates.screenshotDir = data.screenshotDir as string | null;
         }
+        if (typeof data.alwaysOnTop === "boolean") {
+          updates.alwaysOnTop = data.alwaysOnTop;
+        }
         set(updates);
       }
     } catch {
@@ -99,7 +108,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async () => {
-    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale, screenshotDir } = get();
+    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale, screenshotDir, alwaysOnTop } = get();
     const payload = JSON.stringify({
       whisperMode,
       whisperModelPath,
@@ -110,6 +119,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       proxy,
       locale,
       screenshotDir,
+      alwaysOnTop,
     });
     try {
       await invoke("save_settings", { settings: payload });

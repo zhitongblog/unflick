@@ -48,7 +48,7 @@ export default function VolumeControl() {
     (e: React.MouseEvent) => {
       if (!sliderRef.current) return;
       const rect = sliderRef.current.getBoundingClientRect();
-      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100));
+      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 150));
     },
     [setVolume],
   );
@@ -57,7 +57,7 @@ export default function VolumeControl() {
     (e: React.MouseEvent) => {
       if (e.buttons !== 1 || !sliderRef.current) return;
       const rect = sliderRef.current.getBoundingClientRect();
-      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100));
+      setVolume(Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 150));
     },
     [setVolume],
   );
@@ -95,7 +95,7 @@ export default function VolumeControl() {
                 <div
                   className="absolute inset-y-0 left-0 rounded-full"
                   style={{
-                    width: `${volume}%`,
+                    width: `${(volume / 150) * 100}%`,
                     background: "linear-gradient(90deg, #7C3AED, #DB2777)",
                   }}
                 />
@@ -103,7 +103,7 @@ export default function VolumeControl() {
                 <div
                   className="absolute top-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 transition-opacity group-hover:opacity-100"
                   style={{
-                    left: `${volume}%`,
+                    left: `${(volume / 150) * 100}%`,
                     transform: `translate(-50%, -50%)`,
                     width: "10px",
                     height: "10px",

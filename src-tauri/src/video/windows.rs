@@ -18,7 +18,7 @@ use glutin::context::{
     PossiblyCurrentContext, PossiblyCurrentGlContext,
 };
 use glutin::display::{Display, DisplayApiPreference, GlDisplay};
-use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface};
+use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
 };
@@ -28,8 +28,9 @@ use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, RegisterClassExW, SetLayeredWindowAttributes, SetWindowPos,
-    ShowWindow, CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_TOP, LWA_ALPHA, SWP_NOACTIVATE, SW_HIDE,
-    SW_SHOW, WNDCLASSEXW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    ShowWindow, CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST,
+    LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOW, WM_ERASEBKGND,
+    WNDCLASSEXW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
@@ -82,6 +83,14 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // Suppress GDI's "erase background" pass. With hbrBackground=NULL the
+    // default does nothing visible, but Windows still returns through a
+    // BeginPaint cycle that can produce a black flash between two GL
+    // SwapBuffers calls. Returning non-zero tells Windows we already
+    // erased — GL paints the whole client every frame, so this is true.
+    if msg == WM_ERASEBKGND {
+        return 1;
+    }
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
@@ -140,14 +149,11 @@ impl WindowsVideoSurface {
                 //   beneath us, not the popup.
                 // WS_EX_TOOLWINDOW: don't show in alt-tab or taskbar.
                 // WS_EX_LAYERED + WS_EX_TRANSPARENT: full mouse-event
-                //   pass-through. WS_EX_TRANSPARENT alone is documented
-                //   as click-through but in practice WebView2 still ate
-                //   right-click events through it; pairing with LAYERED
-                //   gives the OS-recognised "click-through layered
-                //   window" combo. We immediately set α=255 below so
-                //   GL rendering is unaffected — modern Windows treats
-                //   layered+opaque windows as a normal HW-accelerated
-                //   window for compositing purposes.
+                //   pass-through. WM_NCHITTEST → HTTRANSPARENT alone is
+                //   not enough on top-level windows — only the layered
+                //   window manager handles top-level click-through
+                //   correctly. We immediately set α=255 below so GL
+                //   rendering shows fully opaque.
                 WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
                 class_name,
                 title.as_ptr(),
@@ -170,10 +176,9 @@ impl WindowsVideoSurface {
             bail!("CreateWindowExW for video surface returned NULL");
         }
 
-        // Layered window with α=255 means "fully opaque, but participate in
-        // the layered-window click-through machinery". Required so the
-        // WS_EX_TRANSPARENT bit actually delivers right-click + drag-drop
-        // events through to the owner.
+        // Layered window with α=255: opaque to compositor, but participates
+        // in the layered-window click-through machinery so WS_EX_TRANSPARENT
+        // actually delivers right-click + drag-drop to the owner.
         unsafe {
             SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
         }
@@ -261,6 +266,17 @@ impl VideoSurface for WindowsVideoSurface {
                 let now = ctx
                     .make_current(&self.surface)
                     .map_err(|e| anyhow!("make_current (first): {e}"))?;
+                // Cap the swap rate to the display refresh. Without vsync
+                // the render thread issues SwapBuffers as fast as mpv
+                // calls update_callback, which on some Win11 drivers
+                // produces visible tearing/flicker because the popup
+                // window's compositor present is racing the GL flip.
+                if let Err(e) = self
+                    .surface
+                    .set_swap_interval(&now, SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()))
+                {
+                    eprintln!("[unflick-render] set_swap_interval failed (continuing): {e}");
+                }
                 *guard = Some(ContextSlot::Current(now));
                 Ok(())
             }
@@ -317,12 +333,50 @@ impl VideoSurface for WindowsVideoSurface {
         if ok == 0 {
             bail!("SetWindowPos failed");
         }
+
+        // Resize the GL backing surface to match the HWND. Without this,
+        // mpv keeps rendering into the original FBO size while the popup
+        // is whatever size we last asked Win32 for, so SwapBuffers
+        // stretches/clips the result — which on Win11 manifests as
+        // flicker because the compositor and the GL drawable disagree.
+        // Surface::resize is a thread-safe glutin API that takes only a
+        // possibly-current context; we hold the mutex to read it.
+        if let Ok(guard) = self.context.lock() {
+            if let Some(ContextSlot::Current(ctx)) = guard.as_ref() {
+                let nw = std::num::NonZeroU32::new(w.max(1) as u32).unwrap();
+                let nh = std::num::NonZeroU32::new(h.max(1) as u32).unwrap();
+                self.surface.resize(ctx, nw, nh);
+            }
+        }
         Ok(())
     }
 
     fn set_visible(&self, visible: bool) {
         unsafe {
             ShowWindow(self.hwnd, if visible { SW_SHOW } else { SW_HIDE });
+        }
+    }
+
+    fn set_always_on_top(&self, enabled: bool) {
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                if enabled { HWND_TOPMOST } else { HWND_NOTOPMOST },
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    fn set_alpha(&self, alpha: u8) {
+        // The popup is WS_EX_LAYERED with LWA_ALPHA. The α byte feeds
+        // straight into the layered-window compositor — no GL context
+        // change needed and no render-thread synchronisation required.
+        unsafe {
+            SetLayeredWindowAttributes(self.hwnd, 0, alpha, LWA_ALPHA);
         }
     }
 

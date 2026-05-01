@@ -126,7 +126,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   loadSubtitle: async (path: string) => {
-    await invoke("subtitle_load", { file: path });
+    await invoke("subtitle_load", { path });
     await get().refreshSubtitles();
   },
 
@@ -273,7 +273,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setVolume: async (level: number) => {
-    const clamped = Math.max(0, Math.min(100, level));
+    // Range is 0..150: above 100 lets users boost soft sources past
+    // 100% the way VLC / Windows volume mixer can. mpv's volume-max
+    // is set to 200 so 150 still has headroom.
+    const clamped = Math.max(0, Math.min(150, level));
     set({ volume: clamped });
     try {
       await invoke("player_set_volume", { level: clamped });

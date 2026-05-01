@@ -160,6 +160,8 @@
       "updated": "Aktualisiert"
     },
     "savedToast": "Gespeichert",
+    "alwaysOnTop": "Immer im Vordergrund",
+    "alwaysOnTopHint": "Hält das unflick-Fenster über allen anderen Apps. Praktisch, um beim Arbeiten in einem anderen Fenster Videos zu schauen.",
     "fileAssoc": {
       "section": "Dateiverknüpfungen",
       "body": "unflick öffnet mp4, mkv, avi, mov, webm und 9 weitere Videoformate sowie mp3, flac, wav und 4 weitere Audioformate. Klicke unten, um es als Standard in Windows zu setzen.",

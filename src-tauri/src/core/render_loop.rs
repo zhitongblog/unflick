@@ -162,6 +162,22 @@ impl RenderLoop {
         self.surface.set_visible(visible);
     }
 
+    /// Pin or unpin the video surface above all other windows. Required
+    /// to track the main window's always-on-top setting — Win32's owner
+    /// relationship handles z-order *within* a normal app stack but
+    /// doesn't automatically promote owned popups when the owner
+    /// becomes topmost.
+    pub fn set_always_on_top(&self, enabled: bool) {
+        self.surface.set_always_on_top(enabled);
+    }
+
+    /// Fade the surface to a given alpha. The frontend uses this to make
+    /// in-app menus / dialogs readable when they're rendered behind the
+    /// popup — lowering α lets them show through.
+    pub fn set_alpha(&self, alpha: u8) {
+        self.surface.set_alpha(alpha);
+    }
+
     /// Stop the render thread and wait for it to finish. Idempotent.
     pub fn shutdown(&mut self) {
         if let Ok(mut state) = self.signal.state.lock() {

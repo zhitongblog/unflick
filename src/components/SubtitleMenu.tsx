@@ -1,26 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { file, subtitles, loadSubtitle, selectSubtitle } = usePlayerStore();
   const { whisperMode, whisperBinaryPath, whisperModelPath } = useSettingsStore();
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      // Don't close while a long-running transcription is in flight —
-      // user needs to see the spinner and final result.
-      if (isGenerating) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose, isGenerating]);
+  }, [onClose]);
 
   // Tell the App-level popup hider that this popover is mounted so the
   // mpv overlay window slides out of the way; otherwise the menu would
@@ -44,30 +39,49 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
         await loadSubtitle(result.path);
       }
     } catch (e) {
-      setGenerateError(typeof e === "string" ? e : "Failed to load subtitle");
+      window.dispatchEvent(new CustomEvent("unflick:toast", {
+        detail: {
+          kind: "error",
+          message: typeof e === "string" ? e : "Failed to load subtitle",
+        },
+      }));
       return;
     }
     onClose();
   };
 
   const handleGenerateAi = async () => {
-    if (whisperMode !== "local") return;
-    if (!file) return;
-    setIsGenerating(true);
-    setGenerateError(null);
+    if (whisperMode !== "local" || !file) return;
+    // Snapshot the args before unmounting; the menu closes immediately
+    // so the user can keep watching while whisper runs in the background.
+    const args = {
+      videoPath: file,
+      mode: "local" as const,
+      whisperBinary: whisperBinaryPath ?? undefined,
+      modelPath: whisperModelPath ?? undefined,
+    };
+    onClose();
+    window.dispatchEvent(new CustomEvent("unflick:toast", {
+      detail: { kind: "success", message: "Generating subtitles…" },
+    }));
     try {
-      const result = await invoke<{ srt_path: string }>("generate_subtitles", {
-        videoPath: file,
-        mode: "local",
-        whisperBinary: whisperBinaryPath ?? undefined,
-        modelPath: whisperModelPath ?? undefined,
-      });
-      await loadSubtitle(result.srt_path);
-      onClose();
+      const result = await invoke<{ srt_path: string }>("generate_subtitles", args);
+      // Use the store directly: by the time this resolves, the SubtitleMenu
+      // component may have been unmounted long ago, so the captured
+      // loadSubtitle closure is fine but going through getState() makes
+      // the lifecycle explicit.
+      await usePlayerStore.getState().loadSubtitle(result.srt_path);
+      window.dispatchEvent(new CustomEvent("unflick:toast", {
+        detail: { kind: "success", message: "Subtitles ready" },
+      }));
     } catch (err) {
-      setGenerateError(String(err));
-    } finally {
-      setIsGenerating(false);
+      const msg = String(err);
+      window.dispatchEvent(new CustomEvent("unflick:toast", {
+        detail: {
+          kind: "error",
+          message: `Subtitle generation failed: ${msg.length > 100 ? msg.slice(0, 100) + "…" : msg}`,
+        },
+      }));
     }
   };
 
@@ -139,27 +153,11 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
           <button
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-brand-purple transition-colors hover:bg-white/6"
             onClick={handleGenerateAi}
-            disabled={isGenerating}
           >
-            {isGenerating ? (
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-purple border-t-transparent" />
-            ) : (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" /></svg>
-            )}
-            {isGenerating ? "Transcribing... (may take several minutes)" : "Generate AI Subtitles"}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" /></svg>
+            Generate AI Subtitles
           </button>
-          {isGenerating && (
-            <p className="px-3 py-1 text-[10px] leading-snug text-white/30">
-              Long videos take longer. The window can stay open in the background — feel free to keep watching.
-            </p>
-          )}
         </>
-      )}
-
-      {generateError && (
-        <p className="mx-3 mb-1 text-[10px] leading-snug text-red-400/80">
-          {generateError.length > 120 ? generateError.slice(0, 120) + "..." : generateError}
-        </p>
       )}
     </motion.div>
   );

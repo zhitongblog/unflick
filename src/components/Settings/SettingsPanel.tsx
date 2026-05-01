@@ -12,8 +12,9 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
+    alwaysOnTop,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
-    setTheme, setProxy, setLocale, setScreenshotDir, saveSettings,
+    setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop, saveSettings,
   } = useSettingsStore();
   const t = useStrings();
 
@@ -460,6 +461,49 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Always on top */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.alwaysOnTop}
+              </p>
+              <button
+                onClick={async () => {
+                  const next = !alwaysOnTop;
+                  setAlwaysOnTop(next);
+                  try {
+                    await invoke("set_always_on_top", { enabled: next });
+                  } catch (e) {
+                    console.error("[settings] set_always_on_top failed", e);
+                  }
+                }}
+                className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] transition-all ${
+                  alwaysOnTop
+                    ? "border-brand-purple/30 bg-brand-purple/10"
+                    : "border-white/6 bg-white/4 hover:border-white/10"
+                }`}
+              >
+                <div className="flex flex-col items-start gap-0.5 text-left">
+                  <span className={alwaysOnTop ? "text-brand-purple" : "text-white/55"}>
+                    {alwaysOnTop ? "On" : "Off"}
+                  </span>
+                  <span className="text-[10px] leading-snug text-white/30">
+                    {t.settings.alwaysOnTopHint}
+                  </span>
+                </div>
+                <span
+                  className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                    alwaysOnTop ? "bg-brand-purple/70" : "bg-white/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                      alwaysOnTop ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
             </div>
           </div>
 

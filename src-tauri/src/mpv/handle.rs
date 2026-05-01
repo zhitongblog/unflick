@@ -36,6 +36,18 @@ impl MpvHandle {
         handle.set_option("idle", "yes")?;
         handle.set_option("input-default-bindings", "no")?;
         handle.set_option("input-vo-keyboard", "no")?;
+        // Allow software gain above 100% so unflick can match how loud
+        // VLC / browser audio sound on the same source. mpv defaults to
+        // 130 already but we set it explicitly so behavior is independent
+        // of the bundled libmpv version's defaults.
+        handle.set_option("volume-max", "200")?;
+        // Stay paused at EOF instead of unloading. Without this, reaching
+        // the end of a file clears mpv's path/state and the GUI flips
+        // back to the drop zone — so the user has no play button to
+        // hit if they want to replay. With keep-open=yes, EOF parks
+        // the file at duration with pause=true; resume() detects the
+        // EOF position and rewinds to 0 before unpausing.
+        handle.set_option("keep-open", "yes")?;
 
         let err = unsafe { (handle.api.initialize)(handle.ctx) };
         if err < 0 {
