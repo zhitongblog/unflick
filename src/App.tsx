@@ -27,7 +27,8 @@ async function openFileDialog() {
 function App() {
   const { state, play, pause, resume, seek, position, volume, setVolume } =
     usePlayerStore();
-  const subtitles = usePlayerStore((s) => s.subtitles);
+  // Subtitles are now rendered by mpv natively (ASS/SSA/SRT/PGS), not via
+  // <track> in HTML. The store still owns the list for the menu UI.
   const { showLibrary, toggleLibrary } = useLibraryStore();
   const { showPlaylist, togglePlaylist } = usePlaylistStore();
   const { showSettings, toggleSettings, loadSettings, theme } = useSettingsStore();
@@ -42,69 +43,64 @@ function App() {
   const [toast, setToast] = useState<{ id: number; kind: "success" | "error"; message: string } | null>(null);
   const t = useStrings();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRegionRef = useRef<HTMLDivElement | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Register the <video> element with the player store
+  // Poll mpv for status — position / duration / state. 250 ms gives a smooth
+  // playback bar without thrashing CPU. v0.8.x will replace this with mpv
+  // observe_property events emitted from Rust, but polling is enough for the
+  // initial cutover.
   useEffect(() => {
-    usePlayerStore.getState().setVideoElement(videoRef.current);
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const s = await invoke<{
+          state: "stopped" | "playing" | "paused";
+          file: string | null;
+          position: number;
+          duration: number;
+          volume: number;
+          speed: number;
+        }>("player_status");
+        if (!cancelled) usePlayerStore.getState().ingestStatus(s);
+      } catch {
+        // Pre-pipeline-init we get an error; fine, will retry next tick.
+      }
+    };
+    const id = setInterval(poll, 250);
+    poll();
     return () => {
-      usePlayerStore.getState().setVideoElement(null);
+      cancelled = true;
+      clearInterval(id);
     };
   }, []);
 
-  // Sync subtitle text track modes when subtitles array changes
+  // Track the position + size of the transparent video region inside the
+  // WebView and forward it to the Rust side so the mpv child window stays
+  // aligned. Uses ResizeObserver for the size and a window resize listener
+  // for absolute origin (ResizeObserver doesn't fire on parent-scroll).
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    // Wait a tick for React to add/remove <track> elements
-    const apply = () => {
-      for (let i = 0; i < v.textTracks.length; i++) {
-        const tt = v.textTracks[i];
-        const target = subtitles[i];
-        tt.mode = target?.active ? "showing" : "disabled";
-      }
-    };
-    apply();
-    // Some browsers need a small delay until <track> children are mounted
-    const t = setTimeout(apply, 50);
-    return () => clearTimeout(t);
-  }, [subtitles]);
+    const el = videoRegionRef.current;
+    if (!el) return;
 
-  // Wire video element events to the store
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    const onTimeUpdate = () => usePlayerStore.setState({ position: v.currentTime });
-    const onDurationChange = () => usePlayerStore.setState({ duration: isFinite(v.duration) ? v.duration : 0 });
-    const onPlay = () => usePlayerStore.setState({ state: "playing" });
-    const onPause = () => {
-      // Only mark paused if we still have a file loaded
-      if (usePlayerStore.getState().file) {
-        usePlayerStore.setState({ state: "paused" });
-      }
+    const sync = () => {
+      const rect = el.getBoundingClientRect();
+      // Round to integer pixels — the OS-level child window doesn't grok
+      // sub-pixel positioning and rounds anyway.
+      const x = Math.round(rect.left);
+      const y = Math.round(rect.top);
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      invoke("video_surface_set_geometry", { x, y, w, h }).catch(() => {});
     };
-    const onEnded = () => {
-      const { file } = usePlayerStore.getState();
-      if (file) invoke("clear_position", { path: file }).catch(() => {});
-      usePlayerStore.setState({ state: "stopped", position: 0 });
-    };
-    const onError = () => console.error("video error:", v.error);
 
-    v.addEventListener("timeupdate", onTimeUpdate);
-    v.addEventListener("durationchange", onDurationChange);
-    v.addEventListener("play", onPlay);
-    v.addEventListener("pause", onPause);
-    v.addEventListener("ended", onEnded);
-    v.addEventListener("error", onError);
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener("resize", sync);
+    sync();
     return () => {
-      v.removeEventListener("timeupdate", onTimeUpdate);
-      v.removeEventListener("durationchange", onDurationChange);
-      v.removeEventListener("play", onPlay);
-      v.removeEventListener("pause", onPause);
-      v.removeEventListener("ended", onEnded);
-      v.removeEventListener("error", onError);
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
     };
   }, []);
 
@@ -114,81 +110,46 @@ function App() {
   }, [play]);
 
   const captureScreenshot = useCallback(async () => {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth || !v.videoHeight) {
-      console.warn("screenshot skipped: no video frame ready");
-      return;
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = v.videoWidth;
-    canvas.height = v.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    try {
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-    } catch (e) {
-      console.error("drawImage failed:", e);
-      return;
-    }
-
-    let blob: Blob | null = null;
-    try {
-      blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png"),
-      );
-    } catch (e) {
-      console.error("toBlob failed (canvas tainted?):", e);
-      return;
-    }
-    if (!blob) {
-      console.error("toBlob returned null (canvas may be tainted by cross-origin video)");
+    const { state, file: currentFile } = usePlayerStore.getState();
+    if (state === "stopped") {
+      console.warn("screenshot skipped: nothing playing");
       return;
     }
 
     // Build a filesystem-friendly default name: <video-stem>-<timestamp>.png
-    // when a file is loaded, falling back to "unflick-screenshot-<ts>.png"
-    // when nothing is playing (e.g. screenshot triggered via shortcut on a
-    // remote/network stream where currentFile is a URL).
+    // when a file is loaded, falling back to "unflick-screenshot-<ts>.png".
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-    const currentFile = usePlayerStore.getState().file;
     const stem = currentFile ? currentFile.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "unflick" : "unflick";
-    // Strip filesystem-illegal characters from arbitrary file titles
     const safeStem = stem.replace(/[<>:"/\\|?*]/g, "_");
     const defaultName = `${safeStem}-${ts}.png`;
 
-    const buf = await blob.arrayBuffer();
-    const bytes = Array.from(new Uint8Array(buf));
-
-    // Silent mode: a screenshotDir is configured → join + write directly,
-    // no dialog. On any failure we fall through to the dialog so the user
-    // doesn't lose the frame they just captured.
+    // Silent mode: screenshotDir configured → mpv writes directly, no dialog.
     const screenshotDir = useSettingsStore.getState().screenshotDir;
     if (screenshotDir) {
       const sep = screenshotDir.includes("\\") || /^[A-Za-z]:/.test(screenshotDir) ? "\\" : "/";
       const fullPath = screenshotDir.replace(/[\\/]+$/, "") + sep + defaultName;
       try {
-        await invoke("write_file_bytes", { path: fullPath, bytes });
-        window.dispatchEvent(new CustomEvent("unflick:toast", {
-          detail: { kind: "success", message: `Saved: ${defaultName}` },
-        }));
+        await invoke("player_screenshot", { output: fullPath });
+        window.dispatchEvent(
+          new CustomEvent("unflick:toast", {
+            detail: { kind: "success", message: `Saved: ${defaultName}` },
+          }),
+        );
         return;
       } catch (e) {
         console.error("silent screenshot failed, falling back to dialog:", e);
       }
     }
 
+    // Dialog mode: ask the user where to save, then mpv writes there.
     const result = await invoke<{ path: string | null }>("save_file_dialog", {
       defaultName,
     });
     if (!result.path) return;
-
     try {
-      await invoke("write_file_bytes", {
-        path: result.path,
-        bytes,
-      });
+      await invoke("player_screenshot", { output: result.path });
       console.log("screenshot saved:", result.path);
     } catch (e) {
       console.error("save screenshot failed:", e);
@@ -787,27 +748,22 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Video element — fills the area, sits behind UI controls.
-            crossOrigin is set dynamically by playerStore based on source. */}
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full bg-black"
+        {/* Punch-through video region.
+            mpv renders to a native child window underneath the WebView; this
+            div's CSS transparency exposes that region. ResizeObserver above
+            keeps the native window aligned with this rect. The chrome
+            (TitleBar, PlayerBar, panels, dialogs) sits in opaque siblings or
+            absolute overlays so they obscure the native window where the UI
+            wants pixels. */}
+        <div
+          ref={videoRegionRef}
+          className="absolute inset-0 h-full w-full"
           style={{
-            display: state === "stopped" ? "none" : "block",
-            objectFit: "contain",
+            background: state === "stopped" ? "black" : "transparent",
+            // pointer events still go to React for click/dblclick handlers.
           }}
-          playsInline
-        >
-          {subtitles.map((track) => (
-            <track
-              key={track.id}
-              kind="subtitles"
-              src={track.src}
-              label={track.label}
-              default={track.active}
-            />
-          ))}
-        </video>
+          aria-label="video region"
+        />
 
 
       </div>

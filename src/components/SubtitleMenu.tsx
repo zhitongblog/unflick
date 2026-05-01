@@ -22,7 +22,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose, isGenerating]);
 
-  const handleSelect = (id: string | null) => {
+  const handleSelect = (id: number | null) => {
     selectSubtitle(id);
     onClose();
   };

@@ -7,16 +7,11 @@ use crate::core::render_loop::RenderLoop;
 use crate::db::Database;
 
 pub struct GuiPlayer {
-    /// Legacy headless Player (vo=null) used by the HTML5 path. Will be
-    /// removed in P5 once render-context playback is wired up to all GUI
-    /// commands.
-    pub player: Mutex<Option<Player>>,
-
-    /// New render-context-backed Player (vo=libmpv). Created at app startup
-    /// in the Tauri setup hook, shared across the render thread (which holds
+    /// Render-context-backed Player (vo=libmpv). Created at app startup in
+    /// the Tauri setup hook, shared across the render thread (which holds
     /// the GL context current) and command handlers (which call play/pause/
     /// seek). The OnceLock makes startup ordering explicit — any caller
-    /// before setup completes gets None and falls back to the legacy path.
+    /// before setup completes gets the "not initialised" error from `mpv()`.
     pub render_player: OnceLock<Arc<Player>>,
 
     /// Owns the dedicated render thread. Drop this to stop the thread and
@@ -33,12 +28,22 @@ impl GuiPlayer {
         // surface the error per-command.
         let db = Database::open().ok();
         Self {
-            player: Mutex::new(None),
             render_player: OnceLock::new(),
             render_loop: OnceLock::new(),
             playlist: Playlist::new(),
             db: Mutex::new(db),
         }
+    }
+
+    /// Borrow the active mpv Player. Returns an error before the render
+    /// pipeline finishes booting — every command handler should propagate
+    /// the error so the frontend gets a clear message instead of a silent
+    /// no-op.
+    pub fn mpv(&self) -> Result<&Player, &'static str> {
+        self.render_player
+            .get()
+            .map(|arc| arc.as_ref())
+            .ok_or("video pipeline not initialised")
     }
 }
 

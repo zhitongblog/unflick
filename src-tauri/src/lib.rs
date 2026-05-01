@@ -211,15 +211,12 @@ pub fn run() {
             commands::get_video_filters,
             commands::reset_video_filters,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if let Some(gui_player) = window.try_state::<GuiPlayer>() {
-                    let mut lock = gui_player.player.lock().unwrap();
-                    if let Some(player) = lock.take() {
-                        drop(player);
-                    }
-                }
-            }
+        .on_window_event(|_window, _event| {
+            // RenderLoop's Drop signals the render thread to shut down and
+            // joins it; that runs at app teardown when GuiPlayer drops, so
+            // there's nothing to do here on a per-window CloseRequested
+            // event. Kept as a placeholder for future per-window cleanup
+            // (PiP window release, etc).
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

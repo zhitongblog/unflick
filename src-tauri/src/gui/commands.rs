@@ -23,10 +23,9 @@ pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<String> {
 /// Move + resize the embedded video surface in physical pixels relative to
 /// the parent window's client area. Frontend calls this whenever the
 /// transparent video region in the WebView reflows: window resize, panel
-/// slide-in, fullscreen toggle.
-///
-/// No-op until P5 makes the surface visible — wiring it up now so the
-/// frontend code path stays valid as we cut over.
+/// slide-in, fullscreen toggle. The first successful call also unhides the
+/// surface (it's created hidden by the Tauri setup hook so the WebView
+/// finishes its first paint without a stray child window flashing).
 #[command]
 pub fn video_surface_set_geometry(
     x: i32,
@@ -37,6 +36,9 @@ pub fn video_surface_set_geometry(
 ) -> Result<(), String> {
     if let Some(rl) = gui_player.render_loop.get() {
         rl.set_geometry(x, y, w, h).map_err(|e| e.to_string())?;
+        // Idempotent — Win32 ShowWindow with SW_SHOW on an already-visible
+        // window is a no-op, so we don't need a "first call" gate.
+        rl.set_visible(true);
     }
     Ok(())
 }
@@ -449,72 +451,63 @@ pub fn player_play(
     speed: Option<f64>,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("playing {}", file)}))
 }
 
 #[command]
 pub fn player_pause(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.pause().map_err(|e| e.to_string())?;
     Ok(json!({"message": "paused"}))
 }
 
 #[command]
 pub fn player_resume(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.resume().map_err(|e| e.to_string())?;
     Ok(json!({"message": "resumed"}))
 }
 
 #[command]
 pub fn player_stop(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.stop().map_err(|e| e.to_string())?;
     Ok(json!({"message": "stopped"}))
 }
 
 #[command]
 pub fn player_seek(seconds: f64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.seek(seconds).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("seeked to {}s", seconds)}))
 }
 
 #[command]
 pub fn player_set_volume(level: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.set_volume(level).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("volume set to {}", level)}))
 }
 
 #[command]
 pub fn player_set_speed(rate: f64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.set_speed(rate).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("speed set to {}x", rate)}))
 }
 
 #[command]
 pub fn player_status(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let status = player.status();
     serde_json::to_value(&status).map_err(|e| e.to_string())
 }
 
 #[command]
 pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let path = output.unwrap_or_else(|| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -710,24 +703,21 @@ pub fn record_play(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Val
 
 #[command]
 pub fn subtitle_load(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.subtitle_load(&path).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("subtitle loaded: {}", path)}))
 }
 
 #[command]
 pub fn subtitle_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let tracks = player.subtitle_list();
     serde_json::to_value(&tracks).map_err(|e| e.to_string())
 }
 
 #[command]
 pub fn subtitle_select(id: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.subtitle_select(id).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("subtitle track {} selected", id)}))
 }
@@ -750,11 +740,10 @@ pub fn playlist_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
 pub fn playlist_next(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     match gui_player.playlist.next() {
         Some(path) => {
-            // If a player is active, start playing the next track immediately
-            if let Ok(lock) = gui_player.player.lock() {
-                if let Some(player) = lock.as_ref() {
-                    let _ = player.play(&path, None, None, None);
-                }
+            // Active player drives the new track. Pre-pipeline-init we
+            // silently skip — the playlist still advances.
+            if let Ok(player) = gui_player.mpv() {
+                let _ = player.play(&path, None, None, None);
             }
             Ok(json!({"path": path}))
         }
@@ -766,10 +755,8 @@ pub fn playlist_next(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
 pub fn playlist_prev(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     match gui_player.playlist.prev() {
         Some(path) => {
-            if let Ok(lock) = gui_player.player.lock() {
-                if let Some(player) = lock.as_ref() {
-                    let _ = player.play(&path, None, None, None);
-                }
+            if let Ok(player) = gui_player.mpv() {
+                let _ = player.play(&path, None, None, None);
             }
             Ok(json!({"path": path}))
         }
@@ -786,10 +773,8 @@ pub fn playlist_remove(index: usize, gui_player: State<'_, GuiPlayer>) -> Result
 #[command]
 pub fn playlist_play_index(index: usize, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let path = gui_player.playlist.set_current(index).map_err(|e| e)?;
-    if let Ok(lock) = gui_player.player.lock() {
-        if let Some(player) = lock.as_ref() {
-            let _ = player.play(&path, None, None, None);
-        }
+    if let Ok(player) = gui_player.mpv() {
+        let _ = player.play(&path, None, None, None);
     }
     Ok(json!({"path": path}))
 }
@@ -1085,16 +1070,14 @@ pub fn load_settings() -> Result<Value, String> {
 
 #[command]
 pub fn audio_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let tracks = player.audio_list();
     serde_json::to_value(&tracks).map_err(|e| e.to_string())
 }
 
 #[command]
 pub fn audio_select(id: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.audio_select(id).map_err(|e| e.to_string())?;
     Ok(json!({"message": format!("audio track {} selected", id)}))
 }
@@ -1113,16 +1096,14 @@ pub async fn check_for_updates(_app: AppHandle) -> Result<Value, String> {
 
 #[command]
 pub fn set_video_filter(name: String, value: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.set_property_i64(&name, value).map_err(|e| e.to_string())?;
     Ok(json!({"filter": name, "value": value}))
 }
 
 #[command]
 pub fn get_video_filters(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let brightness = player.get_property_i64("brightness").unwrap_or(0);
     let contrast = player.get_property_i64("contrast").unwrap_or(0);
     let saturation = player.get_property_i64("saturation").unwrap_or(0);
@@ -1139,8 +1120,7 @@ pub fn get_video_filters(gui_player: State<'_, GuiPlayer>) -> Result<Value, Stri
 
 #[command]
 pub fn reset_video_filters(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    let lock = gui_player.player.lock().unwrap();
-    let player = lock.as_ref().ok_or("player not initialized")?;
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
     for prop in ["brightness", "contrast", "saturation", "gamma", "hue"] {
         let _ = player.set_property_i64(prop, 0);
     }
