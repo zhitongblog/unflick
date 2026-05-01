@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useStrings } from "../i18n/utils";
 
 const STORAGE_KEY = "unflick_recent_urls";
 const MAX_RECENT = 5;
@@ -35,6 +36,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const extracting = usePlayerStore((s) => s.extracting);
   const extractError = usePlayerStore((s) => s.extractError);
   const proxy = useSettingsStore((s) => s.proxy);
+  const t = useStrings();
 
   useEffect(() => {
     setRecentUrls(getRecentUrls());
@@ -96,7 +98,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">Open URL</h2>
+            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">{t.urlDialog.title}</h2>
             <button className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50" onClick={onClose}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -119,7 +121,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
           {extracting && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-brand-purple/20 bg-brand-purple/5 px-3 py-2 text-[11px] text-brand-purple">
               <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-              <span>Resolving {extracting.site} link…</span>
+              <span>{t.urlDialog.resolvingSite.replace("{site}", extracting.site)}</span>
             </div>
           )}
 
@@ -136,7 +138,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
-              What URLs are supported?
+              {t.urlDialog.whatSupported}
             </summary>
             <div className="mt-2 space-y-2 rounded-lg border border-white/6 bg-white/3 p-3 text-[10.5px] leading-relaxed">
               <div>
@@ -176,7 +178,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
 
           {recentUrls.length > 0 && (
             <div className="mb-4">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/20">Recent</p>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/20">{t.urlDialog.recent}</p>
               <div className="flex flex-col gap-0.5">
                 {recentUrls.map((recentUrl) => (
                   <button
@@ -198,7 +200,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
             onClick={handlePlay}
             disabled={!url.trim() || extracting !== null}
           >
-            {extracting ? "Resolving…" : "Play"}
+            {extracting ? t.urlDialog.resolving : t.urlDialog.play}
           </button>
         </motion.div>
       </motion.div>

@@ -23,13 +23,14 @@ use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
 };
 use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetWindowRect, RegisterClassExW, SetWindowPos, ShowWindow,
-    CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
-    WS_POPUP,
+    CreateWindowExW, DefWindowProcW, RegisterClassExW, SetLayeredWindowAttributes, SetWindowPos,
+    ShowWindow, CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_TOP, LWA_ALPHA, SWP_NOACTIVATE, SW_HIDE,
+    SW_SHOW, WNDCLASSEXW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use super::VideoSurface;
@@ -138,15 +139,16 @@ impl WindowsVideoSurface {
                 // WS_EX_NOACTIVATE: clicks/focus go to the Tauri window
                 //   beneath us, not the popup.
                 // WS_EX_TOOLWINDOW: don't show in alt-tab or taskbar.
-                // WS_EX_TRANSPARENT: WM_NCHITTEST returns HTTRANSPARENT
-                //   so mouse events (including drag-drop) fall through
-                //   to the WebView, where Tauri's input plumbing lives.
-                //   We deliberately don't pair this with WS_EX_LAYERED
-                //   because layered windows aren't reliably compatible
-                //   with WGL OpenGL contexts — GL draws can stop showing
-                //   up. WS_EX_TRANSPARENT alone gives us hit-test pass-
-                //   through without changing the rendering path.
-                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
+                // WS_EX_LAYERED + WS_EX_TRANSPARENT: full mouse-event
+                //   pass-through. WS_EX_TRANSPARENT alone is documented
+                //   as click-through but in practice WebView2 still ate
+                //   right-click events through it; pairing with LAYERED
+                //   gives the OS-recognised "click-through layered
+                //   window" combo. We immediately set α=255 below so
+                //   GL rendering is unaffected — modern Windows treats
+                //   layered+opaque windows as a normal HW-accelerated
+                //   window for compositing purposes.
+                WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
                 class_name,
                 title.as_ptr(),
                 // WS_POPUP: top-level borderless. With owner_hwnd passed as
@@ -166,6 +168,14 @@ impl WindowsVideoSurface {
         };
         if hwnd.is_null() {
             bail!("CreateWindowExW for video surface returned NULL");
+        }
+
+        // Layered window with α=255 means "fully opaque, but participate in
+        // the layered-window click-through machinery". Required so the
+        // WS_EX_TRANSPARENT bit actually delivers right-click + drag-drop
+        // events through to the owner.
+        unsafe {
+            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
         }
 
         // Wrap our HWND in raw-window-handle to feed glutin. windows-sys 0.59
@@ -274,22 +284,24 @@ impl VideoSurface for WindowsVideoSurface {
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
-        // (x, y) come in as Tauri-window client coords. We're a top-level
-        // popup, so we need screen coords. Decorations are off, so the
-        // owner's window rect == its client rect, and we can just add the
-        // owner's screen origin to the incoming offsets.
-        let mut owner_rect = RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        let got = unsafe { GetWindowRect(self.owner_hwnd, &mut owner_rect) };
-        if got == 0 {
-            bail!("GetWindowRect on owner failed");
+        // (x, y) are in *client* coordinates of the Tauri window — what
+        // React's getBoundingClientRect handed the frontend. We need
+        // screen coords for the popup.
+        //
+        // Modern Windows on Win11 keeps invisible "drop shadow" / resize
+        // hit-test borders around even decoration-less windows (about 8 px
+        // each side, 9 px on top), so GetWindowRect's outer rect is bigger
+        // than the actual client area and using its origin as our base
+        // would put the popup off by those margins. ClientToScreen maps
+        // (0,0) of the *client* area to absolute screen coords, which is
+        // exactly the offset we want to add.
+        let mut origin = POINT { x: 0, y: 0 };
+        let ok = unsafe { ClientToScreen(self.owner_hwnd, &mut origin) };
+        if ok == 0 {
+            bail!("ClientToScreen on owner failed");
         }
-        let screen_x = owner_rect.left + x;
-        let screen_y = owner_rect.top + y;
+        let screen_x = origin.x + x;
+        let screen_y = origin.y + y;
 
         let ok = unsafe {
             SetWindowPos(

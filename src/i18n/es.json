@@ -98,6 +98,11 @@
     "label": "URL del vídeo",
     "placeholder": "https://www.youtube.com/watch?v=…",
     "open": "Abrir",
+    "play": "Reproducir",
+    "resolving": "Resolviendo…",
+    "resolvingSite": "Resolviendo enlace de {site}…",
+    "recent": "Recientes",
+    "whatSupported": "¿Qué URLs son compatibles?",
     "ytDlpMissing": "Se necesita yt-dlp para abrir URL pero no se ha encontrado.",
     "ytDlpUpdate": "Actualizar yt-dlp",
     "extracting": "Extrayendo URL del stream…"

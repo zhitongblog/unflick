@@ -98,6 +98,11 @@
     "label": "動画 URL",
     "placeholder": "https://www.youtube.com/watch?v=…",
     "open": "開く",
+    "play": "再生",
+    "resolving": "解決中…",
+    "resolvingSite": "{site} のリンクを解決中…",
+    "recent": "最近のURL",
+    "whatSupported": "対応している URL は？",
     "ytDlpMissing": "URL の再生には yt-dlp が必要ですが、見つかりませんでした。",
     "ytDlpUpdate": "yt-dlp を更新",
     "extracting": "ストリーム URL を取得中…"

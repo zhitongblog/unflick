@@ -109,13 +109,21 @@ function App() {
     };
   }, []);
 
-  // Show the video popup only while a file is loaded. Stopped state shows
-  // the drop zone in the WebView (which lives "behind" the popup), so we
-  // hide the popup so it doesn't paint over it.
+  // Show the video popup only when (a) a file is loaded, and (b) no
+  // panel/dialog is open. The popup is a top-level Win32 window, so it
+  // sits *above* the WebView — meaning anything React renders (drop
+  // zone when stopped, library/playlist panels, settings/clip/url
+  // dialogs) is hidden behind it unless we get out of the way.
   useEffect(() => {
-    invoke("video_surface_set_visible", { visible: state !== "stopped" })
-      .catch(() => {});
-  }, [state]);
+    const anyPanelOpen =
+      showLibrary ||
+      showPlaylist ||
+      showSettings ||
+      showClipDialog ||
+      showUrlDialog;
+    const visible = state !== "stopped" && !anyPanelOpen;
+    invoke("video_surface_set_visible", { visible }).catch(() => {});
+  }, [state, showLibrary, showPlaylist, showSettings, showClipDialog, showUrlDialog]);
 
   const handleOpenFile = useCallback(async () => {
     const path = await openFileDialog();

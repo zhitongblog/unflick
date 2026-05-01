@@ -98,6 +98,11 @@
     "label": "影片 URL",
     "placeholder": "https://www.youtube.com/watch?v=…",
     "open": "開啟",
+    "play": "播放",
+    "resolving": "解析中…",
+    "resolvingSite": "正在解析 {site} 連結…",
+    "recent": "最近使用",
+    "whatSupported": "支援哪些 URL？",
     "ytDlpMissing": "播放 URL 需要 yt-dlp，但沒有找到。",
     "ytDlpUpdate": "更新 yt-dlp",
     "extracting": "擷取串流位址中…"
