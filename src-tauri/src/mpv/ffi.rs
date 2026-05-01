@@ -12,6 +12,19 @@ pub const MPV_FORMAT_FLAG: c_int = 3;
 pub const MPV_FORMAT_INT64: c_int = 4;
 pub const MPV_FORMAT_DOUBLE: c_int = 5;
 
+// mpv_render_param_type values (see render.h / render_gl.h).
+// We only enumerate the ones we actually use; full list is in render.h.
+pub const MPV_RENDER_PARAM_INVALID: c_int = 0;
+pub const MPV_RENDER_PARAM_API_TYPE: c_int = 1;
+pub const MPV_RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
+pub const MPV_RENDER_PARAM_OPENGL_FBO: c_int = 3;
+pub const MPV_RENDER_PARAM_FLIP_Y: c_int = 4;
+pub const MPV_RENDER_PARAM_ADVANCED_CONTROL: c_int = 10;
+
+// mpv_render_context_update return flags
+#[allow(dead_code)]
+pub const MPV_RENDER_UPDATE_FRAME: u64 = 1 << 0;
+
 // mpv_event_id values
 #[allow(dead_code)]
 pub const MPV_EVENT_NONE: c_int = 0;
@@ -33,6 +46,42 @@ pub struct MpvEvent {
 }
 
 pub type MpvCtx = *mut c_void;
+/// Opaque handle to a render context. Lifetime managed via mpv_render_context_free.
+pub type MpvRenderCtx = *mut c_void;
+
+/// Variadic-style param pair. The render API uses arrays of these terminated by
+/// `{ type_: MPV_RENDER_PARAM_INVALID, data: null }` to pass typed config.
+#[repr(C)]
+pub struct MpvRenderParam {
+    pub type_: c_int,
+    pub data: *mut c_void,
+}
+
+/// MPV_RENDER_PARAM_OPENGL_INIT_PARAMS payload — tells mpv how to resolve GL
+/// function pointers. mpv calls `get_proc_address(ctx, name)` for every GL
+/// symbol it needs.
+#[repr(C)]
+pub struct MpvOpenGlInitParams {
+    pub get_proc_address:
+        Option<unsafe extern "C" fn(ctx: *mut c_void, name: *const c_char) -> *mut c_void>,
+    pub get_proc_address_ctx: *mut c_void,
+}
+
+/// MPV_RENDER_PARAM_OPENGL_FBO payload — names the framebuffer mpv should
+/// render the next frame into. `fbo: 0` means the GL context's default
+/// framebuffer (i.e. whatever's bound to GL_FRAMEBUFFER for the window).
+#[repr(C)]
+pub struct MpvOpenGlFbo {
+    pub fbo: c_int,
+    pub w: c_int,
+    pub h: c_int,
+    pub internal_format: c_int,
+}
+
+/// Callback signature for mpv_render_context_set_update_callback. mpv invokes
+/// this from its own thread when a new frame is ready — implementations
+/// should be cheap (signal the GL thread, do not render here).
+pub type MpvRenderUpdateFn = unsafe extern "C" fn(cb_ctx: *mut c_void);
 
 type FnCreate = unsafe extern "C" fn() -> MpvCtx;
 type FnInitialize = unsafe extern "C" fn(MpvCtx) -> c_int;
@@ -47,6 +96,16 @@ type FnCommand = unsafe extern "C" fn(MpvCtx, *const *const c_char) -> c_int;
 type FnObserveProperty = unsafe extern "C" fn(MpvCtx, u64, *const c_char, c_int) -> c_int;
 type FnWaitEvent = unsafe extern "C" fn(MpvCtx, c_double) -> *mut MpvEvent;
 type FnErrorString = unsafe extern "C" fn(c_int) -> *const c_char;
+
+// Render context API — added in v0.8 to drive embedded GL rendering.
+type FnRenderContextCreate =
+    unsafe extern "C" fn(*mut MpvRenderCtx, MpvCtx, *mut MpvRenderParam) -> c_int;
+type FnRenderContextRender =
+    unsafe extern "C" fn(MpvRenderCtx, *mut MpvRenderParam) -> c_int;
+type FnRenderContextSetUpdateCallback =
+    unsafe extern "C" fn(MpvRenderCtx, Option<MpvRenderUpdateFn>, *mut c_void);
+type FnRenderContextUpdate = unsafe extern "C" fn(MpvRenderCtx) -> u64;
+type FnRenderContextFree = unsafe extern "C" fn(MpvRenderCtx);
 
 macro_rules! load_fn {
     ($lib:expr, $name:expr) => {{
@@ -72,6 +131,11 @@ pub struct MpvApi {
     pub observe_property: FnObserveProperty,
     pub wait_event: FnWaitEvent,
     pub error_string: FnErrorString,
+    pub render_context_create: FnRenderContextCreate,
+    pub render_context_render: FnRenderContextRender,
+    pub render_context_set_update_callback: FnRenderContextSetUpdateCallback,
+    pub render_context_update: FnRenderContextUpdate,
+    pub render_context_free: FnRenderContextFree,
 }
 
 impl MpvApi {
@@ -129,6 +193,11 @@ impl MpvApi {
                 observe_property: std::mem::transmute(load_fn!(lib, b"mpv_observe_property\0")),
                 wait_event: std::mem::transmute(load_fn!(lib, b"mpv_wait_event\0")),
                 error_string: std::mem::transmute(load_fn!(lib, b"mpv_error_string\0")),
+                render_context_create: std::mem::transmute(load_fn!(lib, b"mpv_render_context_create\0")),
+                render_context_render: std::mem::transmute(load_fn!(lib, b"mpv_render_context_render\0")),
+                render_context_set_update_callback: std::mem::transmute(load_fn!(lib, b"mpv_render_context_set_update_callback\0")),
+                render_context_update: std::mem::transmute(load_fn!(lib, b"mpv_render_context_update\0")),
+                render_context_free: std::mem::transmute(load_fn!(lib, b"mpv_render_context_free\0")),
                 _lib: lib,
             };
             Ok(api)

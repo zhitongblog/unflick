@@ -264,6 +264,18 @@ impl MpvHandle {
     pub fn quit(&self) {
         let _ = self.command(&["quit"]);
     }
+
+    /// Borrow the dynamically-loaded API table. Used by render.rs to call the
+    /// render-context family of functions without re-loading the DLL.
+    pub fn api_arc(&self) -> Arc<MpvApi> {
+        Arc::clone(&self.api)
+    }
+
+    /// Raw mpv handle pointer. Stays valid for the lifetime of this MpvHandle.
+    /// Render.rs needs this to bind a render context to this mpv instance.
+    pub fn raw_ctx(&self) -> ffi::MpvCtx {
+        self.ctx
+    }
 }
 
 impl Drop for MpvHandle {
