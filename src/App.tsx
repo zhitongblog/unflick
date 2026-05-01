@@ -76,17 +76,22 @@ function App() {
   }, []);
 
   // Track the position + size of the transparent video region inside the
-  // WebView and forward it to the Rust side so the mpv child window stays
-  // aligned. Uses ResizeObserver for the size and a window resize listener
-  // for absolute origin (ResizeObserver doesn't fire on parent-scroll).
+  // WebView and forward it to the Rust side so the mpv overlay window
+  // stays aligned. Uses ResizeObserver for the size and a window resize
+  // listener for absolute origin (ResizeObserver doesn't fire on parent-
+  // scroll). Coordinates are scaled by devicePixelRatio so the OS-level
+  // window math is in physical pixels regardless of system zoom.
   useEffect(() => {
     const el = videoRegionRef.current;
     if (!el) return;
 
     const sync = () => {
       const rect = el.getBoundingClientRect();
-      // Round to integer pixels — the OS-level child window doesn't grok
-      // sub-pixel positioning and rounds anyway.
+      // Tauri's main HWND on Windows reports its rect in logical (CSS-
+      // matching) pixels because Tao opts into PerMonitorV2 DPI awareness
+      // but Tauri's window size config + GetWindowRect both stay in
+      // logical units for our purposes. CSS getBoundingClientRect is in
+      // logical px too, so they match 1:1 — no DPR scaling needed.
       const x = Math.round(rect.left);
       const y = Math.round(rect.top);
       const w = Math.round(rect.width);
@@ -103,6 +108,14 @@ function App() {
       window.removeEventListener("resize", sync);
     };
   }, []);
+
+  // Show the video popup only while a file is loaded. Stopped state shows
+  // the drop zone in the WebView (which lives "behind" the popup), so we
+  // hide the popup so it doesn't paint over it.
+  useEffect(() => {
+    invoke("video_surface_set_visible", { visible: state !== "stopped" })
+      .catch(() => {});
+  }, [state]);
 
   const handleOpenFile = useCallback(async () => {
     const path = await openFileDialog();

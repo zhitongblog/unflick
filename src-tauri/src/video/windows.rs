@@ -23,12 +23,13 @@ use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
 };
 use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, RegisterClassExW, SetWindowPos, ShowWindow, CS_HREDRAW,
-    CS_OWNDC, CS_VREDRAW, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+    CreateWindowExW, DefWindowProcW, GetWindowRect, RegisterClassExW, SetWindowPos, ShowWindow,
+    CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW,
+    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+    WS_POPUP,
 };
 
 use super::VideoSurface;
@@ -93,9 +94,24 @@ enum ContextSlot {
     Current(PossiblyCurrentContext),
 }
 
-/// A WGL-backed video surface parented to a Tauri window's HWND.
+/// A WGL-backed video surface positioned over the Tauri window.
+///
+/// We can't use a child HWND parented to Tauri's main window because
+/// WebView2 renders via DirectComposition, and DComp surfaces are
+/// composited *above* sibling child HWNDs regardless of Z-order. So mpv
+/// would always be hidden behind the WebView's solid bg.
+///
+/// Instead this is a top-level WS_POPUP window *owned* by the Tauri main
+/// HWND. Owner relationship gives us the z-order tracking we want:
+/// Windows keeps owned popups above their owner automatically when the
+/// owner gets focus, and stacks the popup below other apps when the user
+/// alt-tabs away. set_geometry converts client coords (what the frontend
+/// ResizeObserver hands us) to screen coords for the popup.
 pub struct WindowsVideoSurface {
     hwnd: HWND,
+    /// Owner = Tauri's main window. Stored so set_geometry can read its
+    /// screen position via GetWindowRect on every reflow.
+    owner_hwnd: HWND,
     // glutin objects. Order in the struct matters for drop: the context and
     // surface must drop before the display. Rust drops fields top-to-bottom,
     // so list them context → surface → display.
@@ -112,29 +128,38 @@ impl WindowsVideoSurface {
     /// The child starts at 0,0 with the parent's client size; callers should
     /// reposition via [`set_geometry`] once the WebView lays out the
     /// transparent video region.
-    pub fn new(parent_hwnd: HWND, w: i32, h: i32) -> Result<Self> {
+    pub fn new(owner_hwnd: HWND, w: i32, h: i32) -> Result<Self> {
         let class_name = ensure_class_registered()?;
         let hinst = unsafe { GetModuleHandleW(ptr::null()) };
 
         let title = wide("");
         let hwnd: HWND = unsafe {
             CreateWindowExW(
-                0,
+                // WS_EX_NOACTIVATE: clicks/focus go to the Tauri window
+                //   beneath us, not the popup.
+                // WS_EX_TOOLWINDOW: don't show in alt-tab or taskbar.
+                // WS_EX_TRANSPARENT: WM_NCHITTEST returns HTTRANSPARENT
+                //   so mouse events (including drag-drop) fall through
+                //   to the WebView, where Tauri's input plumbing lives.
+                //   We deliberately don't pair this with WS_EX_LAYERED
+                //   because layered windows aren't reliably compatible
+                //   with WGL OpenGL contexts — GL draws can stop showing
+                //   up. WS_EX_TRANSPARENT alone gives us hit-test pass-
+                //   through without changing the rendering path.
+                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
                 class_name,
                 title.as_ptr(),
-                // WS_CHILD: parented inside Tauri's HWND.
-                // WS_CLIPSIBLINGS/CHILDREN: don't paint over WebView2's HWND.
-                // No WS_VISIBLE — the surface starts hidden so the GUI's
-                // existing rendering path (HTML5 video, until P5) keeps
-                // working unchanged. Callers flip visibility via
-                // `set_visible(true)` after the WebView region is laid out.
-                WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                // WS_POPUP: top-level borderless. With owner_hwnd passed as
+                // hWndParent below, this becomes an *owned* popup — Windows
+                // keeps it above the owner in z-order automatically.
+                // WS_CLIPSIBLINGS/CHILDREN: don't smear other windows.
+                WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                 0,
                 0,
                 w.max(1),
                 h.max(1),
-                parent_hwnd,
-                ptr::null_mut(),
+                owner_hwnd,        // owner — popup floats above this window
+                ptr::null_mut(),   // no menu
                 hinst,
                 ptr::null(),
             )
@@ -204,6 +229,7 @@ impl WindowsVideoSurface {
         // the render thread and let it claim ownership.
         Ok(Self {
             hwnd,
+            owner_hwnd,
             display,
             surface,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
@@ -248,16 +274,29 @@ impl VideoSurface for WindowsVideoSurface {
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
-        // HWND_TOP every call. Tauri's WebView2 child sits in the same
-        // sibling z-order, and at app startup it's above us — without
-        // forcing top-of-z each frame the video region would be hidden
-        // behind the WebView's solid bg in the middle of the window.
+        // (x, y) come in as Tauri-window client coords. We're a top-level
+        // popup, so we need screen coords. Decorations are off, so the
+        // owner's window rect == its client rect, and we can just add the
+        // owner's screen origin to the incoming offsets.
+        let mut owner_rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        let got = unsafe { GetWindowRect(self.owner_hwnd, &mut owner_rect) };
+        if got == 0 {
+            bail!("GetWindowRect on owner failed");
+        }
+        let screen_x = owner_rect.left + x;
+        let screen_y = owner_rect.top + y;
+
         let ok = unsafe {
             SetWindowPos(
                 self.hwnd,
                 HWND_TOP,
-                x,
-                y,
+                screen_x,
+                screen_y,
                 w.max(1),
                 h.max(1),
                 SWP_NOACTIVATE,

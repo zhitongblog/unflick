@@ -34,16 +34,24 @@ pub fn video_surface_set_geometry(
     h: i32,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<(), String> {
-    eprintln!("[unflick] video_surface_set_geometry x={x} y={y} w={w} h={h}");
     if let Some(rl) = gui_player.render_loop.get() {
-        rl.set_geometry(x, y, w, h).map_err(|e| {
-            eprintln!("[unflick] set_geometry failed: {e}");
-            e.to_string()
-        })?;
-        rl.set_visible(true);
-        eprintln!("[unflick] surface visible at {x},{y} {w}x{h}");
-    } else {
-        eprintln!("[unflick] render_loop not yet ready — skipping geometry");
+        rl.set_geometry(x, y, w, h).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Show or hide the video surface popup. The frontend toggles this on
+/// playback state changes — popup only renders something useful while
+/// a file is loaded, and hiding it during the idle state lets the
+/// React drop-zone (which lives in the WebView under the popup) be
+/// visible.
+#[command]
+pub fn video_surface_set_visible(
+    visible: bool,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    if let Some(rl) = gui_player.render_loop.get() {
+        rl.set_visible(visible);
     }
     Ok(())
 }

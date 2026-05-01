@@ -146,6 +146,7 @@ pub fn run() {
             commands::consume_pending_file,
             commands::open_default_apps_settings,
             commands::video_surface_set_geometry,
+            commands::video_surface_set_visible,
             commands::player_play,
             commands::player_pause,
             commands::player_resume,
@@ -210,12 +211,22 @@ pub fn run() {
             commands::get_video_filters,
             commands::reset_video_filters,
         ])
-        .on_window_event(|_window, _event| {
-            // RenderLoop's Drop signals the render thread to shut down and
-            // joins it; that runs at app teardown when GuiPlayer drops, so
-            // there's nothing to do here on a per-window CloseRequested
-            // event. Kept as a placeholder for future per-window cleanup
-            // (PiP window release, etc).
+        .on_window_event(|window, event| {
+            // The video popup is a top-level WS_POPUP owned by this window.
+            // Owner relationship handles z-order automatically, but Windows
+            // doesn't move/resize the popup when the owner moves/resizes —
+            // we have to drive that ourselves by re-applying the cached
+            // client-coord geometry on every owner reflow.
+            match event {
+                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                    if let Some(gp) = window.try_state::<GuiPlayer>() {
+                        if let Some(rl) = gp.render_loop.get() {
+                            let _ = rl.refresh_geometry();
+                        }
+                    }
+                }
+                _ => {}
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

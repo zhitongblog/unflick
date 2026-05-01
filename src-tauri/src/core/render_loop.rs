@@ -76,6 +76,11 @@ pub struct RenderLoop {
     join: Option<JoinHandle<()>>,
     signal: Arc<RenderSignal>,
     surface: Arc<dyn VideoSurface>,
+    /// Last geometry the frontend pushed (client coords + size). Cached so
+    /// `refresh_geometry` can re-apply when the owner window moves
+    /// (which doesn't change the client-relative rect, but the popup
+    /// surface needs new screen coords).
+    last_geometry: Mutex<Option<(i32, i32, i32, i32)>>,
     /// Held to keep the mpv handle alive across the loop. The render thread
     /// borrows it via Arc::clone.
     _player: Arc<Player>,
@@ -113,18 +118,41 @@ impl RenderLoop {
             join: Some(join),
             signal,
             surface,
+            last_geometry: Mutex::new(None),
             _player: player,
         })
     }
 
     /// Resize / move the underlying native widget. Safe from any thread.
+    /// Caches the rect so the backend can replay it on owner-window moves
+    /// (which don't fire the frontend's ResizeObserver).
     pub fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
         self.surface.set_geometry(x, y, w, h)?;
-        // Force a repaint so the resize takes effect even if the file is
-        // paused (otherwise the new framebuffer stays black until next frame).
+        if let Ok(mut g) = self.last_geometry.lock() {
+            *g = Some((x, y, w, h));
+        }
         if let Ok(mut state) = self.signal.state.lock() {
             state.redraw = true;
             self.signal.cv.notify_all();
+        }
+        Ok(())
+    }
+
+    /// Re-apply the most-recently-set geometry. Used when the Tauri main
+    /// window moves: the client-coord rect is unchanged but the popup's
+    /// screen coords need to slide along with the owner. No-op before the
+    /// frontend has called set_geometry at least once.
+    pub fn refresh_geometry(&self) -> Result<()> {
+        let cached = match self.last_geometry.lock() {
+            Ok(g) => *g,
+            Err(_) => None,
+        };
+        if let Some((x, y, w, h)) = cached {
+            self.surface.set_geometry(x, y, w, h)?;
+            if let Ok(mut state) = self.signal.state.lock() {
+                state.redraw = true;
+                self.signal.cv.notify_all();
+            }
         }
         Ok(())
     }
