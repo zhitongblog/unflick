@@ -36,6 +36,7 @@ function App() {
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateResult | null>(null);
+  const [toast, setToast] = useState<{ id: number; kind: "success" | "error"; message: string } | null>(null);
   const t = useStrings();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -141,17 +142,49 @@ function App() {
       return;
     }
 
-    const ts = Date.now();
+    // Build a filesystem-friendly default name: <video-stem>-<timestamp>.png
+    // when a file is loaded, falling back to "unflick-screenshot-<ts>.png"
+    // when nothing is playing (e.g. screenshot triggered via shortcut on a
+    // remote/network stream where currentFile is a URL).
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const currentFile = usePlayerStore.getState().file;
+    const stem = currentFile ? currentFile.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "unflick" : "unflick";
+    // Strip filesystem-illegal characters from arbitrary file titles
+    const safeStem = stem.replace(/[<>:"/\\|?*]/g, "_");
+    const defaultName = `${safeStem}-${ts}.png`;
+
+    const buf = await blob.arrayBuffer();
+    const bytes = Array.from(new Uint8Array(buf));
+
+    // Silent mode: a screenshotDir is configured → join + write directly,
+    // no dialog. On any failure we fall through to the dialog so the user
+    // doesn't lose the frame they just captured.
+    const screenshotDir = useSettingsStore.getState().screenshotDir;
+    if (screenshotDir) {
+      const sep = screenshotDir.includes("\\") || /^[A-Za-z]:/.test(screenshotDir) ? "\\" : "/";
+      const fullPath = screenshotDir.replace(/[\\/]+$/, "") + sep + defaultName;
+      try {
+        await invoke("write_file_bytes", { path: fullPath, bytes });
+        window.dispatchEvent(new CustomEvent("unflick:toast", {
+          detail: { kind: "success", message: `Saved: ${defaultName}` },
+        }));
+        return;
+      } catch (e) {
+        console.error("silent screenshot failed, falling back to dialog:", e);
+      }
+    }
+
     const result = await invoke<{ path: string | null }>("save_file_dialog", {
-      defaultName: `unflick-screenshot-${ts}.png`,
+      defaultName,
     });
     if (!result.path) return;
 
-    const buf = await blob.arrayBuffer();
     try {
       await invoke("write_file_bytes", {
         path: result.path,
-        bytes: Array.from(new Uint8Array(buf)),
+        bytes,
       });
       console.log("screenshot saved:", result.path);
     } catch (e) {
@@ -361,6 +394,23 @@ useEffect(() => {
     window.addEventListener("unflick:screenshot", handler);
     return () => window.removeEventListener("unflick:screenshot", handler);
   }, [captureScreenshot]);
+
+  // Toast bus — any component can dispatch `unflick:toast` with a payload
+  // and we'll render it bottom-center for ~2.5s. Used for silent screenshot
+  // confirmation today; reusable for other quiet-action feedback later.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ kind?: "success" | "error"; message: string }>).detail;
+      if (!detail?.message) return;
+      const id = Date.now();
+      setToast({ id, kind: detail.kind ?? "success", message: detail.message });
+      setTimeout(() => {
+        setToast((cur) => (cur && cur.id === id ? null : cur));
+      }, 2500);
+    };
+    window.addEventListener("unflick:toast", handler);
+    return () => window.removeEventListener("unflick:toast", handler);
+  }, []);
 
   // Single-instance plugin: a second launch (e.g. user double-clicks
   // another file in Explorer while we're running) is short-circuited,
@@ -753,6 +803,29 @@ useEffect(() => {
       {showSettings && (
         <SettingsPanel onClose={toggleSettings} />
       )}
+
+      {/* Toast — bottom-center, auto-dismiss. Used for silent-action feedback
+          (currently silent screenshot confirmation). */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ y: 32, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 16, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className={`pointer-events-auto rounded-xl border px-4 py-2.5 text-sm font-medium shadow-2xl backdrop-blur-md ${
+              toast.kind === "error"
+                ? "border-red-500/30 bg-red-950/70 text-red-100"
+                : "border-white/10 bg-zinc-900/90 text-white"
+            }`}>
+              {toast.message}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Context menu */}
       {contextMenu && (

@@ -11,9 +11,9 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
-    whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale,
+    whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
-    setTheme, setProxy, setLocale, saveSettings,
+    setTheme, setProxy, setLocale, setScreenshotDir, saveSettings,
   } = useSettingsStore();
   const t = useStrings();
 
@@ -164,14 +164,57 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   // Persist immediately so a restart picks up the new menu language.
                   void saveSettings();
                 }}
-                className="w-full rounded-lg border border-white/6 bg-white/4 px-3 py-2 text-[12px] text-white/70 outline-none focus:border-brand-purple/40"
+                className="w-full rounded-lg border border-white/10 bg-[#1c1c26] px-3 py-2 text-[12px] text-white outline-none focus:border-brand-purple/40"
               >
                 {LOCALES.map((l) => (
-                  <option key={l} value={l}>{LOCALE_NAMES[l]}</option>
+                  // <option> doesn't inherit Tailwind colors in WebView2 —
+                  // set bg + text explicitly so the dropdown isn't white-on-white.
+                  <option key={l} value={l} style={{ background: "#1c1c26", color: "#ffffff" }}>
+                    {LOCALE_NAMES[l]}
+                  </option>
                 ))}
               </select>
               <p className="mt-2 text-[10px] leading-relaxed text-white/30">
                 {t.settings.languageHint}
+              </p>
+            </div>
+
+            {/* Screenshots */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                Screenshots
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 truncate rounded-lg border border-white/6 bg-white/4 px-3 py-2 text-[11px] text-white/70 font-mono">
+                  {screenshotDir || "Ask each time (default)"}
+                </div>
+                <button
+                  className="rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-[11px] text-white/70 hover:border-white/20 hover:text-white transition"
+                  onClick={async () => {
+                    const result = await invoke<{ path: string | null }>("open_folder_dialog");
+                    if (result.path) {
+                      setScreenshotDir(result.path);
+                      void saveSettings();
+                    }
+                  }}
+                >
+                  Choose…
+                </button>
+                {screenshotDir && (
+                  <button
+                    className="rounded-lg p-2 text-white/30 hover:bg-white/6 hover:text-white/70 transition"
+                    onClick={() => {
+                      setScreenshotDir(null);
+                      void saveSettings();
+                    }}
+                    title="Clear (back to dialog)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-white/30">
+                When set, screenshots save here automatically with the video name and timestamp. Leave empty to be asked each time.
               </p>
             </div>
 

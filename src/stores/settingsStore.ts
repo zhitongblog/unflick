@@ -13,6 +13,9 @@ interface SettingsState {
   proxy: string | null;
   /** UI language. Auto-detected on first launch from navigator.language. */
   locale: Locale;
+  /** When non-null, captureScreenshot() saves into this folder directly
+   *  with an auto-generated filename, no save dialog. */
+  screenshotDir: string | null;
   toggleSettings: () => void;
   setWhisperMode: (mode: "off" | "local" | "api") => void;
   setWhisperModelPath: (path: string | null) => void;
@@ -22,6 +25,7 @@ interface SettingsState {
   setVolumeLevel: (volume: number) => void;
   setProxy: (p: string | null) => void;
   setLocale: (locale: Locale) => void;
+  setScreenshotDir: (dir: string | null) => void;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
 }
@@ -39,6 +43,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // applied by loadSettings(); using navigator.language here keeps the
   // first paint reasonable even before that runs.
   locale: detectLocale(typeof navigator !== "undefined" ? navigator.language : undefined),
+  screenshotDir: null,
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
 
@@ -50,6 +55,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setVolumeLevel: (volume) => set({ volume }),
   setProxy: (p) => set({ proxy: p }),
   setLocale: (locale) => set({ locale }),
+  setScreenshotDir: (dir) => set({ screenshotDir: dir }),
 
   loadSettings: async () => {
     try {
@@ -82,6 +88,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         if (typeof data.locale === "string" && isLocale(data.locale)) {
           updates.locale = data.locale;
         }
+        if (typeof data.screenshotDir === "string" || data.screenshotDir === null) {
+          updates.screenshotDir = data.screenshotDir as string | null;
+        }
         set(updates);
       }
     } catch {
@@ -90,7 +99,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async () => {
-    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale } = get();
+    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale, screenshotDir } = get();
     const payload = JSON.stringify({
       whisperMode,
       whisperModelPath,
@@ -100,6 +109,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       volume,
       proxy,
       locale,
+      screenshotDir,
     });
     try {
       await invoke("save_settings", { settings: payload });
