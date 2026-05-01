@@ -91,6 +91,16 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
+  // While the filter panel is open, push the mpv overlay window out of
+  // the way so the panel isn't hidden behind it.
+  useEffect(() => {
+    if (!open) return;
+    window.dispatchEvent(new CustomEvent("unflick:popover-open"));
+    return () => {
+      window.dispatchEvent(new CustomEvent("unflick:popover-close"));
+    };
+  }, [open]);
+
   const handleChange = (key: keyof FilterValues, value: number) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     invoke("set_video_filter", { name: key, value }).catch(console.error);

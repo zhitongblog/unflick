@@ -22,6 +22,16 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose, isGenerating]);
 
+  // Tell the App-level popup hider that this popover is mounted so the
+  // mpv overlay window slides out of the way; otherwise the menu would
+  // render behind the video.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("unflick:popover-open"));
+    return () => {
+      window.dispatchEvent(new CustomEvent("unflick:popover-close"));
+    };
+  }, []);
+
   const handleSelect = (id: number | null) => {
     selectSubtitle(id);
     onClose();

@@ -29,6 +29,14 @@ export default function AudioMenu({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose]);
 
+  // Move the mpv popup out of the way while this menu is mounted.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("unflick:popover-open"));
+    return () => {
+      window.dispatchEvent(new CustomEvent("unflick:popover-close"));
+    };
+  }, []);
+
   const handleSelect = (id: number) => {
     invoke("audio_select", { id }).catch(console.error);
     onClose();

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePlayerStore } from "../../stores/playerStore";
 import { usePlaylistStore } from "../../stores/playlistStore";
@@ -58,6 +58,16 @@ export default function PlaybackControls() {
   const { state, speed, pause, resume, stop, play, file, setSpeed } = usePlayerStore();
   const { items: playlistItems, next: playlistNext, prev: playlistPrev } = usePlaylistStore();
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+
+  // Pull the mpv overlay out of the way when the speed picker is open
+  // so it isn't hidden behind the video region.
+  useEffect(() => {
+    if (!showSpeedMenu) return;
+    window.dispatchEvent(new CustomEvent("unflick:popover-open"));
+    return () => {
+      window.dispatchEvent(new CustomEvent("unflick:popover-close"));
+    };
+  }, [showSpeedMenu]);
 
   const hasPlaylist = playlistItems.length > 1;
 

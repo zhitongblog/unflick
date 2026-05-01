@@ -110,20 +110,46 @@ function App() {
   }, []);
 
   // Show the video popup only when (a) a file is loaded, and (b) no
-  // panel/dialog is open. The popup is a top-level Win32 window, so it
-  // sits *above* the WebView — meaning anything React renders (drop
-  // zone when stopped, library/playlist panels, settings/clip/url
-  // dialogs) is hidden behind it unless we get out of the way.
+  // panel/dialog/menu is open. The popup is a top-level Win32 window,
+  // so it sits *above* the WebView — meaning anything React renders
+  // (drop zone when stopped, library/playlist panels, settings/clip/
+  // url dialogs, the right-click context menu, popover menus inside
+  // the PlayerBar like SubtitleMenu / AudioMenu / VideoFilters /
+  // PlaybackControls) is hidden behind it unless we get out of the
+  // way. The popover menus close themselves on outside-click, so we
+  // proxy them through a custom event the components dispatch.
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  useEffect(() => {
+    const onOpen = () => setPopoverOpen(true);
+    const onClose = () => setPopoverOpen(false);
+    window.addEventListener("unflick:popover-open", onOpen);
+    window.addEventListener("unflick:popover-close", onClose);
+    return () => {
+      window.removeEventListener("unflick:popover-open", onOpen);
+      window.removeEventListener("unflick:popover-close", onClose);
+    };
+  }, []);
   useEffect(() => {
     const anyPanelOpen =
       showLibrary ||
       showPlaylist ||
       showSettings ||
       showClipDialog ||
-      showUrlDialog;
+      showUrlDialog ||
+      contextMenu !== null ||
+      popoverOpen;
     const visible = state !== "stopped" && !anyPanelOpen;
     invoke("video_surface_set_visible", { visible }).catch(() => {});
-  }, [state, showLibrary, showPlaylist, showSettings, showClipDialog, showUrlDialog]);
+  }, [
+    state,
+    showLibrary,
+    showPlaylist,
+    showSettings,
+    showClipDialog,
+    showUrlDialog,
+    contextMenu,
+    popoverOpen,
+  ]);
 
   const handleOpenFile = useCallback(async () => {
     const path = await openFileDialog();
