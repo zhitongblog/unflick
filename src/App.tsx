@@ -43,9 +43,18 @@ function App() {
   const [toast, setToast] = useState<{ id: number; kind: "success" | "error"; message: string } | null>(null);
   // Default-player prompt: show once after first launch unless dismissed.
   // Stored in localStorage so it survives reinstalls but not "clear data."
-  const [showDefaultPrompt, setShowDefaultPrompt] = useState<boolean>(
-    () => typeof window !== "undefined" && !localStorage.getItem("default-prompt-dismissed")
-  );
+  // Default-player banner is Windows-only. The button invokes a
+  // Windows-specific Tauri command (open_default_apps_settings) that
+  // launches `ms-settings:defaultapps`, which doesn't exist on macOS or
+  // Linux. On macOS the equivalent flow is Finder → Right-click → Open
+  // With → unflick → Change All, which the user discovers themselves;
+  // we don't try to surface a banner about it.
+  const [showDefaultPrompt, setShowDefaultPrompt] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    if (localStorage.getItem("default-prompt-dismissed")) return false;
+    const ua = navigator.userAgent;
+    return /Win(dows|32|64)/i.test(ua);
+  });
   // Subtitle generation status — persistent banner that stays visible
   // throughout the (multi-minute) whisper run, replacing the toast that
   // auto-dismissed before the user could read it.
