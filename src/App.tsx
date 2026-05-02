@@ -7,7 +7,7 @@ import PlayerBar from "./components/Player/PlayerBar";
 import TitleBar from "./components/TitleBar";
 import LibraryPanel from "./components/Library/LibraryPanel";
 import PlaylistPanel from "./components/Playlist/PlaylistPanel";
-import { type ContextMenuEntry } from "./components/ContextMenu";
+import ContextMenu, { type ContextMenuEntry } from "./components/ContextMenu";
 import ClipDialog from "./components/ClipDialog";
 import UrlDialog from "./components/UrlDialog";
 import SettingsPanel from "./components/Settings/SettingsPanel";
@@ -35,7 +35,7 @@ function App() {
   const incognito = useIncognitoStore((s) => s.enabled);
   const toggleIncognito = useIncognitoStore((s) => s.toggle);
   const [isDragging, setIsDragging] = useState(false);
-  // Right-click menu is rendered via Win32 TrackPopupMenu — no React state needed.
+  // (contextMenu state is declared below alongside the platform branch.)
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
@@ -43,6 +43,14 @@ function App() {
   const [toast, setToast] = useState<{ id: number; kind: "success" | "error"; message: string } | null>(null);
   // Default-player prompt: show once after first launch unless dismissed.
   // Stored in localStorage so it survives reinstalls but not "clear data."
+  // Platform branching: a few bits of UX are explicitly different
+  // between Windows and macOS. The popup video architecture differs
+  // (top-level WS_POPUP on Win vs subview-of-WebView on mac), so React-
+  // rendered menus naturally show *above* the popup on mac but *behind*
+  // it on Windows. We use this flag to pick between OS-native menus
+  // (TrackPopupMenu on Windows) and React popovers (mac/Linux).
+  const isWindows = typeof window !== "undefined" && /Win(dows|32|64)/i.test(navigator.userAgent);
+
   // Default-player banner is Windows-only. The button invokes a
   // Windows-specific Tauri command (open_default_apps_settings) that
   // launches `ms-settings:defaultapps`, which doesn't exist on macOS or
@@ -52,9 +60,14 @@ function App() {
   const [showDefaultPrompt, setShowDefaultPrompt] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (localStorage.getItem("default-prompt-dismissed")) return false;
-    const ua = navigator.userAgent;
-    return /Win(dows|32|64)/i.test(ua);
+    return /Win(dows|32|64)/i.test(navigator.userAgent);
   });
+  // Right-click menu state. On Windows we route through the Win32
+  // TrackPopupMenu API for z-order reasons (popup is a top-level window
+  // above the WebView). On macOS / Linux the popup sits *under* the
+  // WebView in z-order, so a React-rendered menu naturally floats above
+  // the video — we use the original ContextMenu component there.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   // Subtitle generation status — persistent banner that stays visible
   // throughout the (multi-minute) whisper run, replacing the toast that
   // auto-dismissed before the user could read it.
@@ -170,20 +183,24 @@ function App() {
   const desiredVisibleRef = useRef(false);
   const lastVisibleRef = useRef<boolean | null>(null);
   useEffect(() => {
-    // Hide the popup for full-screen modals + popovers + context-menu
-    // states. Right-click menus now go through TrackPopupMenu (an
-    // OS-level menu that floats above the popup automatically), so the
-    // React contextMenu state path is dead code now — but we still hide
-    // for popoverOpen because Subtitle/Audio/Filters menus anchor inside
-    // the player bar and don't actually need the popup gone. Revisit if
-    // the popoverOpen-hides behaviour annoys anyone.
-    const blocking = showSettings || showClipDialog || showUrlDialog || popoverOpen;
+    // Full-screen modals always hide the popup (popup would bleed
+    // through the modal otherwise). Popovers (Subtitle/Audio/Filters)
+    // and the React context menu only need the popup hidden on
+    // **Windows**, where the popup is a top-level WS_POPUP rendered
+    // *above* the WebView. On macOS / Linux the popup is a subview
+    // *below* the WebView, so React-rendered menus naturally float
+    // over the video — no hide needed.
+    const blocking =
+      showSettings ||
+      showClipDialog ||
+      showUrlDialog ||
+      (isWindows && (popoverOpen || contextMenu !== null));
     const visible = state !== "stopped" && !blocking;
     desiredVisibleRef.current = visible;
     if (lastVisibleRef.current === visible) return;
     lastVisibleRef.current = visible;
     invoke("video_surface_set_visible", { visible }).catch(() => {});
-  }, [state, showSettings, showClipDialog, showUrlDialog, popoverOpen]);
+  }, [state, showSettings, showClipDialog, showUrlDialog, popoverOpen, contextMenu, isWindows]);
 
   // Re-assert popup visibility on a couple of "things may have gone
   // wrong" triggers. The Rust side hides the popup when the main window
@@ -733,12 +750,18 @@ useEffect(() => {
     }
     e.preventDefault();
 
-    // Right-click goes through Win32 TrackPopupMenu instead of the
-    // React ContextMenu component. The video popup is a top-level
-    // window above the WebView, so a React menu would render *behind*
-    // it; OS-level menus float above every app window automatically,
-    // so the video keeps playing and the menu is always visible.
-    // Native styling (Win11 default) is the cost.
+    // Platform branch:
+    //  - Windows: Win32 TrackPopupMenu — the video popup is a top-level
+    //    window above the WebView, so React menus render *behind* it.
+    //    OS menus float above every app window naturally.
+    //  - macOS / Linux: video popup is a *subview below the WebView*, so
+    //    a React-rendered menu in the WebView naturally floats above
+    //    the video. Use the original ContextMenu component.
+    if (!isWindows) {
+      setContextMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     const items = contextMenuItems.map((item) =>
       "separator" in item && item.separator
         ? { label: "", separator: true, disabled: false }
@@ -762,7 +785,7 @@ useEffect(() => {
     } catch (err) {
       console.error("[contextmenu] native menu failed:", err);
     }
-  }, [contextMenuItems]);
+  }, [contextMenuItems, isWindows]);
 
   return (
     <div
@@ -1087,8 +1110,18 @@ useEffect(() => {
         )}
       </AnimatePresence>
 
-      {/* Right-click menu is now rendered via Win32 TrackPopupMenu in
-          handleContextMenu — see show_native_context_menu command. */}
+      {/* Right-click menu — Windows uses Win32 TrackPopupMenu inline in
+          handleContextMenu; macOS / Linux fall back to this React component
+          (which naturally renders above the popup since the popup is a
+          subview *below* the WKWebView on those platforms). */}
+      {!isWindows && contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Library panel — slides from left */}
       <AnimatePresence>

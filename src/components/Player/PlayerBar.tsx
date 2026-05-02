@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useLibraryStore } from "../../stores/libraryStore";
@@ -7,6 +9,14 @@ import ProgressBar from "./ProgressBar";
 import PlaybackControls from "./PlaybackControls";
 import VolumeControl from "./VolumeControl";
 import VideoFilters from "../VideoFilters";
+import SubtitleMenu from "../SubtitleMenu";
+import AudioMenu from "../AudioMenu";
+
+// Same platform branch as App.tsx: Windows uses Win32 native menus
+// (show_native_context_menu), macOS / Linux use the React popover
+// components that float above the subview-rendered popup naturally.
+const IS_WINDOWS =
+  typeof window !== "undefined" && /Win(dows|32|64)/i.test(navigator.userAgent);
 
 type NativeItem = { label: string; separator: boolean; disabled: boolean };
 type NativeAction = (() => void | Promise<void>) | null;
@@ -119,10 +129,19 @@ export default function PlayerBar() {
   const { file, state } = usePlayerStore();
   const toggleLibrary = useLibraryStore((s) => s.toggleLibrary);
   const { togglePlaylist, items: playlistItems } = usePlaylistStore();
+  // React-popover state used by macOS / Linux. On Windows these stay
+  // false because the button onClicks short-circuit to native menus.
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
 
   // Native menu helpers: build the items + actions for subtitle/audio buttons.
   // Done at click time so the lists reflect current state.
   const handleSubtitleButton = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!IS_WINDOWS) {
+      setShowSubtitleMenu((v) => !v);
+      setShowAudioMenu(false);
+      return;
+    }
     const btn = e.currentTarget;
     const ps = usePlayerStore.getState();
     const ss = useSettingsStore.getState();
@@ -190,6 +209,11 @@ export default function PlayerBar() {
   };
 
   const handleAudioButton = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!IS_WINDOWS) {
+      setShowAudioMenu((v) => !v);
+      setShowSubtitleMenu(false);
+      return;
+    }
     const btn = e.currentTarget;
     type AudioTrack = { id: number; label: string; active: boolean };
     let tracks: AudioTrack[] = [];
@@ -268,25 +292,41 @@ export default function PlayerBar() {
         <div className="flex flex-1 items-center justify-end gap-0.5">
           <VolumeControl />
 
-          {/* Audio — Win32 native menu (avoids popup occlusion) */}
-          <button
-            className={barBtnClass()}
-            onClick={handleAudioButton}
-            title="Audio Tracks"
-            disabled={state === "stopped"}
-          >
-            <AudioIcon />
-          </button>
+          {/* Audio — Win32 native menu on Windows; React popover on
+              macOS / Linux (popup is below the WebView there, so the
+              popover floats above the video naturally). */}
+          <div className="relative">
+            <button
+              className={barBtnClass(showAudioMenu)}
+              onClick={handleAudioButton}
+              title="Audio Tracks"
+              disabled={state === "stopped"}
+            >
+              <AudioIcon />
+            </button>
+            {!IS_WINDOWS && (
+              <AnimatePresence>
+                {showAudioMenu && <AudioMenu onClose={() => setShowAudioMenu(false)} />}
+              </AnimatePresence>
+            )}
+          </div>
 
-          {/* Subtitles — Win32 native menu */}
-          <button
-            className={barBtnClass()}
-            onClick={handleSubtitleButton}
-            title="Subtitles"
-            disabled={state === "stopped"}
-          >
-            <SubtitleIcon />
-          </button>
+          {/* Subtitles — same platform branch. */}
+          <div className="relative">
+            <button
+              className={barBtnClass(showSubtitleMenu)}
+              onClick={handleSubtitleButton}
+              title="Subtitles"
+              disabled={state === "stopped"}
+            >
+              <SubtitleIcon />
+            </button>
+            {!IS_WINDOWS && (
+              <AnimatePresence>
+                {showSubtitleMenu && <SubtitleMenu onClose={() => setShowSubtitleMenu(false)} />}
+              </AnimatePresence>
+            )}
+          </div>
 
           {/* Playlist */}
           <button

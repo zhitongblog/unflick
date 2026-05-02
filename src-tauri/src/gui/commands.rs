@@ -717,7 +717,25 @@ pub fn toggle_pip(app: AppHandle, gui_player: State<'_, GuiPlayer>) -> Result<Va
             rl.set_always_on_top(true);
         }
         let _ = window.set_size(tauri::LogicalSize::new(400.0, 250.0));
-        let _ = window.set_position(tauri::LogicalPosition::new(1400.0, 700.0));
+        // Position bottom-right of the current monitor instead of a fixed
+        // (1400, 700) hard-coded for a 1080p Windows display. The original
+        // value would land off-screen on a small mac display.
+        if let Some(monitor) = window.current_monitor().ok().flatten() {
+            let scale = monitor.scale_factor();
+            let mon_size = monitor.size();
+            let mon_pos = monitor.position();
+            // Convert physical → logical for set_position.
+            let mon_w_logical = mon_size.width as f64 / scale;
+            let mon_h_logical = mon_size.height as f64 / scale;
+            let mon_x_logical = mon_pos.x as f64 / scale;
+            let mon_y_logical = mon_pos.y as f64 / scale;
+            // 16 px gap from screen edges.
+            let x = mon_x_logical + mon_w_logical - 400.0 - 16.0;
+            let y = mon_y_logical + mon_h_logical - 250.0 - 60.0; // extra room for taskbar/dock
+            let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+        } else {
+            let _ = window.center();
+        }
         in_pip.store(true, Ordering::Relaxed);
         Ok(json!({"pip": true}))
     }
