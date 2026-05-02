@@ -5,21 +5,33 @@ import { useStrings } from "../i18n/utils";
 const appWindow = getCurrentWebviewWindow();
 
 // macOS gets native traffic-light buttons in an overlaid title bar
-// (tauri.conf.json `titleBarStyle: "Overlay"`), so we just leave a
-// gap on the left for them and skip our custom min/max/close cluster
-// on the right. Windows keeps the full custom titlebar — its native
-// chrome doesn't blend with our dark theme.
+// (tauri.conf.json `titleBarStyle: "Overlay"`). We *don't* render any
+// custom title-bar strip on top of that — Apple Silicon users expect
+// chrome-less video apps (QuickTime, IINA, VLC). Content extends to
+// the very top of the window; the lights float over it. Windows
+// still gets the full custom TitleBar because its native chrome
+// doesn't blend with our dark theme.
 const isMac = typeof window !== "undefined" && /Mac/i.test(navigator.userAgent);
 
 export default function TitleBar() {
   const incognito = useIncognitoStore((s) => s.enabled);
   const t = useStrings();
+  if (isMac) {
+    // Keep a thin draggable strip with no visible chrome so users
+    // can still grab the window from the top; the traffic-lights
+    // overlay sits inside it.
+    return (
+      <div
+        data-tauri-drag-region
+        className="h-7 shrink-0 select-none"
+        aria-hidden="true"
+      />
+    );
+  }
   return (
     <div
       data-tauri-drag-region
-      className={`flex h-9 shrink-0 items-center justify-between select-none ${
-        isMac ? "pl-[88px] pr-3" : "px-3"
-      }`}
+      className="flex h-9 shrink-0 items-center justify-between px-3 select-none"
       style={{
         // v0.8: opaque so it cleanly occludes the video region above the
         // mpv child window. Subtle gradient retains depth without trying

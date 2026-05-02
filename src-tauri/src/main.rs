@@ -16,6 +16,20 @@ use unflick_lib::mcp::run_mcp_server;
 const PENDING_FILE_ENV: &str = "UNFLICK_OPEN_FILE";
 
 fn main() {
+    // Linux: force GTK to the X11 backend so our LinuxVideoSurface
+    // (which uses XCreateSimpleWindow + GLX) gets a Xlib window
+    // handle from Tauri instead of Wayland. Tauri's webkit2gtk-4.1
+    // stack also runs fine through Xwayland on Wayland sessions —
+    // GNOME Wayland, WSLg, etc. Native Wayland support lands later;
+    // for v0.8.2 we standardise on X11 to keep the surface code
+    // single-path. User can opt-out by exporting GDK_BACKEND first.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+    }
+
     // Special case before clap: a single positional arg that points at a
     // real file means "Explorer asked us to open this." Bypass CLI parsing
     // and route to the GUI with the path stashed for the frontend.

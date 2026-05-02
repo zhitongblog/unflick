@@ -1,6 +1,6 @@
 {
   "productName": "unflick",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "identifier": "com.unflick.app",
   "build": {
     "frontendDist": "../dist",
@@ -18,7 +18,7 @@
         "minHeight": 400,
         "center": true,
         "resizable": true,
-        "decorations": false,
+        "decorations": true,
         "transparent": false,
         "dragDropEnabled": true,
         "titleBarStyle": "Overlay",

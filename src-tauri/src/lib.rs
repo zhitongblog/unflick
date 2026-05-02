@@ -114,12 +114,24 @@ pub fn run() {
             // Build the embedded video surface beneath the WebView, spin up
             // a render thread that drives mpv → GL, and stash both in the
             // GuiPlayer state.
-            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
             if let Some(window) = app.get_webview_window("main") {
                 eprintln!("[unflick] bringing up video pipeline...");
                 match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
                     Ok(()) => eprintln!("[unflick] video pipeline ready"),
                     Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
+                }
+            }
+
+            // Decorations: Windows wants `false` so our React TitleBar
+            // renders alone (native Win11 chrome doesn't blend with our
+            // dark theme). macOS keeps `decorations: true` from
+            // tauri.conf.json so AppKit shows the native traffic-light
+            // buttons via `titleBarStyle: "Overlay"`.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.set_decorations(false) {
+                    eprintln!("[unflick] set_decorations(false) failed: {e}");
                 }
             }
 
@@ -387,5 +399,67 @@ fn bring_up_video_pipeline(
         .set(render_loop)
         .map_err(|_| "render_loop already initialised".to_string())?;
 
+    Ok(())
+}
+
+/// Linux bring-up: pull the X11 XID + Display* from Tauri's
+/// raw_window_handle and hand them to LinuxVideoSurface. X11 only —
+/// Wayland users currently fall back to Xwayland (Tauri's GTK stack
+/// runs through it by default), which is enough for first-frame.
+#[cfg(target_os = "linux")]
+fn bring_up_video_pipeline(
+    window: &tauri::WebviewWindow,
+    state: tauri::State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+
+    let win_handle = window.window_handle().map_err(|e| format!("window_handle: {e}"))?;
+    let display_handle = window
+        .display_handle()
+        .map_err(|e| format!("display_handle: {e}"))?;
+
+    let xid: u64 = match win_handle.as_raw() {
+        RawWindowHandle::Xlib(h) => h.window,
+        other => return Err(format!("expected Xlib window handle, got {:?}", other)),
+    };
+    if xid == 0 {
+        return Err("got X11 XID 0 — running on pure Wayland?".into());
+    }
+
+    let display_ptr: *mut std::ffi::c_void = match display_handle.as_raw() {
+        RawDisplayHandle::Xlib(h) => h
+            .display
+            .map(|nn| nn.as_ptr() as *mut std::ffi::c_void)
+            .unwrap_or(std::ptr::null_mut()),
+        other => return Err(format!("expected Xlib display handle, got {:?}", other)),
+    };
+    if display_ptr.is_null() {
+        return Err("X11 Display* is null".into());
+    }
+
+    let size = window.inner_size().map_err(|e| format!("inner_size: {e}"))?;
+
+    let surface = video::linux::LinuxVideoSurface::new(
+        display_ptr,
+        xid,
+        size.width as i32,
+        size.height as i32,
+    )
+    .map_err(|e| format!("create video surface: {e}"))?;
+    let surface: Arc<dyn VideoSurface> = Arc::new(surface);
+
+    let player = Arc::new(
+        Player::new_for_render().map_err(|e| format!("create render player: {e}"))?,
+    );
+    let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
+        .map_err(|e| format!("start render loop: {e}"))?;
+    state
+        .render_player
+        .set(player)
+        .map_err(|_| "render_player already initialised".to_string())?;
+    state
+        .render_loop
+        .set(render_loop)
+        .map_err(|_| "render_loop already initialised".to_string())?;
     Ok(())
 }

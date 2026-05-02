@@ -852,10 +852,10 @@ useEffect(() => {
             transition={{ duration: 0.2 }}
             className={`flex items-center gap-3 px-4 py-2 text-sm text-white ${
               genStatus.kind === "running"
-                ? "bg-gradient-to-r from-violet-600/90 to-pink-600/90"
+                ? "bg-violet-600/95"
                 : genStatus.kind === "success"
-                ? "bg-emerald-600/90"
-                : "bg-red-600/90"
+                ? "bg-emerald-600/95"
+                : "bg-red-600/95"
             }`}
           >
             {genStatus.kind === "running" && (

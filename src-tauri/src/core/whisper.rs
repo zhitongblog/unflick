@@ -219,24 +219,25 @@ pub fn transcribe_api(
     let auth_header = format!("Authorization: Bearer {}", api_key);
     let file_arg = format!("file=@{}", audio_path);
 
-    let result = Command::new("curl")
-        .args([
-            "-s",
-            "-X",
-            "POST",
-            "https://api.openai.com/v1/audio/transcriptions",
-            "-H",
-            &auth_header,
-            "-F",
-            &file_arg,
-            "-F",
-            "model=whisper-1",
-            "-F",
-            "response_format=srt",
-            "-o",
-            &srt_path,
-        ])
-        .output();
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s",
+        "-X",
+        "POST",
+        "https://api.openai.com/v1/audio/transcriptions",
+        "-H",
+        &auth_header,
+        "-F",
+        &file_arg,
+        "-F",
+        "model=whisper-1",
+        "-F",
+        "response_format=srt",
+        "-o",
+        &srt_path,
+    ]);
+    suppress_console(&mut cmd);
+    let result = cmd.output();
 
     match result {
         Ok(output) => {
@@ -292,15 +293,16 @@ pub fn translate_srt(
 
     let auth_header = format!("Authorization: Bearer {}", api_key);
 
-    let result = Command::new("curl")
-        .args([
-            "-s", "-X", "POST",
-            "https://api.openai.com/v1/chat/completions",
-            "-H", &auth_header,
-            "-H", "Content-Type: application/json",
-            "-d", &body,
-        ])
-        .output();
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s", "-X", "POST",
+        "https://api.openai.com/v1/chat/completions",
+        "-H", &auth_header,
+        "-H", "Content-Type: application/json",
+        "-d", &body,
+    ]);
+    suppress_console(&mut cmd);
+    let result = cmd.output();
 
     match result {
         Ok(output) => {
