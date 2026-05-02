@@ -1,12 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #030712;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/unflick.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Inline bg paints black before any CSS / React loads. The
+         user reported a white flash when opening a video on v0.8.2 —
+         that's the WebView2 default bg showing through for the
+         ~50–200ms before Tailwind kicks in. Tauri's window-level
+         backgroundColor handles the pre-WebView phase; this handles
+         the WebView-but-no-CSS phase. -->
+    <style>
+      html, body { background-color: #030712 !important; margin: 0; }
+    </style>
     <title>unflick</title>
   </head>
-  <body class="bg-black text-white overflow-hidden">
+  <body class="bg-black text-white overflow-hidden" style="background-color: #030712;">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -128,10 +128,23 @@ pub fn run() {
             // dark theme). macOS keeps `decorations: true` from
             // tauri.conf.json so AppKit shows the native traffic-light
             // buttons via `titleBarStyle: "Overlay"`.
+            //
+            // Then show the window. tauri.conf.json sets `visible: false`
+            // to avoid the white-flash where the user briefly sees the
+            // native chrome before set_decorations + the WebView paints.
+            // Showing here, after the chrome flip + the pipeline init,
+            // means the first frame the user sees is the final
+            // configuration (dark window with our React TitleBar on
+            // Windows, dark window with overlaid traffic lights on mac).
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(e) = window.set_decorations(false) {
                     eprintln!("[unflick] set_decorations(false) failed: {e}");
+                }
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.show() {
+                    eprintln!("[unflick] window.show() failed: {e}");
                 }
             }
 
