@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        Allow loading dylibs that aren't signed with our Developer ID.
+        We dynamically link libmpv.dylib at runtime via libloading; on
+        the user's machine it usually comes from Homebrew, signed by
+        the Homebrew team, not by us. Without this entitlement the
+        hardened runtime refuses to map it ("different Team IDs").
+        Apple permits this for notarization with a justification.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!--
+        Allow DYLD_* env vars (used by some dev workflows / mpv plugins).
+        Required if a user has a custom mpv build at a non-standard path.
+    -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!--
+        Allow JIT for any script paths mpv may want to use (Lua scripts,
+        mpv's IPC engine). Hardened runtime blocks W^X mappings without
+        this.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!--
+        LuaJIT (which mpv uses for its scripting engine) doesn't use the
+        modern allow-jit MAP_JIT path on macOS — it allocates plain
+        executable memory and writes machine code into it directly.
+        Hardened runtime kills that with "Code Signature Invalid" unless
+        we also opt out of the page-permission check.
+    -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!--
+        File access scopes — unflick needs to open user-selected video
+        files and scan a chosen library directory.
+    -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!--
+        Network for the URL-playback path (yt-dlp + ffmpeg streaming).
+    -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

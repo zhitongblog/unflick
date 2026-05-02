@@ -114,7 +114,7 @@ pub fn run() {
             // Build the embedded video surface beneath the WebView, spin up
             // a render thread that drives mpv → GL, and stash both in the
             // GuiPlayer state.
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             if let Some(window) = app.get_webview_window("main") {
                 eprintln!("[unflick] bringing up video pipeline...");
                 match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
@@ -160,6 +160,7 @@ pub fn run() {
             commands::video_surface_set_geometry,
             commands::video_surface_set_visible,
             commands::video_surface_set_alpha,
+            #[cfg(target_os = "windows")]
             commands::show_native_context_menu,
             commands::set_always_on_top,
             commands::player_play,
@@ -326,6 +327,46 @@ fn bring_up_video_pipeline(
     // frontend calls video_surface_set_geometry once it's mounted.
     let surface = video::windows::WindowsVideoSurface::new(
         hwnd,
+        size.width as i32,
+        size.height as i32,
+    )
+    .map_err(|e| format!("create video surface: {e}"))?;
+    let surface: Arc<dyn VideoSurface> = Arc::new(surface);
+
+    let player = Arc::new(Player::new_for_render().map_err(|e| format!("create render player: {e}"))?);
+
+    let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
+        .map_err(|e| format!("start render loop: {e}"))?;
+
+    state
+        .render_player
+        .set(player)
+        .map_err(|_| "render_player already initialised".to_string())?;
+    state
+        .render_loop
+        .set(render_loop)
+        .map_err(|_| "render_loop already initialised".to_string())?;
+
+    Ok(())
+}
+
+/// macOS counterpart to the Windows pipeline bring-up. Same shape:
+/// surface → mpv player → render loop, all stashed in GuiPlayer state.
+/// The architecture differs in that the surface is a *subview* of the
+/// Tauri main window's contentView (not a top-level popup), so there's no
+/// owner / z-order plumbing — the WKWebView naturally sits on top.
+#[cfg(target_os = "macos")]
+fn bring_up_video_pipeline(
+    window: &tauri::WebviewWindow,
+    state: tauri::State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    let ns_view_ptr = window.ns_view().map_err(|e| format!("ns_view: {e}"))?;
+    let size = window
+        .inner_size()
+        .map_err(|e| format!("inner_size: {e}"))?;
+
+    let surface = video::macos::MacosVideoSurface::new(
+        ns_view_ptr,
         size.width as i32,
         size.height as i32,
     )

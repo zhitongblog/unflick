@@ -103,6 +103,13 @@
           "SimpChinese"
         ]
       }
-    }
+    },
+    "macOS": {
+      "signingIdentity": "Developer ID Application: xiangdong li (6NQM3XP5RF)",
+      "providerShortName": "6NQM3XP5RF",
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist"
+    },
+    "category": "Video"
   }
 }

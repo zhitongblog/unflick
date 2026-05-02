@@ -163,6 +163,26 @@ impl MpvApi {
                     if resource_path.exists() {
                         return unsafe { Library::new(&resource_path) };
                     }
+                    // .app bundle (macOS): <Contents/MacOS>/../Resources/mpv-dev/
+                    #[cfg(target_os = "macos")]
+                    {
+                        let bundle_path = dir
+                            .parent()
+                            .map(|p| p.join("Resources").join("mpv-dev").join(lib_name));
+                        if let Some(p) = bundle_path {
+                            if p.exists() {
+                                return unsafe { Library::new(&p) };
+                            }
+                        }
+                        let bundle_frameworks = dir
+                            .parent()
+                            .map(|p| p.join("Frameworks").join(lib_name));
+                        if let Some(p) = bundle_frameworks {
+                            if p.exists() {
+                                return unsafe { Library::new(&p) };
+                            }
+                        }
+                    }
                     // Try <exe_dir>/mpv-dev/libmpv-2.dll
                     let direct_path = dir.join("mpv-dev").join(lib_name);
                     if direct_path.exists() {
@@ -174,6 +194,21 @@ impl MpvApi {
                         return unsafe { Library::new(&beside_path) };
                     }
                 }
+                // macOS brew install paths — dyld doesn't search these
+                // by default on Apple Silicon, but most users will have
+                // mpv installed via Homebrew.
+                #[cfg(target_os = "macos")]
+                {
+                    for p in &[
+                        "/opt/homebrew/lib/libmpv.2.dylib",
+                        "/usr/local/lib/libmpv.2.dylib",
+                    ] {
+                        if std::path::Path::new(p).exists() {
+                            return unsafe { Library::new(p) };
+                        }
+                    }
+                }
+                // Linux: usual library search path covers /usr/lib + /usr/local/lib.
                 unsafe { Library::new(lib_name) }
             })
             .map_err(|e| format!("failed to load {}: {}", lib_name, e))?;
