@@ -62,6 +62,11 @@ pub struct MacosVideoSurface {
     context: Mutex<Option<ContextSlot>>,
     surface: Surface<WindowSurface>,
     display: Display,
+    /// Tracked HWND-equivalent size — same rationale as WindowsVideoSurface:
+    /// glutin's Surface::width/height keeps reporting the creation size on
+    /// CGL, so we track ourselves to feed mpv the right FBO viewport.
+    cur_w: std::sync::atomic::AtomicI32,
+    cur_h: std::sync::atomic::AtomicI32,
 }
 
 unsafe impl Send for MacosVideoSurface {}
@@ -172,6 +177,8 @@ impl MacosVideoSurface {
             display,
             surface,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
+            cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
+            cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
         })
     }
 }
@@ -231,8 +238,15 @@ impl VideoSurface for MacosVideoSurface {
             );
             self.child.setFrame(frame);
 
+            // Track the new size so size() returns it (mpv letterboxes
+            // against the size we report).
+            use std::sync::atomic::Ordering;
+            self.cur_w.store(w.max(1), Ordering::Relaxed);
+            self.cur_h.store(h.max(1), Ordering::Relaxed);
+
             // Resize the GL drawable to match. Keeps the FBO pixel size
-            // in sync with the view's bounds.
+            // in sync with the view's bounds (no-op on macOS / WGL but
+            // harmless).
             if let Ok(guard) = self.context.lock() {
                 if let Some(ContextSlot::Current(ctx)) = guard.as_ref() {
                     let nw = std::num::NonZeroU32::new(w.max(1) as u32).unwrap();
@@ -265,9 +279,11 @@ impl VideoSurface for MacosVideoSurface {
     }
 
     fn size(&self) -> (i32, i32) {
-        let w = self.surface.width().unwrap_or(1) as i32;
-        let h = self.surface.height().unwrap_or(1) as i32;
-        (w, h)
+        use std::sync::atomic::Ordering;
+        (
+            self.cur_w.load(Ordering::Relaxed),
+            self.cur_h.load(Ordering::Relaxed),
+        )
     }
 
     fn swap_buffers(&self) -> Result<()> {

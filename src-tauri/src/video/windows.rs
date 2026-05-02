@@ -122,6 +122,15 @@ pub struct WindowsVideoSurface {
     /// Owner = Tauri's main window. Stored so set_geometry can read its
     /// screen position via GetWindowRect on every reflow.
     owner_hwnd: HWND,
+    /// Current backing-store size in physical pixels. We track this
+    /// ourselves because glutin's `Surface::resize` is a no-op on WGL —
+    /// `Surface::width()/height()` keeps returning the size the surface
+    /// was *created* with, even after we've moved the HWND. Letting
+    /// mpv render into a stale FBO size with a smaller HWND produces
+    /// the "video stuck to the upper-left, black band on the right"
+    /// look the user reported.
+    cur_w: std::sync::atomic::AtomicI32,
+    cur_h: std::sync::atomic::AtomicI32,
     // glutin objects. Order in the struct matters for drop: the context and
     // surface must drop before the display. Rust drops fields top-to-bottom,
     // so list them context → surface → display.
@@ -245,6 +254,8 @@ impl WindowsVideoSurface {
         Ok(Self {
             hwnd,
             owner_hwnd,
+            cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
+            cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
             display,
             surface,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
@@ -334,13 +345,22 @@ impl VideoSurface for WindowsVideoSurface {
             bail!("SetWindowPos failed");
         }
 
+        // Update our tracked size so size() returns the new dimensions.
+        // mpv reads size via render_to_fbo's w/h param to know what
+        // viewport to letterbox into; if we still report the original
+        // size after the HWND has shrunk, mpv letterboxes for the
+        // larger area and the visible window only sees the upper-left
+        // crop — what the user reported as "video not centred".
+        self.cur_w
+            .store(w.max(1), std::sync::atomic::Ordering::Relaxed);
+        self.cur_h
+            .store(h.max(1), std::sync::atomic::Ordering::Relaxed);
+
         // Resize the GL backing surface to match the HWND. Without this,
         // mpv keeps rendering into the original FBO size while the popup
         // is whatever size we last asked Win32 for, so SwapBuffers
-        // stretches/clips the result — which on Win11 manifests as
-        // flicker because the compositor and the GL drawable disagree.
-        // Surface::resize is a thread-safe glutin API that takes only a
-        // possibly-current context; we hold the mutex to read it.
+        // stretches/clips the result. (Note: glutin::Surface::resize is
+        // a no-op on WGL — the size atomic above is the actual fix.)
         if let Ok(guard) = self.context.lock() {
             if let Some(ContextSlot::Current(ctx)) = guard.as_ref() {
                 let nw = std::num::NonZeroU32::new(w.max(1) as u32).unwrap();
@@ -381,12 +401,14 @@ impl VideoSurface for WindowsVideoSurface {
     }
 
     fn size(&self) -> (i32, i32) {
-        // We track size implicitly through the surface — query glutin.
-        // Surface holds the size we passed at creation; resize is a separate
-        // op (see resize_surface in P5).
-        let w = self.surface.width().unwrap_or(1) as i32;
-        let h = self.surface.height().unwrap_or(1) as i32;
-        (w, h)
+        // Read from our own tracked size — see comment on cur_w/cur_h.
+        // glutin's Surface::width/height stays pinned to the creation
+        // size on WGL, which is wrong as soon as set_geometry runs.
+        use std::sync::atomic::Ordering;
+        (
+            self.cur_w.load(Ordering::Relaxed),
+            self.cur_h.load(Ordering::Relaxed),
+        )
     }
 
     fn swap_buffers(&self) -> Result<()> {

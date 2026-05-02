@@ -24,9 +24,23 @@ fn main() {
     // for v0.8.2 we standardise on X11 to keep the surface code
     // single-path. User can opt-out by exporting GDK_BACKEND first.
     #[cfg(target_os = "linux")]
-    {
+    unsafe {
+        // Use libc::setenv directly because some early-init paths in
+        // gdk / webkit might not see Rust's env::set_var if it
+        // updates the in-process environ pointer asymmetrically with
+        // glibc's cached one. setenv()'s third arg = 1 means
+        // "overwrite" — but we still respect a user-provided value.
         if std::env::var_os("GDK_BACKEND").is_none() {
-            std::env::set_var("GDK_BACKEND", "x11");
+            let key = b"GDK_BACKEND\0".as_ptr() as *const std::os::raw::c_char;
+            let val = b"x11\0".as_ptr() as *const std::os::raw::c_char;
+            extern "C" {
+                fn setenv(
+                    name: *const std::os::raw::c_char,
+                    value: *const std::os::raw::c_char,
+                    overwrite: std::os::raw::c_int,
+                ) -> std::os::raw::c_int;
+            }
+            setenv(key, val, 1);
         }
     }
 

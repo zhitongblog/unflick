@@ -46,6 +46,10 @@ pub struct LinuxVideoSurface {
     context: Mutex<Option<ContextSlot>>,
     surface: Surface<WindowSurface>,
     display: Display,
+    /// Tracked size — see WindowsVideoSurface::cur_w note. glutin's
+    /// Surface::width/height pin to creation size on GLX too.
+    cur_w: std::sync::atomic::AtomicI32,
+    cur_h: std::sync::atomic::AtomicI32,
 }
 
 unsafe impl Send for LinuxVideoSurface {}
@@ -184,6 +188,8 @@ impl LinuxVideoSurface {
             display,
             surface,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
+            cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
+            cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
         })
     }
 }
@@ -254,6 +260,9 @@ impl VideoSurface for LinuxVideoSurface {
             );
             flush(self.display_ptr);
         }
+        use std::sync::atomic::Ordering;
+        self.cur_w.store(w.max(1), Ordering::Relaxed);
+        self.cur_h.store(h.max(1), Ordering::Relaxed);
         Ok(())
     }
 
@@ -281,9 +290,11 @@ impl VideoSurface for LinuxVideoSurface {
     }
 
     fn size(&self) -> (i32, i32) {
-        let w = self.surface.width().unwrap_or(1) as i32;
-        let h = self.surface.height().unwrap_or(1) as i32;
-        (w, h)
+        use std::sync::atomic::Ordering;
+        (
+            self.cur_w.load(Ordering::Relaxed),
+            self.cur_h.load(Ordering::Relaxed),
+        )
     }
 
     fn swap_buffers(&self) -> Result<()> {
