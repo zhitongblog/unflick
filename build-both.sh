@@ -43,8 +43,14 @@ apply_resources() {
   "
 }
 
-# Restore the standard bundle config on exit, even if a build fails.
-trap 'apply_resources "$STANDARD_RESOURCES"' EXIT
+# Restore an EMPTY resources list on exit so the source-controlled
+# tauri.conf.json stays clean — the Windows DLLs/EXEs only belong in
+# the bundle when build-both.sh is actively building Windows. Leaving
+# them in tauri.conf.json after the script exits would cause non-
+# Windows builds (Mac DMG, Linux .deb/.rpm/.AppImage) to silently
+# bundle 240 MB of useless Windows binaries from src-tauri/{mpv-dev,
+# ffmpeg,yt-dlp}/ if those dirs exist on the build machine.
+trap 'apply_resources "[]"' EXIT
 
 echo "=== Building Standard Edition ==="
 apply_resources "$STANDARD_RESOURCES"
