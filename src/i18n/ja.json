@@ -110,6 +110,7 @@
   "context": {
     "openFile": "ファイルを開く…",
     "openUrl": "URL を開く…",
+    "addToPlaylist": "ファイルをプレイリストに追加…",
     "play": "再生",
     "pause": "一時停止",
     "resume": "再開",

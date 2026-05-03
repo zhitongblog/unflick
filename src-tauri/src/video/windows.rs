@@ -26,6 +26,7 @@ use windows_sys::core::PCWSTR;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, RegisterClassExW, SetLayeredWindowAttributes, SetWindowPos,
     ShowWindow, CS_HREDRAW, CS_OWNDC, CS_VREDRAW, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST,
@@ -311,6 +312,27 @@ impl VideoSurface for WindowsVideoSurface {
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
+        // (x, y, w, h) arrive in *CSS / logical* pixels — that's what
+        // getBoundingClientRect on the WebView gives the frontend. Win32
+        // SetWindowPos on a PerMonitorV2-aware process uses *physical*
+        // monitor pixels. On a 100% DPI monitor those match; on a 125%
+        // monitor (very common on Windows), the popup ends up 80% of the
+        // size React intended — short on the right and bottom of the
+        // video region. Convert to physical px before talking to Win32.
+        //
+        // GetDpiForWindow tracks the monitor the owner is currently on,
+        // so dragging the window across monitors with different DPIs
+        // reports the new value; the WM_DPICHANGED that comes with the
+        // move re-layouts the WebView, which fires ResizeObserver, which
+        // calls back into here with fresh logical coords — so we always
+        // scale by the *current* monitor's DPI.
+        let dpi = unsafe { GetDpiForWindow(self.owner_hwnd) };
+        let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+        let scaled_x = (x as f64 * scale).round() as i32;
+        let scaled_y = (y as f64 * scale).round() as i32;
+        let scaled_w = ((w as f64 * scale).round() as i32).max(1);
+        let scaled_h = ((h as f64 * scale).round() as i32).max(1);
+
         // (x, y) are in *client* coordinates of the Tauri window — what
         // React's getBoundingClientRect handed the frontend. We need
         // screen coords for the popup.
@@ -327,8 +349,8 @@ impl VideoSurface for WindowsVideoSurface {
         if ok == 0 {
             bail!("ClientToScreen on owner failed");
         }
-        let screen_x = origin.x + x;
-        let screen_y = origin.y + y;
+        let screen_x = origin.x + scaled_x;
+        let screen_y = origin.y + scaled_y;
 
         let ok = unsafe {
             SetWindowPos(
@@ -336,8 +358,8 @@ impl VideoSurface for WindowsVideoSurface {
                 HWND_TOP,
                 screen_x,
                 screen_y,
-                w.max(1),
-                h.max(1),
+                scaled_w,
+                scaled_h,
                 SWP_NOACTIVATE,
             )
         };
@@ -352,9 +374,9 @@ impl VideoSurface for WindowsVideoSurface {
         // larger area and the visible window only sees the upper-left
         // crop — what the user reported as "video not centred".
         self.cur_w
-            .store(w.max(1), std::sync::atomic::Ordering::Relaxed);
+            .store(scaled_w, std::sync::atomic::Ordering::Relaxed);
         self.cur_h
-            .store(h.max(1), std::sync::atomic::Ordering::Relaxed);
+            .store(scaled_h, std::sync::atomic::Ordering::Relaxed);
 
         // Resize the GL backing surface to match the HWND. Without this,
         // mpv keeps rendering into the original FBO size while the popup
@@ -363,8 +385,8 @@ impl VideoSurface for WindowsVideoSurface {
         // a no-op on WGL — the size atomic above is the actual fix.)
         if let Ok(guard) = self.context.lock() {
             if let Some(ContextSlot::Current(ctx)) = guard.as_ref() {
-                let nw = std::num::NonZeroU32::new(w.max(1) as u32).unwrap();
-                let nh = std::num::NonZeroU32::new(h.max(1) as u32).unwrap();
+                let nw = std::num::NonZeroU32::new(scaled_w as u32).unwrap();
+                let nh = std::num::NonZeroU32::new(scaled_h as u32).unwrap();
                 self.surface.resize(ctx, nw, nh);
             }
         }

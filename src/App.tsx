@@ -37,6 +37,11 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   // (contextMenu state is declared below alongside the platform branch.)
   const [controlsVisible, setControlsVisible] = useState(true);
+  // True while the OS is in fullscreen mode for our window. Drives
+  // TitleBar / PlayerBar visibility — in fullscreen we hide them
+  // unless the user has just moved the mouse, so the video really
+  // does fill the screen.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateResult | null>(null);
@@ -82,6 +87,28 @@ function App() {
   const videoRegionRef = useRef<HTMLDivElement | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Track fullscreen state so we can hide chrome (TitleBar / PlayerBar)
+  // for a real cinema view. The Rust set_fullscreen / exit_fullscreen
+  // commands emit `unflick:fullscreen-changed` after toggling — this
+  // covers every entry point (F key, double-click, context menu, the
+  // PlayerBar button, the native app menu) without each call site
+  // having to push state itself. We also seed the initial value at
+  // mount in case the window happens to start fullscreen.
+  useEffect(() => {
+    const win = getCurrentWebviewWindow();
+    let cancelled = false;
+    win.isFullscreen()
+      .then((fs) => { if (!cancelled) setIsFullscreen(fs); })
+      .catch(() => {});
+    const unlisten = listen<boolean>("unflick:fullscreen-changed", (e) => {
+      setIsFullscreen(e.payload);
+    });
+    return () => {
+      cancelled = true;
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
   // Poll mpv for status — position / duration / state. 250 ms gives a smooth
   // playback bar without thrashing CPU. v0.8.x will replace this with mpv
   // observe_property events emitted from Rust, but polling is enough for the
@@ -124,11 +151,18 @@ function App() {
     let last: { x: number; y: number; w: number; h: number } | null = null;
     const sync = () => {
       const rect = el.getBoundingClientRect();
-      // Tauri's main HWND on Windows reports its rect in logical (CSS-
-      // matching) pixels because Tao opts into PerMonitorV2 DPI awareness
-      // but Tauri's window size config + GetWindowRect both stay in
-      // logical units for our purposes. CSS getBoundingClientRect is in
-      // logical px too, so they match 1:1 — no DPR scaling needed.
+      // We send logical (CSS) pixels — `getBoundingClientRect` reports
+      // them — and let each backend convert as needed:
+      //   - Windows: SetWindowPos uses physical px on a PerMonitorV2-
+      //     aware process, so video/windows.rs scales by GetDpiForWindow
+      //     before talking to Win32. Doing the scale there keeps it on
+      //     the same monitor as the popup, which matters when the user
+      //     drags between monitors with different DPIs.
+      //   - macOS: NSView frame is in points (logical), so the values
+      //     pass through unchanged.
+      //   - Linux: X11 XMoveResizeWindow takes physical px, but GTK's
+      //     CSD layout is already physical at our scale, so values
+      //     pass through unchanged.
       const x = Math.round(rect.left);
       const y = Math.round(rect.top);
       const w = Math.round(rect.width);
@@ -272,6 +306,17 @@ function App() {
     if (path) play(path);
   }, [play]);
 
+  const handleAddFilesToPlaylist = useCallback(async () => {
+    const result = await invoke<{ paths: string[] }>("open_files_dialog");
+    if (!result.paths.length) return;
+    const { add, togglePlaylist: toggle, showPlaylist: visible } =
+      usePlaylistStore.getState();
+    for (const p of result.paths) {
+      await add(p);
+    }
+    if (!visible) toggle();
+  }, []);
+
   const captureScreenshot = useCallback(async () => {
     const { state, file: currentFile } = usePlayerStore.getState();
     if (state === "stopped") {
@@ -325,7 +370,7 @@ function App() {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
       setControlsVisible(false);
-    }, 3000);
+    }, 1000);
   }, []);
 
   const handleMouseMove = useCallback(() => {
@@ -670,6 +715,10 @@ useEffect(() => {
       shortcut: "Ctrl+U",
       onClick: () => setShowUrlDialog(true),
     },
+    {
+      label: t.context.addToPlaylist,
+      onClick: handleAddFilesToPlaylist,
+    },
     { separator: true },
     {
       label: state === "playing" ? t.context.pause : t.context.play,
@@ -793,13 +842,14 @@ useEffect(() => {
       style={{ backgroundColor: state === "stopped" ? "var(--bg-primary, #030712)" : "transparent" }}
       onMouseMove={handleMouseMove}
     >
-      {/* Custom title bar.
-          v0.8: always visible. Auto-hide is unsafe with transparent: true
-          + an mpv child window beneath — opacity:0 leaves a transparent
-          gap that lets the OS desktop bleed through. The proper "cinema
-          mode" (fullscreen + child window expansion to occupy chrome
-          space) lands in v0.8.x. */}
-      <TitleBar />
+      {/* Custom title bar. Hidden in fullscreen so the video really
+          fills the screen. We use conditional rendering (not opacity)
+          so the bar is removed from the layout — that makes the
+          flex-1 video region expand into the chrome's old space, which
+          fires our ResizeObserver and grows the mpv popup to match.
+          Opacity:0 would leave a transparent gap and let the OS
+          desktop bleed through under the popup. */}
+      {(!isFullscreen || controlsVisible) && <TitleBar />}
 
       {/* Update available banner */}
       <AnimatePresence>
@@ -1133,8 +1183,11 @@ useEffect(() => {
         {showPlaylist && <PlaylistPanel />}
       </AnimatePresence>
 
-      {/* Player bar — always visible in v0.8 (see TitleBar comment). */}
-      <PlayerBar />
+      {/* Player bar — visible at all times outside fullscreen. In
+          fullscreen we follow the same visibility rule as the title
+          bar so the video fills the screen until the user moves the
+          mouse. */}
+      {(!isFullscreen || controlsVisible) && <PlayerBar />}
     </div>
   );
 }

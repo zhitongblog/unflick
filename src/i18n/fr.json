@@ -110,6 +110,7 @@
   "context": {
     "openFile": "Ouvrir un fichier…",
     "openUrl": "Ouvrir une URL…",
+    "addToPlaylist": "Ajouter des fichiers à la playlist…",
     "play": "Lire",
     "pause": "Pause",
     "resume": "Reprendre",

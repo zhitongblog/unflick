@@ -110,6 +110,7 @@
   "context": {
     "openFile": "파일 열기…",
     "openUrl": "URL 열기…",
+    "addToPlaylist": "파일을 재생목록에 추가…",
     "play": "재생",
     "pause": "일시정지",
     "resume": "다시 재생",

@@ -1,4 +1,4 @@
-use tauri::{command, State, AppHandle, Manager};
+use tauri::{command, State, AppHandle, Emitter, Manager};
 use serde_json::{json, Value};
 
 use crate::core::library;
@@ -745,8 +745,13 @@ pub fn toggle_pip(app: AppHandle, gui_player: State<'_, GuiPlayer>) -> Result<Va
 pub fn set_fullscreen(app: AppHandle) -> Result<Value, String> {
     let window = app.get_webview_window("main").ok_or("no main window")?;
     let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
-    window.set_fullscreen(!is_fullscreen).map_err(|e| e.to_string())?;
-    Ok(json!({"fullscreen": !is_fullscreen}))
+    let target = !is_fullscreen;
+    window.set_fullscreen(target).map_err(|e| e.to_string())?;
+    // Tell the frontend so it can hide TitleBar / PlayerBar — going
+    // through a Rust-emitted event handles every entry point (F key,
+    // double-click, native menu item, PlayerBar button) uniformly.
+    let _ = app.emit("unflick:fullscreen-changed", target);
+    Ok(json!({"fullscreen": target}))
 }
 
 #[command]
@@ -755,6 +760,7 @@ pub fn exit_fullscreen(app: AppHandle) -> Result<Value, String> {
     let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
     if is_fullscreen {
         window.set_fullscreen(false).map_err(|e| e.to_string())?;
+        let _ = app.emit("unflick:fullscreen-changed", false);
     }
     Ok(json!({"fullscreen": false}))
 }
