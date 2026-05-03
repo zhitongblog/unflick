@@ -63,6 +63,19 @@ impl Player {
         })
     }
 
+    /// Linux variant: mpv embeds into the given X11 Window XID and uses
+    /// `vo=x11` for CPU-side XPutImage rendering. Skips GL entirely so
+    /// playback works on every X11 system regardless of GPU support
+    /// (VMs, llvmpipe, remote X, etc.).
+    #[cfg(target_os = "linux")]
+    pub fn new_with_wid_x11(wid: i64) -> Result<Self> {
+        let mpv = MpvHandle::new_with_wid_x11(wid)?;
+        Ok(Self {
+            mpv,
+            current_file: Mutex::new(None),
+        })
+    }
+
     pub fn play(&self, path: &str, seek: Option<f64>, volume: Option<i64>, speed: Option<f64>) -> Result<()> {
         // Set volume/speed before loading file
         if let Some(v) = volume {

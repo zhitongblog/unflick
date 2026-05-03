@@ -1,53 +1,39 @@
 //! Linux VideoSurface: child X11 window beneath the WebKitGTK widget.
 //!
-//! Architecture parallels macOS: instead of a separate top-level popup
-//! (the Windows pattern, forced by WebView2's DComp surface painting
-//! over child HWNDs), we create a child X11 window underneath the
-//! WebKit2GTK widget that hosts our OpenGL context. WebKit's drawing
-//! happens above; the WebView's transparent body lets video bleed
-//! through where the React layout is empty.
+//! Architecture (post-v0.8.4 simplification): we just create the X11
+//! child window. *We don't create a GL context*. mpv on Linux is
+//! initialised with `--wid=<xid> --vo=x11`, so mpv's own internal vo
+//! drives rendering via XPutImage straight into our window. That means
+//! one less moving part vs. Windows/macOS (which keep the
+//! glutin-context + render-thread path) — but it also fixes the
+//! showstopper where llvmpipe (software GL, what you get in a VMware
+//! VM with no 3D, in WSLg, or on a low-end NUC without DRI) renders
+//! frames the X server never composites onto our visible window.
+//! Going through `vo=x11` means mpv writes pixels straight to the
+//! X11 frontbuffer with no GL backbuffer in between, which the X
+//! server treats just like any other XPutImage call. Works
+//! identically on native Xorg, on Xwayland, on remote X
+//! forwarding, and on every VM display driver mesa supports.
 //!
-//! Wayland is **not** yet supported — Tauri's GTK3 stack runs on
-//! Xwayland by default in WSLg / GNOME Wayland sessions, so X11 path
-//! covers WSL development + most current users. Native Wayland
-//! (wl_subsurface + EGL) lands in a follow-up.
-//!
-//! GL context: glutin's GLX backend talks to libGL on X11. Same legacy
-//! GL profile mpv expects on Windows / macOS.
+//! Wayland-native (`wp_subsurface` + EGL) lands as a separate v0.9.x
+//! follow-up — for now Wayland users go through Xwayland (Tauri's
+//! GTK3 stack picks Xwayland when GDK_BACKEND=x11 is set, see
+//! main.rs).
 
 #![cfg(target_os = "linux")]
 
 use anyhow::{anyhow, bail, Result};
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::ptr;
-use std::sync::Mutex;
-
-use glutin::config::ConfigTemplateBuilder;
-use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext,
-    PossiblyCurrentContext, PossiblyCurrentGlContext,
-};
-use glutin::display::{Display, DisplayApiPreference, GlDisplay};
-use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 
 use super::VideoSurface;
-
-enum ContextSlot {
-    NotCurrent(NotCurrentContext),
-    Current(PossiblyCurrentContext),
-}
 
 pub struct LinuxVideoSurface {
     /// X11 child window ID (an XID — `c_ulong` on Linux).
     window: u64,
     /// X11 Display* — borrowed from Tauri / GTK; we do not close it.
     display_ptr: *mut c_void,
-    context: Mutex<Option<ContextSlot>>,
-    surface: Surface<WindowSurface>,
-    display: Display,
-    /// Tracked size — see WindowsVideoSurface::cur_w note. glutin's
-    /// Surface::width/height pin to creation size on GLX too.
+    /// Tracked size — used by `size()`.
     cur_w: std::sync::atomic::AtomicI32,
     cur_h: std::sync::atomic::AtomicI32,
 }
@@ -67,24 +53,18 @@ impl LinuxVideoSurface {
             bail!("parent X11 Window XID is 0");
         }
 
-        // Create a child X11 window. We dlopen libX11 to keep this file
-        // dependency-free at build time — the lib is universally
-        // available on any system that can run the WebKitGTK Tauri
-        // app, and dlopen avoids pulling x11-dl as a hard dep.
+        // Create a child X11 window via dlopen'd libX11. We use
+        // XCreateSimpleWindow with the parent's visual (depth = parent's
+        // depth, visual = CopyFromParent) — that's fine here because
+        // we're not creating a GL context on this window. mpv's vo=x11
+        // path uses XPutImage which works on any visual the X server
+        // accepts.
         let xlib = unsafe { libloading::Library::new("libX11.so.6") }
             .or_else(|_| unsafe { libloading::Library::new("libX11.so") })
             .map_err(|e| anyhow!("dlopen libX11: {e}"))?;
 
         type CreateSimpleWindowFn = unsafe extern "C" fn(
-            *mut c_void, // display
-            u64,         // parent
-            i32,         // x
-            i32,         // y
-            u32,         // width
-            u32,         // height
-            u32,         // border_width
-            u64,         // border
-            u64,         // background
+            *mut c_void, u64, i32, i32, u32, u32, u32, u64, u64,
         ) -> u64;
         type MapWindowFn = unsafe extern "C" fn(*mut c_void, u64) -> i32;
         type FlushFn = unsafe extern "C" fn(*mut c_void) -> i32;
@@ -94,8 +74,7 @@ impl LinuxVideoSurface {
                 .map_err(|e| anyhow!("XCreateSimpleWindow: {e}"))?
         };
         let map_window: libloading::Symbol<MapWindowFn> = unsafe {
-            xlib.get(b"XMapWindow\0")
-                .map_err(|e| anyhow!("XMapWindow: {e}"))?
+            xlib.get(b"XMapWindow\0").map_err(|e| anyhow!("XMapWindow: {e}"))?
         };
         let flush: libloading::Symbol<FlushFn> = unsafe {
             xlib.get(b"XFlush\0").map_err(|e| anyhow!("XFlush: {e}"))?
@@ -111,7 +90,7 @@ impl LinuxVideoSurface {
                 h.max(1) as u32,
                 0,
                 0,
-                0,
+                0, // background = black so the area looks intentional before mpv loads.
             )
         };
         if window == 0 {
@@ -122,118 +101,38 @@ impl LinuxVideoSurface {
             flush(display_ptr);
         }
 
-        // Hand our XID to glutin via raw-window-handle.
-        let mut win_handle = XlibWindowHandle::new(window);
-        // visual id 0 is "default" — let glutin pick.
-        win_handle.visual_id = 0;
-        let mut display_handle = XlibDisplayHandle::new(
-            std::ptr::NonNull::new(display_ptr),
-            0, // screen 0 — Tauri's GTK uses the default screen
-        );
-        // Avoid unused warning if glutin's signature evolves.
-        let _ = &mut display_handle;
-        let raw_window = RawWindowHandle::Xlib(win_handle);
-        let raw_display = RawDisplayHandle::Xlib(display_handle);
-
-        // Use GLX since we're on X11 with libGL available.
-        let display = unsafe {
-            Display::new(raw_display, DisplayApiPreference::Glx(Box::new(|_| {
-                // Default register-window-class hook does nothing on GLX.
-            })))
-            .map_err(|e| anyhow!("create GLX display: {e}"))?
-        };
-
-        let template = ConfigTemplateBuilder::new()
-            .with_alpha_size(8)
-            .compatible_with_native_window(raw_window)
-            .build();
-
-        let config = unsafe {
-            display
-                .find_configs(template)
-                .map_err(|e| anyhow!("find_configs: {e}"))?
-                .next()
-                .ok_or_else(|| anyhow!("no compatible GLX config found"))?
-        };
-
-        let context_attrs = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::OpenGl(None))
-            .build(Some(raw_window));
-
-        let not_current = unsafe {
-            display
-                .create_context(&config, &context_attrs)
-                .map_err(|e| anyhow!("create_context: {e}"))?
-        };
-
-        let surface_attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
-            raw_window,
-            std::num::NonZeroU32::new(w.max(1) as u32).unwrap(),
-            std::num::NonZeroU32::new(h.max(1) as u32).unwrap(),
-        );
-        let surface = unsafe {
-            display
-                .create_window_surface(&config, &surface_attrs)
-                .map_err(|e| anyhow!("create_window_surface: {e}"))?
-        };
-
-        // Keep xlib loaded for the lifetime of the surface so symbol
-        // pointers stay valid. Box-leak it — the surface lives until
-        // app shutdown anyway.
+        // Box-leak the xlib handle so symbol pointers stay valid for
+        // the lifetime of the surface. Surface lives until app shutdown.
         Box::leak(Box::new(xlib));
 
         Ok(Self {
             window,
             display_ptr,
-            display,
-            surface,
-            context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
             cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
             cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
         })
     }
+
+    /// Expose the X11 XID so lib.rs can hand it to mpv via `--wid=<xid>`.
+    pub fn window_id(&self) -> u64 {
+        self.window
+    }
 }
 
 impl VideoSurface for LinuxVideoSurface {
+    // make_current / get_proc_address / swap_buffers are no-ops on Linux
+    // because we don't drive GL ourselves — see file-level comment.
+
     fn make_current(&self) -> Result<()> {
-        let mut guard = self
-            .context
-            .lock()
-            .map_err(|_| anyhow!("video surface mutex poisoned"))?;
-        match guard.take() {
-            Some(ContextSlot::NotCurrent(ctx)) => {
-                let now = ctx
-                    .make_current(&self.surface)
-                    .map_err(|e| anyhow!("make_current (first): {e}"))?;
-                if let Err(e) = self.surface.set_swap_interval(
-                    &now,
-                    SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
-                ) {
-                    eprintln!("[unflick-render] set_swap_interval failed: {e}");
-                }
-                *guard = Some(ContextSlot::Current(now));
-                Ok(())
-            }
-            Some(ContextSlot::Current(ctx)) => {
-                ctx.make_current(&self.surface)
-                    .map_err(|e| anyhow!("make_current: {e}"))?;
-                *guard = Some(ContextSlot::Current(ctx));
-                Ok(())
-            }
-            None => Err(anyhow!("context already released")),
-        }
+        Ok(())
     }
 
-    fn get_proc_address(&self, name: &str) -> *mut c_void {
-        let cname = match CString::new(name) {
-            Ok(c) => c,
-            Err(_) => return ptr::null_mut(),
-        };
-        self.display.get_proc_address(cname.as_c_str()) as *mut c_void
+    fn get_proc_address(&self, _name: &str) -> *mut c_void {
+        ptr::null_mut()
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
-        // Use XMoveResizeWindow via the same dlopen approach as new().
+        // Use XMoveResizeWindow via dlopen.
         let xlib = unsafe {
             libloading::Library::new("libX11.so.6")
                 .or_else(|_| libloading::Library::new("libX11.so"))
@@ -277,9 +176,11 @@ impl VideoSurface for LinuxVideoSurface {
         type SimpleFn = unsafe extern "C" fn(*mut c_void, u64) -> i32;
         unsafe {
             let res = if visible {
-                xlib.get::<SimpleFn>(b"XMapWindow\0").map(|f| f(self.display_ptr, self.window))
+                xlib.get::<SimpleFn>(b"XMapWindow\0")
+                    .map(|f| f(self.display_ptr, self.window))
             } else {
-                xlib.get::<SimpleFn>(b"XUnmapWindow\0").map(|f| f(self.display_ptr, self.window))
+                xlib.get::<SimpleFn>(b"XUnmapWindow\0")
+                    .map(|f| f(self.display_ptr, self.window))
             };
             let _ = res;
             type FlushFn = unsafe extern "C" fn(*mut c_void) -> i32;
@@ -298,19 +199,11 @@ impl VideoSurface for LinuxVideoSurface {
     }
 
     fn swap_buffers(&self) -> Result<()> {
-        let guard = self
-            .context
-            .lock()
-            .map_err(|_| anyhow!("video surface mutex poisoned"))?;
-        match guard.as_ref() {
-            Some(ContextSlot::Current(ctx)) => self
-                .surface
-                .swap_buffers(ctx)
-                .map_err(|e| anyhow!("swap_buffers: {e}")),
-            Some(ContextSlot::NotCurrent(_)) => {
-                Err(anyhow!("swap_buffers before first make_current"))
-            }
-            None => Err(anyhow!("context already released")),
-        }
+        // No GL context on Linux — see file-level comment. mpv handles
+        // its own swap via XPutImage. This method is part of the
+        // VideoSurface trait shared with Windows / macOS, so it has to
+        // exist; it's simply never called on Linux because we use
+        // RenderLoop::start_passive (no render thread).
+        Ok(())
     }
 }

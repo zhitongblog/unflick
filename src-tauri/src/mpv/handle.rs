@@ -116,6 +116,41 @@ impl MpvHandle {
         Ok(handle)
     }
 
+    /// Linux variant of new_with_wid: forces `vo=x11` so mpv renders
+    /// via XPutImage instead of through a GL context. See
+    /// video/linux.rs for the architectural rationale (works on every
+    /// X11 system including software-rendered VMs where llvmpipe-via-
+    /// Composite leaves the visible window black).
+    #[cfg(target_os = "linux")]
+    pub fn new_with_wid_x11(wid: i64) -> Result<Self> {
+        let api = Arc::new(MpvApi::load().map_err(|e| anyhow::anyhow!(e))?);
+
+        let ctx = unsafe { (api.create)() };
+        if ctx.is_null() {
+            bail!("mpv_create returned null");
+        }
+
+        let handle = Self { api, ctx };
+
+        handle.set_option("terminal", "no")?;
+        handle.set_option("msg-level", "all=no")?;
+        handle.set_option("idle", "yes")?;
+        handle.set_option("input-default-bindings", "no")?;
+        handle.set_option("input-vo-keyboard", "no")?;
+        handle.set_option("wid", &wid.to_string())?;
+        handle.set_option("vo", "x11")?;
+        handle.set_option("keepaspect", "yes")?;
+        handle.set_option("volume-max", "200")?;
+        handle.set_option("keep-open", "yes")?;
+
+        let err = unsafe { (handle.api.initialize)(handle.ctx) };
+        if err < 0 {
+            bail!("mpv_initialize failed: {}", handle.error_str(err));
+        }
+
+        Ok(handle)
+    }
+
     fn error_str(&self, code: i32) -> String {
         unsafe {
             let ptr = (self.api.error_string)(code);

@@ -10,3 +10,6 @@ pub mod whisper;
 
 #[cfg(target_os = "windows")]
 pub mod win_assoc;
+
+#[cfg(target_os = "linux")]
+pub mod linux_assoc;

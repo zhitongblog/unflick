@@ -123,6 +123,32 @@ impl RenderLoop {
         })
     }
 
+    /// Linux-only constructor: the surface is owned by this loop for
+    /// geometry forwarding (set_geometry / refresh_geometry / set_visible),
+    /// but no render thread runs. mpv was created with `vo=x11 wid=<xid>`
+    /// in lib.rs::bring_up_video_pipeline and renders into the X11 child
+    /// window by itself via XPutImage — bypassing GL entirely so we work
+    /// on every X11 system, including software-rendered virtual machines
+    /// where llvmpipe-via-Composite leaves the window black.
+    #[cfg(target_os = "linux")]
+    pub fn start_passive(player: Arc<Player>, surface: Arc<dyn VideoSurface>) -> Self {
+        let signal = Arc::new(RenderSignal {
+            state: Mutex::new(RenderState {
+                frame_ready: false,
+                redraw: false,
+                shutdown: false,
+            }),
+            cv: Condvar::new(),
+        });
+        Self {
+            join: None,
+            signal,
+            surface,
+            last_geometry: Mutex::new(None),
+            _player: player,
+        }
+    }
+
     /// Resize / move the underlying native widget. Safe from any thread.
     /// Caches the rect so the backend can replay it on owner-window moves
     /// (which don't fire the frontend's ResizeObserver).

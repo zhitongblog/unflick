@@ -665,13 +665,29 @@ pub fn player_status(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
 #[command]
 pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
-    let path = output.unwrap_or_else(|| {
+    let mut path = output.unwrap_or_else(|| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
         format!("unflick-screenshot-{}.png", ts)
     });
+    // Linux: if the caller passed a bare filename (no leading /), drop it
+    // into ~/Pictures/unflick/. The frontend skips the GTK save dialog on
+    // Linux and just hands us the filename — see the
+    // `captureScreenshot` comment in App.tsx for why. mpv's
+    // `screenshot-to-file` would otherwise try to write into the
+    // process CWD which is `/` for system installs.
+    #[cfg(target_os = "linux")]
+    {
+        if !path.starts_with('/') {
+            if let Some(home) = dirs_next::home_dir() {
+                let dir = home.join("Pictures").join("unflick");
+                let _ = std::fs::create_dir_all(&dir);
+                path = dir.join(&path).to_string_lossy().into_owned();
+            }
+        }
+    }
     player.screenshot(&path).map_err(|e| e.to_string())?;
     Ok(json!({"path": path}))
 }

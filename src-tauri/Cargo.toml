@@ -1,6 +1,6 @@
 [package]
 name = "unflick"
-version = "0.8.4"
+version = "0.8.5"
 description = "A video player for humans and AI"
 authors = []
 edition = "2021"
@@ -48,7 +48,7 @@ winreg = "0.52"
 # Cocoa bridge for the embedded NSView + click-through hit-test override.
 # objc2 is the modern, safety-checked replacement for objc/cocoa.
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread", "NSString", "NSValue"] }
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
 core-foundation = "0.10"
 core-graphics = "0.24"
@@ -57,3 +57,12 @@ core-graphics = "0.24"
 # Linux uses raw_window_handle (already a workspace dep) to fish the
 # X11 XID out of Tauri's WebviewWindow — no extra crates needed for
 # the basic embed-via-XCreateSimpleWindow path.
+#
+# gtk is needed only to pump gtk_main_iteration during setup() — the
+# X11 XID isn't allocated until gtk_widget_realize fires, which is an
+# async event on the GTK main loop. Tauri's setup hook runs *before*
+# the main loop starts, so we have to drive events ourselves between
+# `window.show()` and bring_up_video_pipeline retries. Match the
+# version Tauri 2.10 / webkit2gtk-4.1 already pulls in transitively
+# so we don't double-link.
+gtk = "0.18"

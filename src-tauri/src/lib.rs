@@ -114,13 +114,58 @@ pub fn run() {
             // Build the embedded video surface beneath the WebView, spin up
             // a render thread that drives mpv → GL, and stash both in the
             // GuiPlayer state.
-            #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+            //
+            // Order is platform-specific:
+            //   - Windows / macOS: HWND / NSView is valid as soon as the
+            //     window is created in setup, even while still hidden, so
+            //     we bring up the pipeline first and *then* show — that
+            //     way the first frame the user sees is the final config
+            //     (no white flash from native chrome on Windows, no
+            //     pre-pipeline gap on macOS).
+            //   - Linux (GTK): the underlying GdkWindow's X11 XID isn't
+            //     allocated until the widget is realized, which happens
+            //     on show(). Calling raw_window_handle before show() would
+            //     return Unavailable and the X11 child window we need for
+            //     mpv's GL context can't be created. So show first, then
+            //     bring up the pipeline. The brief moment between show
+            //     and the first rendered frame is harmless — the WebView
+            //     paints its dark background underneath while mpv warms.
+            #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 eprintln!("[unflick] bringing up video pipeline...");
                 match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
                     Ok(()) => eprintln!("[unflick] video pipeline ready"),
                     Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
                 }
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                eprintln!("[unflick] bringing up video pipeline...");
+                match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
+                    Ok(()) => eprintln!("[unflick] video pipeline ready"),
+                    Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
+                }
+                // Punch a hole through the WKWebView so the NSView with mpv
+                // video (inserted *below* it via addSubview:positioned:Below)
+                // is actually visible. The white-flash fix in index.html keeps
+                // html/body opaque on Windows; main.tsx undoes that on macOS so
+                // the page is transparent over the videoRegion. But the
+                // WebView *itself* still defaults to opaque — without this
+                // call, even a fully-transparent page paints over the
+                // NSView. setOpaque:NO + drawsBackground=NO together make
+                // WKWebView a true overlay.
+                let _ = window.with_webview(|webview| unsafe {
+                    use objc2::{class, msg_send, runtime::AnyObject};
+                    use objc2_foundation::NSString;
+                    let wk: *mut AnyObject = webview.inner() as *mut AnyObject;
+                    if wk.is_null() {
+                        return;
+                    }
+                    let _: () = msg_send![wk, setOpaque: false];
+                    let key = NSString::from_str("drawsBackground");
+                    let no_num: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
+                    let _: () = msg_send![wk, setValue: no_num, forKey: &*key];
+                });
             }
 
             // Decorations: Windows wants `false` so our React TitleBar
@@ -148,6 +193,46 @@ pub fn run() {
                 }
             }
 
+            // Linux pipeline bring-up runs *after* show() so the GTK
+            // widget is realized — see comment above. The X11 XID isn't
+            // allocated until gtk realize, which fires asynchronously
+            // on the GTK main loop. The setup hook runs *before* the
+            // main loop starts, so a plain sleep-loop never lets the
+            // realize event fire. Drive gtk_main_iteration_do(false)
+            // ourselves between checks so the pending events drain.
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                eprintln!("[unflick] bringing up video pipeline...");
+                let mut last_err = String::new();
+                let mut ok = false;
+                for attempt in 0..50 {
+                    // Pump GTK events so gtk_widget_realize has a chance
+                    // to actually fire after our show() call. main_iteration_do
+                    // with `blocking=false` returns immediately if there's
+                    // nothing to process — no risk of deadlock.
+                    while gtk::events_pending() {
+                        gtk::main_iteration_do(false);
+                    }
+                    match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
+                        Ok(()) => {
+                            eprintln!(
+                                "[unflick] video pipeline ready (attempt {})",
+                                attempt + 1
+                            );
+                            ok = true;
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = e;
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                    }
+                }
+                if !ok {
+                    eprintln!("[unflick] video pipeline init failed: {last_err}");
+                }
+            }
+
             // ── Windows file-association registration ──────────────────────
             // Tauri's NSIS bundling only writes basic OpenWithProgIDs entries.
             // We additionally register unflick under HKCU\Software\
@@ -157,6 +242,18 @@ pub fn run() {
             {
                 if let Err(e) = core::win_assoc::register_default_program() {
                     eprintln!("[unflick] file-assoc registration failed: {e}");
+                }
+            }
+
+            // Linux equivalent — runs `xdg-mime default unflick.desktop
+            // video/mp4` (and friends) so unflick becomes the default
+            // for double-clicked video/audio files in nautilus / etc.
+            // Best-effort: skipped silently on systems without xdg-utils.
+            #[cfg(target_os = "linux")]
+            {
+                match core::linux_assoc::register_default_program() {
+                    Ok(n) => eprintln!("[unflick] file-assoc: registered {n} MIME types"),
+                    Err(e) => eprintln!("[unflick] file-assoc registration failed: {e}"),
                 }
             }
 
@@ -318,8 +415,29 @@ pub fn run() {
                 _ => {}
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS Finder "Open With → unflick" routes through an
+            // NSAppleEventDescriptor (kAEOpenDocuments), not argv. Tauri
+            // surfaces it here as RunEvent::Opened. Forward each url's
+            // file path to the frontend's existing "open-file" listener
+            // (App.tsx, mirrors the single-instance plugin's path).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                    for url in urls {
+                        if let Ok(path) = url.to_file_path() {
+                            let path_str = path.to_string_lossy().into_owned();
+                            let _ = window.emit("open-file", path_str);
+                        }
+                    }
+                }
+            }
+            let _ = (app_handle, event);
+        });
 }
 
 /// Bring up the v0.8 video pipeline on the main window.
@@ -452,20 +570,25 @@ fn bring_up_video_pipeline(
 
     let size = window.inner_size().map_err(|e| format!("inner_size: {e}"))?;
 
-    let surface = video::linux::LinuxVideoSurface::new(
+    let surface_struct = video::linux::LinuxVideoSurface::new(
         display_ptr,
         xid,
         size.width as i32,
         size.height as i32,
     )
     .map_err(|e| format!("create video surface: {e}"))?;
-    let surface: Arc<dyn VideoSurface> = Arc::new(surface);
+    let child_xid = surface_struct.window_id();
+    let surface: Arc<dyn VideoSurface> = Arc::new(surface_struct);
 
+    // Create mpv with vo=x11 + wid pointing at the X11 child window we
+    // just made. mpv handles all rendering internally via XPutImage, so
+    // we don't need our GL render thread on Linux. See video/linux.rs
+    // for why we abandon the glutin path here.
     let player = Arc::new(
-        Player::new_for_render().map_err(|e| format!("create render player: {e}"))?,
+        Player::new_with_wid_x11(child_xid as i64)
+            .map_err(|e| format!("create render player: {e}"))?,
     );
-    let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
-        .map_err(|e| format!("start render loop: {e}"))?;
+    let render_loop = RenderLoop::start_passive(Arc::clone(&player), Arc::clone(&surface));
     state
         .render_player
         .set(player)

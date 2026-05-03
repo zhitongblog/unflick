@@ -42,6 +42,41 @@ fn main() {
             }
             setenv(key, val, 1);
         }
+
+        // mpv refuses to initialise when LC_NUMERIC is anything other
+        // than "C" — its config parser has historically been bitten by
+        // locales that use "," as a decimal separator (de_DE, fr_FR,
+        // zh_CN.UTF-8 with certain glibc builds…). On Linux this fails
+        // silently with mpv_create returning NULL plus the warning
+        // "Non-C locale detected. This is not supported." spammed by
+        // libmpv. Pin LC_NUMERIC before any mpv call so the user's
+        // chosen locale stays for everything else (currency, dates,
+        // collation) — only the numeric part is forced to C.
+        let lc_key = b"LC_NUMERIC\0".as_ptr() as *const std::os::raw::c_char;
+        let lc_val = b"C\0".as_ptr() as *const std::os::raw::c_char;
+        let lc_all_key = b"LC_ALL\0".as_ptr() as *const std::os::raw::c_char;
+        extern "C" {
+            fn setenv(
+                name: *const std::os::raw::c_char,
+                value: *const std::os::raw::c_char,
+                overwrite: std::os::raw::c_int,
+            ) -> std::os::raw::c_int;
+            fn setlocale(
+                category: std::os::raw::c_int,
+                locale: *const std::os::raw::c_char,
+            ) -> *mut std::os::raw::c_char;
+        }
+        // LC_ALL takes precedence over LC_NUMERIC, so make sure it's
+        // not pinning some other value first.
+        let _ = std::env::var_os("LC_ALL").map(|_| {
+            setenv(lc_all_key, b"\0".as_ptr() as *const _, 1);
+        });
+        setenv(lc_key, lc_val, 1);
+        // Apply to the live C runtime too — env vars only take effect
+        // for processes that read them again, but we already loaded
+        // libc before this point, so call setlocale directly.
+        const LC_NUMERIC: std::os::raw::c_int = 1;
+        setlocale(LC_NUMERIC, lc_val);
     }
 
     // Special case before clap: a single positional arg that points at a

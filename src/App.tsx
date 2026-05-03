@@ -351,7 +351,36 @@ function App() {
       }
     }
 
-    // Dialog mode: ask the user where to save, then mpv writes there.
+    // Linux: skip the GTK file dialog. Opening a modal save dialog from a
+    // Tauri command on a GTK session interrupts our X11 child window's
+    // input handling — mpv's vo=x11 sometimes ends up paused after the
+    // dialog closes, and the user has reported "screenshot stops
+    // playback". Save straight to ~/Pictures/unflick/ with a toast
+    // instead. The path is created lazily by `player_screenshot` if
+    // missing.
+    const isLinuxUA = typeof navigator !== "undefined" && /Linux/.test(navigator.userAgent);
+    if (isLinuxUA) {
+      try {
+        const resp = await invoke<{ path: string }>("player_screenshot", {
+          output: defaultName, // Rust resolves to ~/Pictures/unflick/<name>.
+        });
+        window.dispatchEvent(
+          new CustomEvent("unflick:toast", {
+            detail: { kind: "success", message: `Saved: ${resp.path}` },
+          }),
+        );
+      } catch (e) {
+        console.error("linux screenshot failed:", e);
+        window.dispatchEvent(
+          new CustomEvent("unflick:toast", {
+            detail: { kind: "error", message: `Screenshot failed: ${e}` },
+          }),
+        );
+      }
+      return;
+    }
+
+    // Dialog mode (Windows/macOS): ask the user where to save, then mpv writes there.
     const result = await invoke<{ path: string | null }>("save_file_dialog", {
       defaultName,
     });
