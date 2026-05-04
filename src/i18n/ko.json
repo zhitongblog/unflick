@@ -106,7 +106,8 @@
     "ytDlpMissing": "URL 재생에는 yt-dlp 가 필요하지만 찾을 수 없습니다.",
     "ytDlpUpdate": "yt-dlp 업데이트",
     "extracting": "스트림 URL 추출 중…",
-    "cancel": "취소"
+"cancel": "취소",
+    "qualityLabel": "선호 화질"
   },
   "context": {
     "openFile": "파일 열기…",
@@ -164,6 +165,15 @@
     "savedToast": "저장됨",
     "alwaysOnTop": "항상 위에 표시",
     "alwaysOnTopHint": "unflick 창을 항상 다른 앱 위에 고정합니다. 작업하면서 영상을 볼 때 편리합니다.",
+    "streaming": {
+      "title": "스트리밍",
+      "qualityLabel": "선호 화질",
+      "qualityAuto": "자동",
+      "qualityAudioOnly": "오디오만",
+      "cookiesLabel": "브라우저 쿠키 사용",
+      "cookiesNone": "사용 안 함",
+      "cookiesHelp": "브라우저의 로그인 쿠키를 읽어 연령 제한, 지역 제한 또는 멤버 전용 콘텐츠를 재생할 수 있습니다. 추출 중에는 브라우저를 닫아야 합니다."
+    },
     "fileAssoc": {
       "section": "파일 연결",
       "body": "unflick 은 mp4, mkv, avi, mov, webm 등 13 개 비디오 형식과 mp3, flac, wav 등 7 개 오디오 형식을 열 수 있습니다. 아래 버튼으로 Windows 기본 앱으로 설정하세요.",

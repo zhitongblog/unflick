@@ -2,6 +2,37 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { detectLocale, isLocale, type Locale } from "../i18n/config";
 
+/**
+ * Allowed quality values for streaming URL extraction. `null` and `"auto"`
+ * both mean "let yt-dlp pick the best single-URL format". The numeric
+ * variants cap by height; `"audio_only"` strips the video stream.
+ *
+ * Mirrors the Rust side (`core::settings::QUALITY_VALUES`).
+ */
+export type PreferredQuality =
+  | "auto"
+  | "2160p"
+  | "1440p"
+  | "1080p"
+  | "720p"
+  | "480p"
+  | "audio_only";
+
+/**
+ * Browser whose login cookies yt-dlp can borrow for age-gated / paywalled
+ * pages. `null` and `"none"` both mean "don't pass `--cookies-from-browser`".
+ *
+ * Mirrors the Rust side (`core::settings::COOKIES_BROWSER_VALUES`).
+ */
+export type CookiesBrowser =
+  | "none"
+  | "firefox"
+  | "chrome"
+  | "chromium"
+  | "safari"
+  | "edge"
+  | "brave";
+
 interface SettingsState {
   showSettings: boolean;
   whisperMode: "off" | "local" | "api";
@@ -19,6 +50,10 @@ interface SettingsState {
   /** Pin the unflick window above all other apps. Useful for watching
    *  a tutorial / video chat while doing something else. Persisted. */
   alwaysOnTop: boolean;
+  /** Default quality for streaming URL extraction (yt-dlp). `null` = auto. */
+  preferredQuality: PreferredQuality | null;
+  /** Borrow login cookies from this browser when extracting URLs. `null` = off. */
+  cookiesBrowser: CookiesBrowser | null;
   toggleSettings: () => void;
   setWhisperMode: (mode: "off" | "local" | "api") => void;
   setWhisperModelPath: (path: string | null) => void;
@@ -30,8 +65,38 @@ interface SettingsState {
   setLocale: (locale: Locale) => void;
   setScreenshotDir: (dir: string | null) => void;
   setAlwaysOnTop: (v: boolean) => void;
+  setPreferredQuality: (q: PreferredQuality | null) => void;
+  setCookiesBrowser: (b: CookiesBrowser | null) => void;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
+}
+
+const QUALITY_VALUES: PreferredQuality[] = [
+  "auto",
+  "2160p",
+  "1440p",
+  "1080p",
+  "720p",
+  "480p",
+  "audio_only",
+];
+
+const COOKIES_BROWSER_VALUES: CookiesBrowser[] = [
+  "none",
+  "firefox",
+  "chrome",
+  "chromium",
+  "safari",
+  "edge",
+  "brave",
+];
+
+function isPreferredQuality(v: unknown): v is PreferredQuality {
+  return typeof v === "string" && (QUALITY_VALUES as string[]).includes(v);
+}
+
+function isCookiesBrowser(v: unknown): v is CookiesBrowser {
+  return typeof v === "string" && (COOKIES_BROWSER_VALUES as string[]).includes(v);
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -49,6 +114,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   locale: detectLocale(typeof navigator !== "undefined" ? navigator.language : undefined),
   screenshotDir: null,
   alwaysOnTop: false,
+  preferredQuality: null,
+  cookiesBrowser: null,
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
 
@@ -62,6 +129,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setLocale: (locale) => set({ locale }),
   setScreenshotDir: (dir) => set({ screenshotDir: dir }),
   setAlwaysOnTop: (v) => set({ alwaysOnTop: v }),
+  setPreferredQuality: (q) => set({ preferredQuality: q }),
+  setCookiesBrowser: (b) => set({ cookiesBrowser: b }),
 
   loadSettings: async () => {
     try {
@@ -100,6 +169,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         if (typeof data.alwaysOnTop === "boolean") {
           updates.alwaysOnTop = data.alwaysOnTop;
         }
+        // Streaming knobs (v0.9 P1). Both default to null when missing
+        // or unrecognised, which the Rust side treats as "auto" / "no
+        // cookies", so existing settings.json files keep working.
+        if (data.preferred_quality === null || isPreferredQuality(data.preferred_quality)) {
+          updates.preferredQuality = data.preferred_quality;
+        } else if (data.preferredQuality === null || isPreferredQuality(data.preferredQuality)) {
+          updates.preferredQuality = data.preferredQuality;
+        }
+        if (data.cookies_browser === null || isCookiesBrowser(data.cookies_browser)) {
+          updates.cookiesBrowser = data.cookies_browser;
+        } else if (data.cookiesBrowser === null || isCookiesBrowser(data.cookiesBrowser)) {
+          updates.cookiesBrowser = data.cookiesBrowser;
+        }
         set(updates);
       }
     } catch {
@@ -108,7 +190,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async () => {
-    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale, screenshotDir, alwaysOnTop } = get();
+    const {
+      whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey,
+      theme, volume, proxy, locale, screenshotDir, alwaysOnTop,
+      preferredQuality, cookiesBrowser,
+    } = get();
     const payload = JSON.stringify({
       whisperMode,
       whisperModelPath,
@@ -120,6 +206,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       locale,
       screenshotDir,
       alwaysOnTop,
+      // Snake_case keys here so the Rust core helpers
+      // (`core::settings::preferred_quality`, `cookies_browser`) can read
+      // them without an extra translation step. Prior camelCase keys above
+      // are preserved as-is for backwards compatibility with the existing
+      // GUI-only flow.
+      preferred_quality: preferredQuality,
+      cookies_browser: cookiesBrowser,
     });
     try {
       await invoke("save_settings", { settings: payload });

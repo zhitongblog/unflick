@@ -68,3 +68,47 @@ pub fn unset(key: &str) -> Result<bool> {
     write_all(&all)?;
     Ok(removed)
 }
+
+// ─── Streaming settings (v0.9 P1) ─────────────────────────────────────────────
+//
+// `preferred_quality` and `cookies_browser` are user-tunable knobs for the
+// URL extractor. They live in the same `settings.json` blob as everything
+// else and are read on demand by `extract_stream_url`.
+//
+// Both are stored as strings; both are optional. Existing settings files
+// that pre-date these keys keep working — `read_all` returns whatever is on
+// disk, and these helpers gracefully return `None` when the key is missing
+// or set to a sentinel value (`"auto"` for quality, `"none"` for cookies).
+
+/// Allowed values for `preferred_quality`. `"auto"` and `None` both mean
+/// "let yt-dlp pick". The numeric variants cap by height; `"audio_only"`
+/// downloads audio only.
+pub const QUALITY_VALUES: &[&str] = &[
+    "auto", "2160p", "1440p", "1080p", "720p", "480p", "audio_only",
+];
+
+/// Allowed values for `cookies_browser`. `"none"` and `None` both mean
+/// "don't pass `--cookies-from-browser`".
+pub const COOKIES_BROWSER_VALUES: &[&str] = &[
+    "none", "firefox", "chrome", "chromium", "safari", "edge", "brave",
+];
+
+/// Read `preferred_quality`. Returns `None` if missing, empty, or `"auto"`.
+pub fn preferred_quality() -> Option<String> {
+    let v = get("preferred_quality").ok().flatten()?;
+    let s = v.as_str()?.trim();
+    if s.is_empty() || s.eq_ignore_ascii_case("auto") {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// Read `cookies_browser`. Returns `None` if missing, empty, or `"none"`.
+pub fn cookies_browser() -> Option<String> {
+    let v = get("cookies_browser").ok().flatten()?;
+    let s = v.as_str()?.trim();
+    if s.is_empty() || s.eq_ignore_ascii_case("none") {
+        return None;
+    }
+    Some(s.to_string())
+}

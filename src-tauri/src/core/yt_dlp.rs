@@ -197,10 +197,20 @@ fn classify(stderr: &str) -> ErrorKind {
 ///
 /// `proxy` may be `None` (no proxy), `Some("")` (treated as no proxy), or a
 /// proxy URL like `http://127.0.0.1:7890`.
+///
+/// `quality` may be `None` (use `FORMAT_CHAIN` default), `Some("audio_only")`
+/// (audio-only, swaps `-f` for `-x --audio-format m4a`), or a `"<N>p"`
+/// height cap like `"1080p"` (height-bounded format selector).
+///
+/// `cookies_browser` may be `None` (no `--cookies-from-browser`) or a
+/// browser name like `"firefox"`. The browser must be closed during the
+/// call (yt-dlp can't read a locked cookie DB).
 pub async fn extract_stream_url(
     yt_dlp: &Path,
     url: &str,
     proxy: Option<&str>,
+    quality: Option<&str>,
+    cookies_browser: Option<&str>,
 ) -> ExtractResult {
     // Reset cancel from any previous extraction.
     CANCEL_REQUESTED.store(false, Ordering::SeqCst);
@@ -208,9 +218,37 @@ pub async fn extract_stream_url(
     let mut cmd = Command::new(yt_dlp);
     cmd.arg("--get-url")
         .arg("--no-playlist")
-        .arg("--no-warnings")
-        .arg("-f")
-        .arg(FORMAT_CHAIN);
+        .arg("--no-warnings");
+
+    // Quality routing: audio_only takes the `-x` extraction path (no `-f`),
+    // numeric heights use a height-capped fallback chain, otherwise we keep
+    // the default FORMAT_CHAIN.
+    let mut audio_only = false;
+    let mut height_cap: Option<u32> = None;
+    if let Some(q) = quality.map(str::trim).filter(|s| !s.is_empty()) {
+        if q.eq_ignore_ascii_case("audio_only") {
+            audio_only = true;
+        } else if let Some(n) = q.strip_suffix('p').and_then(|n| n.parse::<u32>().ok()) {
+            height_cap = Some(n);
+        }
+    }
+    if audio_only {
+        cmd.arg("-x").arg("--audio-format").arg("m4a");
+    } else if let Some(n) = height_cap {
+        // Mirror the FORMAT_CHAIN priority but with a height ceiling. yt-dlp
+        // evaluates the slash-separated entries in order and picks the first
+        // that resolves, so a missing tier degrades gracefully.
+        let capped = format!(
+            "best[ext=mp4][height<={n}]/bestvideo[ext=mp4][height<={n}]+bestaudio[ext=m4a]/best[height<={n}]/worst",
+            n = n
+        );
+        cmd.arg("-f").arg(capped);
+    } else {
+        cmd.arg("-f").arg(FORMAT_CHAIN);
+    }
+    if let Some(b) = cookies_browser.map(str::trim).filter(|s| !s.is_empty()) {
+        cmd.arg("--cookies-from-browser").arg(b);
+    }
     if let Some(p) = proxy.map(str::trim).filter(|s| !s.is_empty()) {
         cmd.arg("--proxy").arg(p);
     }

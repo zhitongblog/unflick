@@ -106,7 +106,8 @@
     "ytDlpMissing": "播放 URL 需要 yt-dlp，但没有找到。",
     "ytDlpUpdate": "更新 yt-dlp",
     "extracting": "提取流地址中…",
-    "cancel": "取消"
+"cancel": "取消",
+    "qualityLabel": "首选画质"
   },
   "context": {
     "openFile": "打开文件…",
@@ -164,6 +165,15 @@
     "savedToast": "已保存",
     "alwaysOnTop": "窗口置顶",
     "alwaysOnTopHint": "让 unflick 窗口始终位于其他应用之上，方便边工作边看视频。",
+    "streaming": {
+      "title": "流媒体",
+      "qualityLabel": "首选画质",
+      "qualityAuto": "自动",
+      "qualityAudioOnly": "仅音频",
+      "cookiesLabel": "从浏览器读取 Cookies",
+      "cookiesNone": "不使用",
+      "cookiesHelp": "通过读取浏览器中的登录 Cookies，让 unflick 能播放年龄限制、地区受限或会员专享的内容。提取时浏览器必须处于关闭状态。"
+    },
     "fileAssoc": {
       "section": "文件关联",
       "body": "unflick 可以打开 mp4、mkv、avi、mov、webm 等 13 种视频格式，以及 mp3、flac、wav 等 7 种音频格式。点下面的按钮把它设为 Windows 默认。",

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useIncognitoStore } from "./incognitoStore";
+import { detectStreamingSite } from "../lib/streamingSites";
 
 /**
  * v0.8 playerStore — drives playback through libmpv via Tauri commands.
@@ -42,7 +43,12 @@ interface PlayerState {
   /** Push the latest backend status snapshot. Called by the App's poller. */
   ingestStatus: (s: BackendStatus) => void;
 
-  play: (file: string) => Promise<void>;
+  /**
+   * Play a path or URL. The optional `qualityOverride` lets a caller (e.g.
+   * the URL dialog) bypass the saved `preferredQuality` for a single
+   * extraction; pass `null` / undefined to honour the saved setting.
+   */
+  play: (file: string, qualityOverride?: string | null) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   stop: () => Promise<void>;
@@ -56,25 +62,29 @@ interface PlayerState {
   clearSubtitles: () => Promise<void>;
 }
 
-const EXTRACT_HOSTS: { pattern: RegExp; label: string }[] = [
-  { pattern: /(?:youtube\.com|youtu\.be)/i, label: "YouTube" },
-  { pattern: /bilibili\.com/i, label: "Bilibili" },
-  { pattern: /twitch\.tv/i, label: "Twitch" },
-  { pattern: /vimeo\.com/i, label: "Vimeo" },
-  { pattern: /weibo\.com/i, label: "Weibo" },
-  { pattern: /douyin\.com/i, label: "Douyin" },
-  { pattern: /tiktok\.com/i, label: "TikTok" },
-];
-
-function detectUpstreamSite(url: string): string | null {
-  for (const { pattern, label } of EXTRACT_HOSTS) {
-    if (pattern.test(url)) return label;
-  }
-  return null;
-}
-
 function isUrl(p: string): boolean {
   return /^(https?|file|blob|data):/i.test(p);
+}
+
+/**
+ * Direct media URLs (`*.mp4`, `*.m3u8`, …) are fed straight to mpv —
+ * yt-dlp would just round-trip them. Everything else goes through the
+ * extractor, regardless of whether we recognise the host: yt-dlp
+ * supports ~1500 sites and refusing to try cuts users off from most
+ * of them. Match conservatively against the URL path to keep the
+ * fast path for mpv's own HTTP(S) loader.
+ */
+const DIRECT_MEDIA_EXT =
+  /\.(mp4|m4v|mov|webm|mkv|avi|flv|wmv|ts|mp3|m4a|aac|ogg|oga|opus|flac|wav|m3u8|mpd)(?:[?#]|$)/i;
+
+function isDirectMediaUrl(url: string): boolean {
+  if (!/^https?:/i.test(url)) return false;
+  try {
+    const u = new URL(url);
+    return DIRECT_MEDIA_EXT.test(u.pathname);
+  } catch {
+    return DIRECT_MEDIA_EXT.test(url);
+  }
 }
 
 interface MpvSubTrack {
@@ -147,20 +157,35 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ subtitles: [] });
   },
 
-  play: async (file: string) => {
+  play: async (file: string, qualityOverride?: string | null) => {
     set({ extractError: null });
 
-    // URLs from streaming sites need yt-dlp to extract a real media URL first.
+    // URLs that aren't direct media files go through yt-dlp. We attempt
+    // extraction even on hosts we don't recognise — yt-dlp supports
+    // 1500+ sites and refusing to try is worse than letting it fail.
     let mediaTarget = file;
-    const site = isUrl(file) ? detectUpstreamSite(file) : null;
-    if (site) {
+    const isHttp = /^https?:/i.test(file);
+    const needsExtraction = isHttp && !isDirectMediaUrl(file);
+    if (needsExtraction) {
+      const site = detectStreamingSite(file) ?? "Link";
       set({ extracting: { url: file, site } });
       try {
         const { useSettingsStore } = await import("./settingsStore");
-        const proxy = useSettingsStore.getState().proxy ?? null;
+        const settingsState = useSettingsStore.getState();
+        const proxy = settingsState.proxy ?? null;
+        // Per-call quality overrides the saved default; null/undefined
+        // means "use saved setting" (which the Rust side reads itself
+        // from settings.json, so passing null is equivalent to omit).
+        const quality =
+          qualityOverride !== undefined && qualityOverride !== null
+            ? qualityOverride
+            : settingsState.preferredQuality;
+        const cookiesBrowser = settingsState.cookiesBrowser;
         const r = await invoke<{ stream_url: string }>("extract_stream_url", {
           url: file,
           proxy,
+          quality,
+          cookiesBrowser,
         });
         mediaTarget = r.stream_url;
       } catch (err) {

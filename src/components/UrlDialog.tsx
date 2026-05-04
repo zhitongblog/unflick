@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore, type PreferredQuality } from "../stores/settingsStore";
 import { useStrings } from "../i18n/utils";
+import { STREAMING_SITES } from "../lib/streamingSites";
 
 const STORAGE_KEY = "unflick_recent_urls";
 const MAX_RECENT = 5;
@@ -23,7 +24,12 @@ function addRecentUrl(url: string) {
 
 const SUPPORTED_DIRECT = "MP4, WebM, MKV, M4V, MOV — paste any HTTP/HTTPS link";
 const SUPPORTED_STREAMING = "HLS (.m3u8), MPEG-DASH (.mpd) live and VOD streams";
-const SUPPORTED_EXTRACT = "YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo (via yt-dlp)";
+// Pull the human-readable list from the canonical regex table so we never
+// drift between "what we recognise" and "what we tell users we recognise".
+// We append "+ 1500 more via yt-dlp" because yt-dlp's coverage is much
+// broader than our pretty-name list.
+const SUPPORTED_EXTRACT =
+  STREAMING_SITES.map((s) => s.name).join(", ") + " + 1500 more (via yt-dlp)";
 const UNSUPPORTED = "Netflix, Disney+, iQIYI VIP — DRM-protected, cannot be played";
 
 export default function UrlDialog({ onClose }: { onClose: () => void }) {
@@ -36,7 +42,18 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const extracting = usePlayerStore((s) => s.extracting);
   const extractError = usePlayerStore((s) => s.extractError);
   const proxy = useSettingsStore((s) => s.proxy);
+  const savedQuality = useSettingsStore((s) => s.preferredQuality);
   const t = useStrings();
+
+  // Per-dialog quality override. Defaults to the saved setting (or "auto"
+  // if none) and can be bumped down for a single play (e.g. on a slow
+  // connection) without touching settings.
+  const [quality, setQuality] = useState<PreferredQuality>(savedQuality ?? "auto");
+  // Keep in sync if the user opens the dialog after changing the saved
+  // setting elsewhere.
+  useEffect(() => {
+    setQuality(savedQuality ?? "auto");
+  }, [savedQuality]);
 
   useEffect(() => {
     setRecentUrls(getRecentUrls());
@@ -59,7 +76,9 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
     if (!trimmed) return;
     addRecentUrl(trimmed);
     setPlayed(true);
-    play(trimmed);
+    // Pass the dropdown's current value as a one-off override. "auto" is
+    // forwarded as-is and resolves to "use yt-dlp default" downstream.
+    play(trimmed, quality);
     // Don't close immediately — extraction may take a moment and we want to
     // surface any error inline. Close once extraction completes successfully.
   };
@@ -115,6 +134,28 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
               disabled={extracting !== null}
               className="w-full rounded-lg border border-white/6 bg-white/4 px-3 py-2.5 text-[12px] text-white/70 outline-none transition-colors placeholder:text-white/15 focus:border-brand-purple/40 disabled:opacity-50"
             />
+          </div>
+
+          {/* Per-call quality override. Defaults to the saved setting; the
+              user can drop it for a single play (e.g. on a slow link). */}
+          <div className="mb-3 flex items-center gap-2">
+            <label className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-widest text-white/30">
+              {t.urlDialog.qualityLabel}
+            </label>
+            <select
+              value={quality}
+              onChange={(e) => setQuality(e.target.value as PreferredQuality)}
+              disabled={extracting !== null}
+              className="flex-1 rounded-lg border border-white/10 bg-[#1c1c26] px-2.5 py-1.5 text-[11px] text-white outline-none focus:border-brand-purple/40 disabled:opacity-50"
+            >
+              <option value="auto" style={{ background: "#1c1c26", color: "#ffffff" }}>{t.settings.streaming.qualityAuto}</option>
+              <option value="2160p" style={{ background: "#1c1c26", color: "#ffffff" }}>2160p</option>
+              <option value="1440p" style={{ background: "#1c1c26", color: "#ffffff" }}>1440p</option>
+              <option value="1080p" style={{ background: "#1c1c26", color: "#ffffff" }}>1080p</option>
+              <option value="720p" style={{ background: "#1c1c26", color: "#ffffff" }}>720p</option>
+              <option value="480p" style={{ background: "#1c1c26", color: "#ffffff" }}>480p</option>
+              <option value="audio_only" style={{ background: "#1c1c26", color: "#ffffff" }}>{t.settings.streaming.qualityAudioOnly}</option>
+            </select>
           </div>
 
           {/* Status during extraction */}

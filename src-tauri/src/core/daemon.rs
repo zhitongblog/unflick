@@ -136,10 +136,19 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
                     Ok(r) => r,
                     Err(e) => return CommandResult::err(format!("tokio runtime: {}", e)),
                 };
+                // CLI / MCP have no per-call dialog override, so the
+                // daemon resolves quality + cookies_browser straight from
+                // saved settings. The GUI path still handles per-call
+                // overrides in gui::commands::extract_stream_url before
+                // it reaches us.
+                let q = crate::core::settings::preferred_quality();
+                let cb = crate::core::settings::cookies_browser();
                 let result = rt.block_on(crate::core::yt_dlp::extract_stream_url(
                     &yt_dlp,
                     &url_owned,
                     proxy_owned.as_deref(),
+                    q.as_deref(),
+                    cb.as_deref(),
                 ));
                 if !result.is_ok() {
                     let kind = result

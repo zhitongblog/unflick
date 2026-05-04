@@ -12,9 +12,10 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
-    alwaysOnTop,
+    alwaysOnTop, preferredQuality, cookiesBrowser,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
-    setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop, saveSettings,
+    setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop,
+    setPreferredQuality, setCookiesBrowser, saveSettings,
   } = useSettingsStore();
   const t = useStrings();
 
@@ -432,6 +433,65 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   {ytDlpUpdateError && (
                     <p className="mt-1.5 text-[10px] text-red-300/80">{ytDlpUpdateError}</p>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Streaming */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.streaming.title}
+              </p>
+              <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
+                <div>
+                  <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                    {t.settings.streaming.qualityLabel}
+                  </label>
+                  <select
+                    value={preferredQuality ?? "auto"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPreferredQuality(v === "auto" ? null : (v as Exclude<typeof preferredQuality, null>));
+                      void saveSettings();
+                    }}
+                    className="w-full rounded-lg border border-white/10 bg-[#1c1c26] px-3 py-2 text-[12px] text-white outline-none focus:border-brand-purple/40"
+                  >
+                    {/* Same explicit option styling as the language picker —
+                        WebView2 ignores Tailwind on <option>. */}
+                    <option value="auto" style={{ background: "#1c1c26", color: "#ffffff" }}>{t.settings.streaming.qualityAuto}</option>
+                    <option value="2160p" style={{ background: "#1c1c26", color: "#ffffff" }}>2160p</option>
+                    <option value="1440p" style={{ background: "#1c1c26", color: "#ffffff" }}>1440p</option>
+                    <option value="1080p" style={{ background: "#1c1c26", color: "#ffffff" }}>1080p</option>
+                    <option value="720p" style={{ background: "#1c1c26", color: "#ffffff" }}>720p</option>
+                    <option value="480p" style={{ background: "#1c1c26", color: "#ffffff" }}>480p</option>
+                    <option value="audio_only" style={{ background: "#1c1c26", color: "#ffffff" }}>{t.settings.streaming.qualityAudioOnly}</option>
+                  </select>
+                </div>
+
+                <div className="border-t border-white/6 pt-3">
+                  <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                    {t.settings.streaming.cookiesLabel}
+                  </label>
+                  <select
+                    value={cookiesBrowser ?? "none"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCookiesBrowser(v === "none" ? null : (v as Exclude<typeof cookiesBrowser, null>));
+                      void saveSettings();
+                    }}
+                    className="w-full rounded-lg border border-white/10 bg-[#1c1c26] px-3 py-2 text-[12px] text-white outline-none focus:border-brand-purple/40"
+                  >
+                    <option value="none" style={{ background: "#1c1c26", color: "#ffffff" }}>{t.settings.streaming.cookiesNone}</option>
+                    <option value="firefox" style={{ background: "#1c1c26", color: "#ffffff" }}>Firefox</option>
+                    <option value="chrome" style={{ background: "#1c1c26", color: "#ffffff" }}>Chrome</option>
+                    <option value="chromium" style={{ background: "#1c1c26", color: "#ffffff" }}>Chromium</option>
+                    <option value="safari" style={{ background: "#1c1c26", color: "#ffffff" }}>Safari</option>
+                    <option value="edge" style={{ background: "#1c1c26", color: "#ffffff" }}>Edge</option>
+                    <option value="brave" style={{ background: "#1c1c26", color: "#ffffff" }}>Brave</option>
+                  </select>
+                  <p className="mt-2 text-[10px] leading-relaxed text-white/30">
+                    {t.settings.streaming.cookiesHelp}
+                  </p>
                 </div>
               </div>
             </div>

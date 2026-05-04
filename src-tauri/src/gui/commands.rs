@@ -543,11 +543,24 @@ pub fn check_yt_dlp(app: AppHandle) -> Result<Value, String> {
 /// describe what went wrong. The Tauri command itself returns Ok(...) in
 /// both success and categorized-failure cases so the frontend can switch
 /// on `error_kind` instead of parsing free-form error strings.
+///
+/// `quality` (optional, snake_case): `"auto"` | `"2160p"` | `"1440p"` |
+/// `"1080p"` | `"720p"` | `"480p"` | `"audio_only"`. `None` or `"auto"`
+/// falls back to `core::settings::preferred_quality()`. Numeric values
+/// cap the format height; `"audio_only"` triggers `-x --audio-format m4a`.
+///
+/// `cookies_browser` (optional, snake_case): `"none"` | `"firefox"` |
+/// `"chrome"` | `"chromium"` | `"safari"` | `"edge"` | `"brave"`. `None`
+/// or `"none"` falls back to `core::settings::cookies_browser()`; that
+/// `None` means no cookie injection. Browser must be closed when
+/// extraction runs (yt-dlp limitation).
 #[command]
 pub async fn extract_stream_url(
     app: AppHandle,
     url: String,
     proxy: Option<String>,
+    quality: Option<String>,
+    cookies_browser: Option<String>,
 ) -> Result<Value, String> {
     let yt_dlp = find_yt_dlp(&app).ok_or_else(|| {
         "yt-dlp not found. Install it from https://github.com/yt-dlp/yt-dlp or place yt-dlp.exe next to unflick.".to_string()
@@ -564,10 +577,28 @@ pub async fn extract_stream_url(
         _ => None,
     };
 
+    // Resolve effective quality + cookies-from-browser, falling back to
+    // saved settings when the per-call arg is absent. `"auto"`/`"none"`
+    // sentinels mean "force off, ignore the saved setting too" so a
+    // one-off dialog override can opt out.
+    let effective_quality: Option<String> = match quality.as_deref().map(str::trim) {
+        Some("") | None => crate::core::settings::preferred_quality(),
+        Some("auto") => None,
+        Some(s) => Some(s.to_string()),
+    };
+    let effective_cookies_browser: Option<String> =
+        match cookies_browser.as_deref().map(str::trim) {
+            Some("") | None => crate::core::settings::cookies_browser(),
+            Some("none") => None,
+            Some(s) => Some(s.to_string()),
+        };
+
     let result = crate::core::yt_dlp::extract_stream_url(
         &yt_dlp,
         &url,
         effective_proxy.as_deref(),
+        effective_quality.as_deref(),
+        effective_cookies_browser.as_deref(),
     )
     .await;
     Ok(serde_json::to_value(&result).unwrap_or_else(|_| json!({"stream_url": ""})))

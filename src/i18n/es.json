@@ -106,7 +106,8 @@
     "ytDlpMissing": "Se necesita yt-dlp para abrir URL pero no se ha encontrado.",
     "ytDlpUpdate": "Actualizar yt-dlp",
     "extracting": "Extrayendo URL del stream…",
-    "cancel": "Cancelar"
+"cancel": "Cancelar",
+    "qualityLabel": "Calidad preferida"
   },
   "context": {
     "openFile": "Abrir archivo…",
@@ -164,6 +165,15 @@
     "savedToast": "Guardado",
     "alwaysOnTop": "Siempre encima",
     "alwaysOnTopHint": "Fija la ventana de unflick por encima de las demás apps. Útil para mirar mientras trabajas en otra ventana.",
+    "streaming": {
+      "title": "Streaming",
+      "qualityLabel": "Calidad preferida",
+      "qualityAuto": "Auto",
+      "qualityAudioOnly": "Solo audio",
+      "cookiesLabel": "Cookies del navegador",
+      "cookiesNone": "Ninguno",
+      "cookiesHelp": "Permite que unflick reproduzca contenido con restricción de edad, bloqueo regional o exclusivo para miembros leyendo las cookies de inicio de sesión de tu navegador. El navegador debe estar cerrado durante la extracción."
+    },
     "fileAssoc": {
       "section": "Asociaciones de archivos",
       "body": "unflick abre mp4, mkv, avi, mov, webm y 9 formatos de vídeo más, además de mp3, flac, wav y 4 formatos de audio más. Pulsa abajo para hacerlo el predeterminado en Windows.",
