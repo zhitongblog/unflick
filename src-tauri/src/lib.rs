@@ -448,12 +448,19 @@ pub fn run() {
 /// to exist before render-context construction (the context binds to mpv).
 /// We tolerate any error here — the GUI will simply fall back to the
 /// HTML5 path that's still wired up. The surface starts hidden.
-// TODO(v0.9 merge): wire `core::url_post_play::after_play_url_hooks` from
-// CLI/GUI/MCP play handlers once P0 lands. The function lives in
-// `src-tauri/src/core/url_post_play.rs` and takes:
-//   `Arc<Player>`, `String` (page URL), `Option<PathBuf>` (yt-dlp), `UrlPostPlaySettings`.
-// It spawns SponsorBlock fetch + yt-dlp subtitle download on tokio; the
-// auto-skip polling task below picks up segments via `enable_sponsorblock`.
+// TODO(v0.9 follow-up): wire `core::url_post_play::after_play_url_hooks` into
+// the daemon's `play` arm (`core::daemon.rs`) so SponsorBlock skip + auto-
+// subtitle download fire whenever a URL is played via CLI / MCP. Today the
+// hook is callable but unwired:
+//   - GUI path (`gui::commands::player_play`) has access to `Arc<Player>` via
+//     `GuiPlayer::render_player` and could call the hook directly.
+//   - CLI/MCP path (`core::daemon::dispatch_command`) currently takes
+//     `&Player`; needs a small refactor to pass `Arc<Player>` so the hook
+//     can store handles on the live player instance for the polling task
+//     spun up below in `bring_up_video_pipeline` to consume.
+// Function signature (in `core::url_post_play`):
+//   `Arc<Player>`, `String` (page URL), `Option<PathBuf>` (yt-dlp),
+//   `UrlPostPlaySettings`.
 #[cfg(target_os = "windows")]
 fn bring_up_video_pipeline(
     window: &tauri::WebviewWindow,
