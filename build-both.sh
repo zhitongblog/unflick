@@ -10,14 +10,25 @@
 # AI edition adds: whisper-cli + ggml-tiny model + whisper DLLs.
 set -e
 
-VERSION="0.9.1"
+VERSION="0.9.2"
 NSIS_DIR="src-tauri/target/release/bundle/nsis"
 MSI_DIR="src-tauri/target/release/bundle/msi"
+
+# License files ship with EVERY platform — these are the source-of-truth
+# bundle.resources entries that exist in tauri.conf.json by default.
+# build-both.sh appends the Windows DLL/EXE list on top while it's
+# building Windows installers; the EXIT trap restores to legal-only.
+LEGAL_RESOURCES='
+  "legal/LICENSE",
+  "legal/THIRD-PARTY-LICENSES.md",
+  "legal/licenses/LGPL-2.1.txt",
+  "legal/licenses/GPL-3.0.txt",
+  "legal/licenses/MPL-2.0.txt"'
 
 STANDARD_RESOURCES='[
   "mpv-dev/libmpv-2.dll",
   "ffmpeg/ffmpeg.exe",
-  "yt-dlp/yt-dlp.exe"
+  "yt-dlp/yt-dlp.exe",'"$LEGAL_RESOURCES"'
 ]'
 
 AI_RESOURCES='[
@@ -29,7 +40,10 @@ AI_RESOURCES='[
   "whisper/ggml.dll",
   "whisper/ggml-base.dll",
   "whisper/ggml-cpu.dll",
-  "whisper/ggml-tiny.bin"
+  "whisper/ggml-tiny.bin",'"$LEGAL_RESOURCES"'
+]'
+
+LEGAL_ONLY_RESOURCES='['"$LEGAL_RESOURCES"'
 ]'
 
 apply_resources() {
@@ -43,14 +57,12 @@ apply_resources() {
   "
 }
 
-# Restore an EMPTY resources list on exit so the source-controlled
-# tauri.conf.json stays clean — the Windows DLLs/EXEs only belong in
-# the bundle when build-both.sh is actively building Windows. Leaving
-# them in tauri.conf.json after the script exits would cause non-
-# Windows builds (Mac DMG, Linux .deb/.rpm/.AppImage) to silently
-# bundle 240 MB of useless Windows binaries from src-tauri/{mpv-dev,
-# ffmpeg,yt-dlp}/ if those dirs exist on the build machine.
-trap 'apply_resources "[]"' EXIT
+# On exit restore to the legal-only list (license files always ship,
+# Windows-specific binaries only ship from this script's active runs).
+# Without this, non-Windows builds (Mac DMG, Linux .deb/.rpm/.AppImage)
+# would silently bundle 240 MB of Windows binaries from src-tauri/
+# {mpv-dev,ffmpeg,yt-dlp}/ if those dirs exist on the build machine.
+trap 'apply_resources "$LEGAL_ONLY_RESOURCES"' EXIT
 
 echo "=== Building Standard Edition ==="
 apply_resources "$STANDARD_RESOURCES"

@@ -1,9 +1,13 @@
 [package]
 name = "unflick"
-version = "0.9.1"
-description = "A video player for humans and AI"
-authors = []
+version = "0.9.2"
+description = "A free, ad-free video player for humans and AI"
+authors = ["xiangdong li"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/zhitongblog/unflick"
+homepage = "https://unflick.app"
+readme = "../README.md"
 
 [lib]
 name = "unflick_lib"
