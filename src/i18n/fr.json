@@ -105,7 +105,8 @@
     "whatSupported": "Quelles URL sont supportées ?",
     "ytDlpMissing": "yt-dlp est nécessaire pour lire les URL mais n'a pas été trouvé.",
     "ytDlpUpdate": "Mettre à jour yt-dlp",
-    "extracting": "Extraction de l'URL du flux…"
+    "extracting": "Extraction de l'URL du flux…",
+    "cancel": "Annuler"
   },
   "context": {
     "openFile": "Ouvrir un fichier…",

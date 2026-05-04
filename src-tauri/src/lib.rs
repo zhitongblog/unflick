@@ -326,6 +326,7 @@ pub fn run() {
             commands::find_sidecar_subtitles,
             commands::check_yt_dlp,
             commands::extract_stream_url,
+            commands::cancel_url_extraction,
             commands::yt_dlp_info,
             commands::update_yt_dlp,
             commands::get_system_proxy,

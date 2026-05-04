@@ -105,7 +105,8 @@
     "whatSupported": "対応している URL は？",
     "ytDlpMissing": "URL の再生には yt-dlp が必要ですが、見つかりませんでした。",
     "ytDlpUpdate": "yt-dlp を更新",
-    "extracting": "ストリーム URL を取得中…"
+    "extracting": "ストリーム URL を取得中…",
+    "cancel": "キャンセル"
   },
   "context": {
     "openFile": "ファイルを開く…",

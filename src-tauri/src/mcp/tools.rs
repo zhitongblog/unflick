@@ -76,14 +76,15 @@ pub fn tool_definitions() -> Value {
     json!([
         {
             "name": "play",
-            "description": "Play a video file",
+            "description": "Play a video file or URL. URLs from supported streaming sites (YouTube, Bilibili, Twitch, Vimeo, etc.) are extracted via the bundled yt-dlp before playback.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "file": { "type": "string", "description": "Path to the video file" },
+                    "file": { "type": "string", "description": "Path to a local video file, or HTTP(S) URL to a streaming site." },
                     "seek": { "type": "number", "description": "Seek to position in seconds" },
                     "volume": { "type": "integer", "description": "Volume level (0-100)" },
-                    "speed": { "type": "number", "description": "Playback speed multiplier" }
+                    "speed": { "type": "number", "description": "Playback speed multiplier" },
+                    "proxy": { "type": "string", "description": "Optional proxy URL forwarded to yt-dlp for URL extraction (e.g. http://127.0.0.1:7890)" }
                 },
                 "required": ["file"]
             }

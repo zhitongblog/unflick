@@ -101,6 +101,7 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             let seek = args.get("seek").and_then(|v| v.as_f64());
             let volume = args.get("volume").and_then(|v| v.as_i64());
             let speed = args.get("speed").and_then(|v| v.as_f64());
+            let proxy = args.get("proxy").and_then(|v| v.as_str()).map(String::from);
 
             // Save position of current file before switching
             let current_status = player.status();
@@ -110,12 +111,63 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
                 }
             }
 
-            // Check for saved position if no explicit seek
+            // If the input is an http(s) URL, resolve it through yt-dlp
+            // before handing it to mpv. mpv can play HLS / direct-MP4 URLs
+            // natively, but YouTube/Bilibili/etc. need an extraction step.
+            // We only extract for URLs — local paths (and previously
+            // resolved direct stream URLs from the GUI) hit mpv directly.
+            let resolved = if crate::core::yt_dlp::is_http_url(file) {
+                let yt_dlp = match crate::core::yt_dlp::find_yt_dlp() {
+                    Some(p) => p,
+                    None => return CommandResult::err(
+                        "yt-dlp not found. Place yt-dlp(.exe) next to unflick or on PATH.",
+                    ),
+                };
+                let url_owned = file.to_string();
+                let proxy_owned = proxy.clone();
+                // Build an ad-hoc tokio runtime: the daemon is otherwise
+                // pure-sync and we don't want to convert the whole listener
+                // for one command. The runtime is dropped at the end of
+                // the call so it has zero ongoing cost.
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(r) => r,
+                    Err(e) => return CommandResult::err(format!("tokio runtime: {}", e)),
+                };
+                let result = rt.block_on(crate::core::yt_dlp::extract_stream_url(
+                    &yt_dlp,
+                    &url_owned,
+                    proxy_owned.as_deref(),
+                ));
+                if !result.is_ok() {
+                    let kind = result
+                        .error_kind
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let msg = result
+                        .error_message
+                        .clone()
+                        .unwrap_or_else(|| "yt-dlp failed".to_string());
+                    let mut err = CommandResult::err(msg);
+                    err.data = Some(json!({"error_kind": kind}));
+                    return err;
+                }
+                result.stream_url
+            } else {
+                file.to_string()
+            };
+
+            // Check for saved position if no explicit seek (use the
+            // *original* input as the key — saved positions are keyed by
+            // the user-facing path/URL, not the resolved CDN URL which
+            // changes between sessions).
             let effective_seek = seek.or_else(|| {
                 db.get_position(file).ok().flatten()
             });
 
-            match player.play(file, effective_seek, volume, speed) {
+            match player.play(&resolved, effective_seek, volume, speed) {
                 Ok(()) => CommandResult::ok(format!("playing {}", file)),
                 Err(e) => CommandResult::err(e.to_string()),
             }

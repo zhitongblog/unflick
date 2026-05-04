@@ -105,7 +105,8 @@
     "whatSupported": "¿Qué URLs son compatibles?",
     "ytDlpMissing": "Se necesita yt-dlp para abrir URL pero no se ha encontrado.",
     "ytDlpUpdate": "Actualizar yt-dlp",
-    "extracting": "Extrayendo URL del stream…"
+    "extracting": "Extrayendo URL del stream…",
+    "cancel": "Cancelar"
   },
   "context": {
     "openFile": "Abrir archivo…",

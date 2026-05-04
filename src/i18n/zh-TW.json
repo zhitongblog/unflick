@@ -105,7 +105,8 @@
     "whatSupported": "支援哪些 URL？",
     "ytDlpMissing": "播放 URL 需要 yt-dlp，但沒有找到。",
     "ytDlpUpdate": "更新 yt-dlp",
-    "extracting": "擷取串流位址中…"
+    "extracting": "擷取串流位址中…",
+    "cancel": "取消"
   },
   "context": {
     "openFile": "開啟檔案…",
