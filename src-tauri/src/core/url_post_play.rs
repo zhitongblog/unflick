@@ -113,25 +113,46 @@ pub fn after_play_url_hooks(
     settings: UrlPostPlaySettings,
 ) {
     // ── SponsorBlock ────────────────────────────────────────────────
+    // Each branch spawns its own OS thread with a private current-thread
+    // tokio runtime, instead of `tokio::spawn`. The hook gets called from
+    // contexts that are NOT inside a tokio reactor (Tauri's setup hook
+    // runs on the main thread; the CLI daemon's dispatch_command runs
+    // synchronously). A bare `tokio::spawn` in those contexts panics
+    // with "there is no reactor running" before the app even reaches its
+    // first frame. Per-thread runtimes are heavier than `tokio::spawn`
+    // but the work here is one-shot anyway — fetch some JSON, run yt-dlp
+    // — and the cost is paid at most once per URL play.
     if settings.sponsorblock_enabled {
         if let Some(youtube_id) = sponsorblock::extract_youtube_id(&url) {
             let player_for_sb = Arc::clone(&player);
             let categories = settings.sponsorblock_categories.clone();
-            tokio::spawn(async move {
-                let cats: Vec<&str> = categories.iter().map(String::as_str).collect();
-                match sponsorblock::fetch_segments(&youtube_id, &cats).await {
-                    Ok(segments) => {
-                        eprintln!(
-                            "[sponsorblock] fetched {} segment(s) for {}",
-                            segments.len(),
-                            youtube_id
-                        );
-                        player_for_sb.enable_sponsorblock(segments);
-                    }
+            std::thread::spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
                     Err(e) => {
-                        eprintln!("[sponsorblock] fetch failed for {}: {}", youtube_id, e);
+                        eprintln!("[sponsorblock] runtime build failed: {}", e);
+                        return;
                     }
-                }
+                };
+                rt.block_on(async move {
+                    let cats: Vec<&str> = categories.iter().map(String::as_str).collect();
+                    match sponsorblock::fetch_segments(&youtube_id, &cats).await {
+                        Ok(segments) => {
+                            eprintln!(
+                                "[sponsorblock] fetched {} segment(s) for {}",
+                                segments.len(),
+                                youtube_id
+                            );
+                            player_for_sb.enable_sponsorblock(segments);
+                        }
+                        Err(e) => {
+                            eprintln!("[sponsorblock] fetch failed for {}: {}", youtube_id, e);
+                        }
+                    }
+                });
             });
         }
     }
@@ -143,7 +164,7 @@ pub fn after_play_url_hooks(
             let player_for_subs = Arc::clone(&player);
             let url_for_subs = url.clone();
             let yt_dlp_for_subs = yt_dlp_path;
-            tokio::spawn(async move {
+            std::thread::spawn(move || {
                 let yt_dlp = match yt_dlp_for_subs {
                     Some(p) => p,
                     None => {
@@ -151,16 +172,28 @@ pub fn after_play_url_hooks(
                         return;
                     }
                 };
-                if let Err(e) = download_and_attach_subtitles(
-                    &player_for_subs,
-                    &yt_dlp,
-                    &url_for_subs,
-                    &langs,
-                )
-                .await
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
                 {
-                    eprintln!("[auto-subs] failed: {}", e);
-                }
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        eprintln!("[auto-subs] runtime build failed: {}", e);
+                        return;
+                    }
+                };
+                rt.block_on(async move {
+                    if let Err(e) = download_and_attach_subtitles(
+                        &player_for_subs,
+                        &yt_dlp,
+                        &url_for_subs,
+                        &langs,
+                    )
+                    .await
+                    {
+                        eprintln!("[auto-subs] failed: {}", e);
+                    }
+                });
             });
         }
     }
@@ -272,13 +305,21 @@ pub async fn fetch_segments_for_url(
 /// tokio runtime; it holds an `Arc<Player>`, so the player is kept alive
 /// for as long as the task runs.
 pub fn spawn_sponsor_skip_task(player: Arc<Player>) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+    // Use a dedicated OS thread with `std::thread::sleep` rather than
+    // `tokio::spawn` + `tokio::time::interval`. This function is invoked
+    // from Tauri's `setup` hook (no live tokio reactor on the calling
+    // thread); a bare `tokio::spawn` panics with "there is no reactor
+    // running, must be called from the context of a Tokio 1.x runtime"
+    // before the app reaches its first frame. The polling cost is
+    // negligible — one mpv property read every 250 ms — so a plain
+    // OS thread loop is the simplest correct primitive.
+    std::thread::spawn(move || {
+        let interval = std::time::Duration::from_millis(250);
         // We poll regardless of playback state; mpv returns an error for
         // time-pos when nothing is loaded — that just means "nothing to
         // do" so we silently skip.
         loop {
-            interval.tick().await;
+            std::thread::sleep(interval);
             // Read the current playback position. If it fails (no file
             // loaded, paused without a position yet, etc.) skip this tick.
             let time = match player
