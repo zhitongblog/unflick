@@ -106,7 +106,7 @@
     "ytDlpMissing": "yt-dlp is required to play URLs but wasn't found.",
     "ytDlpUpdate": "Update yt-dlp",
     "extracting": "Extracting stream…",
-"cancel": "Cancel",
+    "cancel": "Cancel",
     "qualityLabel": "Preferred quality"
   },
   "context": {
@@ -179,6 +179,22 @@
       "body": "unflick can open mp4, mkv, avi, mov, webm and 9 more video formats, plus mp3, flac, wav and 4 more audio formats. Click below to make it the default in Windows.",
       "button": "Open Windows Settings",
       "hint": "Windows opens a list of file types — flip each one to use unflick."
+    },
+    "sponsorblock": {
+      "title": "SponsorBlock",
+      "enabled": "Skip sponsor segments automatically",
+      "categories": "Categories",
+      "cat": {
+        "sponsor": "Sponsor",
+        "selfpromo": "Self-promotion",
+        "intro": "Intro",
+        "outro": "Outro",
+        "interaction": "Interaction reminder"
+      }
+    },
+    "subtitles": {
+      "autoDownload": "Auto-download subtitles for streaming URLs",
+      "languages": "Languages (comma-separated, e.g. en,zh-CN)"
     }
   }
 }

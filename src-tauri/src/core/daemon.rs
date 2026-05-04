@@ -559,6 +559,40 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             }
             CommandResult::ok("filters reset")
         }
+        "sponsor_segments" => {
+            let url = args["url"].as_str().unwrap_or("");
+            if url.is_empty() {
+                return CommandResult::err("url is required");
+            }
+            // Build a single-thread tokio runtime per call. The daemon TCP
+            // server is sync and we don't keep a long-lived runtime around;
+            // a one-shot here is fine since fetch_segments is a single
+            // network round-trip with a 5s timeout.
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(r) => r,
+                Err(e) => return CommandResult::err(format!("tokio runtime: {}", e)),
+            };
+            let snapshot = crate::core::url_post_play::read_settings_snapshot();
+            let cats = snapshot.sponsorblock_categories.clone();
+            let cats_for_async = cats.clone();
+            let url_owned = url.to_string();
+            match rt.block_on(async move {
+                crate::core::url_post_play::fetch_segments_for_url(&url_owned, &cats_for_async).await
+            }) {
+                Ok(segments) => CommandResult::ok_with_data(
+                    format!("{} segment(s)", segments.len()),
+                    json!({
+                        "url": url,
+                        "categories": cats,
+                        "segments": segments,
+                    }),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
         "shutdown" => {
             std::process::exit(0);
         }

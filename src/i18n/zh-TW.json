@@ -106,7 +106,7 @@
     "ytDlpMissing": "播放 URL 需要 yt-dlp，但沒有找到。",
     "ytDlpUpdate": "更新 yt-dlp",
     "extracting": "擷取串流位址中…",
-"cancel": "取消",
+    "cancel": "取消",
     "qualityLabel": "優先畫質"
   },
   "context": {
@@ -179,6 +179,22 @@
       "body": "unflick 可以開啟 mp4、mkv、avi、mov、webm 等 13 種影片格式，以及 mp3、flac、wav 等 7 種音訊格式。點下面的按鈕把它設為 Windows 預設。",
       "button": "開啟 Windows 設定",
       "hint": "Windows 會列出所有檔案類型，把要用 unflick 的逐個切換。"
+    },
+    "sponsorblock": {
+      "title": "SponsorBlock 跳過廣告",
+      "enabled": "自動跳過贊助片段",
+      "categories": "分類",
+      "cat": {
+        "sponsor": "贊助廣告",
+        "selfpromo": "自我推廣",
+        "intro": "片頭",
+        "outro": "片尾",
+        "interaction": "互動提醒"
+      }
+    },
+    "subtitles": {
+      "autoDownload": "為串流媒體網址自動下載字幕",
+      "languages": "語言（逗號分隔，例如 en,zh-CN）"
     }
   }
 }

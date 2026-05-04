@@ -106,7 +106,7 @@
     "ytDlpMissing": "URL の再生には yt-dlp が必要ですが、見つかりませんでした。",
     "ytDlpUpdate": "yt-dlp を更新",
     "extracting": "ストリーム URL を取得中…",
-"cancel": "キャンセル",
+    "cancel": "キャンセル",
     "qualityLabel": "優先画質"
   },
   "context": {
@@ -179,6 +179,22 @@
       "body": "unflick は mp4、mkv、avi、mov、webm など 13 種類の動画形式と、mp3、flac、wav など 7 種類の音声形式を開けます。下のボタンで Windows の既定アプリに設定できます。",
       "button": "Windows 設定を開く",
       "hint": "Windows が拡張子の一覧を表示します。unflick を使いたい拡張子をオンにしてください。"
+    },
+    "sponsorblock": {
+      "title": "SponsorBlock",
+      "enabled": "スポンサー区間を自動でスキップ",
+      "categories": "カテゴリ",
+      "cat": {
+        "sponsor": "スポンサー広告",
+        "selfpromo": "自己宣伝",
+        "intro": "イントロ",
+        "outro": "アウトロ",
+        "interaction": "インタラクションのお願い"
+      }
+    },
+    "subtitles": {
+      "autoDownload": "ストリーミング URL の字幕を自動ダウンロード",
+      "languages": "言語（カンマ区切り、例: en,zh-CN）"
     }
   }
 }

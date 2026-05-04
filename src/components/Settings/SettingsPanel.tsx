@@ -13,9 +13,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
     alwaysOnTop, preferredQuality, cookiesBrowser,
+    sponsorblockEnabled, sponsorblockCategories, autoDownloadSubtitles, subtitleLanguages,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
     setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop,
-    setPreferredQuality, setCookiesBrowser, saveSettings,
+    setPreferredQuality, setCookiesBrowser,
+    setSponsorblockEnabled, setSponsorblockCategories,
+    setAutoDownloadSubtitles, setSubtitleLanguages,
+    saveSettings,
   } = useSettingsStore();
   const t = useStrings();
 
@@ -23,6 +27,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [draftModelPath, setDraftModelPath] = useState(whisperModelPath ?? "");
   const [draftBinaryPath, setDraftBinaryPath] = useState(whisperBinaryPath ?? "");
   const [draftProxy, setDraftProxy] = useState(proxy ?? "");
+  const [draftSubLangs, setDraftSubLangs] = useState(subtitleLanguages.join(","));
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [bundled, setBundled] = useState<{ binary: string; model: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -101,6 +106,12 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setWhisperModelPath(draftModelPath || null);
     setWhisperBinaryPath(draftBinaryPath || null);
     setProxy(draftProxy.trim() || null);
+    // Parse the comma-separated language list into a string array.
+    const langs = draftSubLangs
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setSubtitleLanguages(langs.length > 0 ? langs : ["en"]);
     await saveSettings();
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 1500);
@@ -437,7 +448,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
             </div>
 
-            {/* Streaming */}
+            {/* Streaming (P1 — quality + cookies) */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
                 {t.settings.streaming.title}
@@ -493,6 +504,139 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     {t.settings.streaming.cookiesHelp}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* SponsorBlock (P2 — auto-skip community-curated ad/intro/outro segments) */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.sponsorblock.title}
+              </p>
+              <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] text-white/55">
+                    {t.settings.sponsorblock.enabled}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !sponsorblockEnabled;
+                      setSponsorblockEnabled(next);
+                      void saveSettings();
+                    }}
+                    className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                      sponsorblockEnabled ? "bg-brand-purple" : "bg-white/10"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                        sponsorblockEnabled ? "translate-x-[18px]" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+                {sponsorblockEnabled && (
+                  <div className="border-t border-white/6 pt-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                      {t.settings.sponsorblock.categories}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(["sponsor", "selfpromo", "intro", "outro", "interaction"] as const).map(
+                        (cat) => {
+                          const checked = sponsorblockCategories.includes(cat);
+                          const labels: Record<typeof cat, string> = {
+                            sponsor: t.settings.sponsorblock.cat.sponsor,
+                            selfpromo: t.settings.sponsorblock.cat.selfpromo,
+                            intro: t.settings.sponsorblock.cat.intro,
+                            outro: t.settings.sponsorblock.cat.outro,
+                            interaction: t.settings.sponsorblock.cat.interaction,
+                          };
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => {
+                                const next = checked
+                                  ? sponsorblockCategories.filter((c) => c !== cat)
+                                  : [...sponsorblockCategories, cat];
+                                setSponsorblockCategories(next);
+                                void saveSettings();
+                              }}
+                              className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] text-left transition-colors ${
+                                checked
+                                  ? "border-brand-purple/30 bg-brand-purple/10 text-brand-purple"
+                                  : "border-white/6 bg-white/4 text-white/40 hover:border-white/10 hover:text-white/60"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-3 w-3 flex-shrink-0 items-center justify-center rounded-sm border ${
+                                  checked
+                                    ? "border-brand-purple bg-brand-purple"
+                                    : "border-white/20"
+                                }`}
+                              >
+                                {checked && (
+                                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                )}
+                              </span>
+                              {labels[cat]}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Auto-download subtitles (P2 — yt-dlp --write-sub on URL play) */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.subtitles.autoDownload}
+              </p>
+              <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] text-white/55">
+                    {t.settings.subtitles.autoDownload}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !autoDownloadSubtitles;
+                      setAutoDownloadSubtitles(next);
+                      void saveSettings();
+                    }}
+                    className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                      autoDownloadSubtitles ? "bg-brand-purple" : "bg-white/10"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                        autoDownloadSubtitles ? "translate-x-[18px]" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+                {autoDownloadSubtitles && (
+                  <div className="border-t border-white/6 pt-3">
+                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                      {t.settings.subtitles.languages}
+                    </label>
+                    <input
+                      type="text"
+                      value={draftSubLangs}
+                      onChange={(e) => setDraftSubLangs(e.target.value)}
+                      placeholder="en,zh-CN"
+                      className={inputClass}
+                    />
+                    <p className="mt-1.5 text-[10px] text-white/25">
+                      Hit Save to apply.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

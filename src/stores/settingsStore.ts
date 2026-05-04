@@ -54,6 +54,17 @@ interface SettingsState {
   preferredQuality: PreferredQuality | null;
   /** Borrow login cookies from this browser when extracting URLs. `null` = off. */
   cookiesBrowser: CookiesBrowser | null;
+  /** SponsorBlock auto-skip toggle. When true the player polls
+   *  playback-time and seeks past sponsor segments fetched from
+   *  sponsor.ajay.app for the current YouTube video. */
+  sponsorblockEnabled: boolean;
+  /** Which SponsorBlock categories to skip. Defaults to the common five. */
+  sponsorblockCategories: string[];
+  /** Auto-download external subtitles via yt-dlp when playing a streaming
+   *  URL. Files are written to a temp dir and attached via mpv sub-add. */
+  autoDownloadSubtitles: boolean;
+  /** Languages to request from yt-dlp (e.g. ["en", "zh-CN"]). */
+  subtitleLanguages: string[];
   toggleSettings: () => void;
   setWhisperMode: (mode: "off" | "local" | "api") => void;
   setWhisperModelPath: (path: string | null) => void;
@@ -67,6 +78,10 @@ interface SettingsState {
   setAlwaysOnTop: (v: boolean) => void;
   setPreferredQuality: (q: PreferredQuality | null) => void;
   setCookiesBrowser: (b: CookiesBrowser | null) => void;
+  setSponsorblockEnabled: (v: boolean) => void;
+  setSponsorblockCategories: (cats: string[]) => void;
+  setAutoDownloadSubtitles: (v: boolean) => void;
+  setSubtitleLanguages: (langs: string[]) => void;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
 }
@@ -116,6 +131,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   alwaysOnTop: false,
   preferredQuality: null,
   cookiesBrowser: null,
+  sponsorblockEnabled: true,
+  sponsorblockCategories: ["sponsor", "selfpromo", "intro", "outro", "interaction"],
+  autoDownloadSubtitles: true,
+  subtitleLanguages: ["en", "zh-CN"],
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
 
@@ -131,6 +150,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAlwaysOnTop: (v) => set({ alwaysOnTop: v }),
   setPreferredQuality: (q) => set({ preferredQuality: q }),
   setCookiesBrowser: (b) => set({ cookiesBrowser: b }),
+  setSponsorblockEnabled: (v) => set({ sponsorblockEnabled: v }),
+  setSponsorblockCategories: (cats) => set({ sponsorblockCategories: cats }),
+  setAutoDownloadSubtitles: (v) => set({ autoDownloadSubtitles: v }),
+  setSubtitleLanguages: (langs) => set({ subtitleLanguages: langs }),
 
   loadSettings: async () => {
     try {
@@ -182,6 +205,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         } else if (data.cookiesBrowser === null || isCookiesBrowser(data.cookiesBrowser)) {
           updates.cookiesBrowser = data.cookiesBrowser;
         }
+        // SponsorBlock + auto-subtitle keys are persisted in snake_case
+        // because they're shared with CLI/MCP, which use snake_case
+        // throughout. Read them via bracket access so TS doesn't whine
+        // about index signatures.
+        if (typeof data["sponsorblock_enabled"] === "boolean") {
+          updates.sponsorblockEnabled = data["sponsorblock_enabled"] as boolean;
+        }
+        if (Array.isArray(data["sponsorblock_categories"])) {
+          updates.sponsorblockCategories = (data["sponsorblock_categories"] as unknown[]).filter(
+            (s): s is string => typeof s === "string"
+          );
+        }
+        if (typeof data["auto_download_subtitles"] === "boolean") {
+          updates.autoDownloadSubtitles = data["auto_download_subtitles"] as boolean;
+        }
+        if (Array.isArray(data["subtitle_languages"])) {
+          updates.subtitleLanguages = (data["subtitle_languages"] as unknown[]).filter(
+            (s): s is string => typeof s === "string"
+          );
+        }
         set(updates);
       }
     } catch {
@@ -194,6 +237,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey,
       theme, volume, proxy, locale, screenshotDir, alwaysOnTop,
       preferredQuality, cookiesBrowser,
+      sponsorblockEnabled, sponsorblockCategories, autoDownloadSubtitles, subtitleLanguages,
     } = get();
     const payload = JSON.stringify({
       whisperMode,
@@ -213,6 +257,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       // GUI-only flow.
       preferred_quality: preferredQuality,
       cookies_browser: cookiesBrowser,
+      // Snake-case keys here so CLI/MCP (which write the same file) and
+      // the GUI converge on a single schema for the v0.9 streaming feats.
+      sponsorblock_enabled: sponsorblockEnabled,
+      sponsorblock_categories: sponsorblockCategories,
+      auto_download_subtitles: autoDownloadSubtitles,
+      subtitle_languages: subtitleLanguages,
     });
     try {
       await invoke("save_settings", { settings: payload });

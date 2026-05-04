@@ -113,6 +113,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: FilterAction,
     },
+    /// Manage SponsorBlock auto-skip (segment fetch + on/off + categories)
+    Sponsor {
+        #[command(subcommand)]
+        action: SponsorAction,
+    },
     /// Shut down the daemon
     Shutdown,
 }
@@ -243,6 +248,26 @@ pub enum FilterAction {
     },
     /// Reset all filters to 0 (neutral)
     Reset,
+}
+
+#[derive(Subcommand)]
+pub enum SponsorAction {
+    /// Fetch SponsorBlock segments for a YouTube URL and print them as JSON.
+    /// 404 / no-segments returns an empty list (success).
+    List {
+        /// YouTube URL (watch / shorts / youtu.be / embed all accepted)
+        url: String,
+    },
+    /// Turn SponsorBlock auto-skip on (writes settings).
+    Enable,
+    /// Turn SponsorBlock auto-skip off (writes settings).
+    Disable,
+    /// Replace the SponsorBlock category list (comma-separated, e.g.
+    /// `sponsor,selfpromo,intro,outro,interaction`).
+    Categories {
+        /// Comma-separated list of categories
+        list: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -403,6 +428,9 @@ pub fn run_cli(cli: Cli) -> i32 {
                 FilterAction::Reset => send("filter_reset", json!({})),
             }
         }
+        Some(Commands::Sponsor { action }) => {
+            handle_sponsor(action)
+        }
         Some(Commands::Shutdown) => {
             send("shutdown", json!({}))
         }
@@ -488,6 +516,77 @@ fn handle_settings(action: SettingsAction) -> CommandResult {
             Ok(false) => CommandResult::err(format!("key not found: {}", key)),
             Err(e) => CommandResult::err(e.to_string()),
         },
+    }
+}
+
+/// SponsorBlock CLI handler. The `list` subcommand needs the tokio runtime
+/// for the async `fetch_segments`; the others are pure settings reads/writes.
+fn handle_sponsor(action: SponsorAction) -> CommandResult {
+    use crate::core::settings;
+    use crate::core::url_post_play;
+
+    match action {
+        SponsorAction::List { url } => {
+            // Build a one-shot tokio runtime for the async fetch. We don't
+            // need full multi-threaded scheduling here — just block on a
+            // single network call.
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => return CommandResult::err(format!("tokio runtime: {}", e)),
+            };
+            let snapshot = url_post_play::read_settings_snapshot();
+            let cats = snapshot.sponsorblock_categories.clone();
+            let cats_for_async = cats.clone();
+            let url_owned = url.clone();
+            let res = runtime.block_on(async move {
+                url_post_play::fetch_segments_for_url(&url_owned, &cats_for_async).await
+            });
+            match res {
+                Ok(segments) => CommandResult::ok_with_data(
+                    format!("{} segment(s)", segments.len()),
+                    json!({
+                        "url": url,
+                        "categories": cats,
+                        "segments": segments,
+                    }),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        SponsorAction::Enable => match settings::set("sponsorblock_enabled", json!(true)) {
+            Ok(()) => CommandResult::ok_with_data(
+                "sponsorblock_enabled = true",
+                json!({"sponsorblock_enabled": true}),
+            ),
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+        SponsorAction::Disable => match settings::set("sponsorblock_enabled", json!(false)) {
+            Ok(()) => CommandResult::ok_with_data(
+                "sponsorblock_enabled = false",
+                json!({"sponsorblock_enabled": false}),
+            ),
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+        SponsorAction::Categories { list } => {
+            let parsed: Vec<String> = list
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if parsed.is_empty() {
+                return CommandResult::err("at least one category required");
+            }
+            match settings::set("sponsorblock_categories", json!(parsed)) {
+                Ok(()) => CommandResult::ok_with_data(
+                    format!("set {} categories", parsed.len()),
+                    json!({"sponsorblock_categories": parsed}),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
     }
 }
 

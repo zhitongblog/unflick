@@ -8,6 +8,8 @@ pub mod library;
 pub mod settings;
 pub mod whisper;
 pub mod yt_dlp;
+pub mod sponsorblock;
+pub mod url_post_play;
 
 #[cfg(target_os = "windows")]
 pub mod win_assoc;
