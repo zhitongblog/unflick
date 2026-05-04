@@ -19,6 +19,17 @@ interface SettingsState {
   /** Pin the unflick window above all other apps. Useful for watching
    *  a tutorial / video chat while doing something else. Persisted. */
   alwaysOnTop: boolean;
+  /** SponsorBlock auto-skip toggle. When true the player polls
+   *  playback-time and seeks past sponsor segments fetched from
+   *  sponsor.ajay.app for the current YouTube video. */
+  sponsorblockEnabled: boolean;
+  /** Which SponsorBlock categories to skip. Defaults to the common five. */
+  sponsorblockCategories: string[];
+  /** Auto-download external subtitles via yt-dlp when playing a streaming
+   *  URL. Files are written to a temp dir and attached via mpv sub-add. */
+  autoDownloadSubtitles: boolean;
+  /** Languages to request from yt-dlp (e.g. ["en", "zh-CN"]). */
+  subtitleLanguages: string[];
   toggleSettings: () => void;
   setWhisperMode: (mode: "off" | "local" | "api") => void;
   setWhisperModelPath: (path: string | null) => void;
@@ -30,6 +41,10 @@ interface SettingsState {
   setLocale: (locale: Locale) => void;
   setScreenshotDir: (dir: string | null) => void;
   setAlwaysOnTop: (v: boolean) => void;
+  setSponsorblockEnabled: (v: boolean) => void;
+  setSponsorblockCategories: (cats: string[]) => void;
+  setAutoDownloadSubtitles: (v: boolean) => void;
+  setSubtitleLanguages: (langs: string[]) => void;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
 }
@@ -49,6 +64,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   locale: detectLocale(typeof navigator !== "undefined" ? navigator.language : undefined),
   screenshotDir: null,
   alwaysOnTop: false,
+  sponsorblockEnabled: true,
+  sponsorblockCategories: ["sponsor", "selfpromo", "intro", "outro", "interaction"],
+  autoDownloadSubtitles: true,
+  subtitleLanguages: ["en", "zh-CN"],
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
 
@@ -62,6 +81,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setLocale: (locale) => set({ locale }),
   setScreenshotDir: (dir) => set({ screenshotDir: dir }),
   setAlwaysOnTop: (v) => set({ alwaysOnTop: v }),
+  setSponsorblockEnabled: (v) => set({ sponsorblockEnabled: v }),
+  setSponsorblockCategories: (cats) => set({ sponsorblockCategories: cats }),
+  setAutoDownloadSubtitles: (v) => set({ autoDownloadSubtitles: v }),
+  setSubtitleLanguages: (langs) => set({ subtitleLanguages: langs }),
 
   loadSettings: async () => {
     try {
@@ -100,6 +123,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         if (typeof data.alwaysOnTop === "boolean") {
           updates.alwaysOnTop = data.alwaysOnTop;
         }
+        // SponsorBlock + auto-subtitle keys are persisted in snake_case
+        // because they're shared with CLI/MCP, which use snake_case
+        // throughout. Read them via bracket access so TS doesn't whine
+        // about index signatures.
+        if (typeof data["sponsorblock_enabled"] === "boolean") {
+          updates.sponsorblockEnabled = data["sponsorblock_enabled"] as boolean;
+        }
+        if (Array.isArray(data["sponsorblock_categories"])) {
+          updates.sponsorblockCategories = (data["sponsorblock_categories"] as unknown[]).filter(
+            (s): s is string => typeof s === "string"
+          );
+        }
+        if (typeof data["auto_download_subtitles"] === "boolean") {
+          updates.autoDownloadSubtitles = data["auto_download_subtitles"] as boolean;
+        }
+        if (Array.isArray(data["subtitle_languages"])) {
+          updates.subtitleLanguages = (data["subtitle_languages"] as unknown[]).filter(
+            (s): s is string => typeof s === "string"
+          );
+        }
         set(updates);
       }
     } catch {
@@ -108,7 +151,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async () => {
-    const { whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale, screenshotDir, alwaysOnTop } = get();
+    const {
+      whisperMode, whisperModelPath, whisperBinaryPath, openaiApiKey, theme, volume, proxy, locale,
+      screenshotDir, alwaysOnTop,
+      sponsorblockEnabled, sponsorblockCategories, autoDownloadSubtitles, subtitleLanguages,
+    } = get();
     const payload = JSON.stringify({
       whisperMode,
       whisperModelPath,
@@ -120,6 +167,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       locale,
       screenshotDir,
       alwaysOnTop,
+      // Snake-case keys here so CLI/MCP (which write the same file) and
+      // the GUI converge on a single schema for the v0.9 streaming feats.
+      sponsorblock_enabled: sponsorblockEnabled,
+      sponsorblock_categories: sponsorblockCategories,
+      auto_download_subtitles: autoDownloadSubtitles,
+      subtitle_languages: subtitleLanguages,
     });
     try {
       await invoke("save_settings", { settings: payload });

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Result};
 
+use super::sponsorblock::Segment;
 use super::types::{AudioTrack, FileInfo, PlaybackState, PlayerStatus, SubtitleTrack};
 use crate::mpv::ffi::{MPV_EVENT_END_FILE, MPV_EVENT_FILE_LOADED};
 use crate::mpv::MpvHandle;
@@ -13,6 +14,10 @@ pub struct Player {
     mpv: MpvHandle,
     /// Cache the last known file path since mpv may not have "path" available after stop.
     current_file: Mutex<Option<String>>,
+    /// SponsorBlock segments for the currently loaded file. Cleared on stop.
+    /// Driven by the auto-skip polling task; safe to mutate while the polling
+    /// task reads.
+    sponsor_segments: Mutex<Vec<Segment>>,
 }
 
 impl Player {
@@ -21,6 +26,7 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            sponsor_segments: Mutex::new(Vec::new()),
         })
     }
 
@@ -36,6 +42,7 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            sponsor_segments: Mutex::new(Vec::new()),
         })
     }
 
@@ -51,6 +58,7 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            sponsor_segments: Mutex::new(Vec::new()),
         })
     }
 
@@ -60,6 +68,7 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            sponsor_segments: Mutex::new(Vec::new()),
         })
     }
 
@@ -73,6 +82,7 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            sponsor_segments: Mutex::new(Vec::new()),
         })
     }
 
@@ -88,6 +98,11 @@ impl Player {
         // Load the file
         self.mpv.command(&["loadfile", path])?;
         *self.current_file.lock().unwrap() = Some(path.to_string());
+        // Clear stale SponsorBlock segments — they were for the previous
+        // file. The URL play path will re-arm via after_play_url_hooks.
+        if let Ok(mut segs) = self.sponsor_segments.lock() {
+            segs.clear();
+        }
 
         // Wait a moment for the file to start loading, then seek if needed
         if let Some(pos) = seek {
@@ -120,7 +135,41 @@ impl Player {
     pub fn stop(&self) -> Result<()> {
         self.mpv.command(&["stop"])?;
         *self.current_file.lock().unwrap() = None;
+        if let Ok(mut segs) = self.sponsor_segments.lock() {
+            segs.clear();
+        }
         Ok(())
+    }
+
+    /// Replace the SponsorBlock segment list for the currently-loaded file.
+    /// Called by `after_play_url_hooks` once segments have been fetched.
+    pub fn enable_sponsorblock(&self, segments: Vec<Segment>) {
+        if let Ok(mut s) = self.sponsor_segments.lock() {
+            *s = segments;
+        }
+    }
+
+    /// Returns `Some(end)` if `current_time` is inside any "skip" segment.
+    /// Caller seeks to the returned end-time. `None` if no segment matches.
+    ///
+    /// We only auto-skip segments whose `action_type == "skip"`. Mute / poi
+    /// segments are intentionally ignored — those need different UX.
+    ///
+    /// Tolerance: skip when current_time is within [start, end - 0.05]. The
+    /// 50 ms slack at the tail prevents an immediate re-trigger after we
+    /// seek to `end` (mpv's reported time-pos may briefly land just inside
+    /// the segment again due to float rounding / decoder catch-up).
+    pub fn check_sponsor_skip(&self, current_time: f64) -> Option<f64> {
+        let segs = self.sponsor_segments.lock().ok()?;
+        for seg in segs.iter() {
+            if seg.action_type != "skip" {
+                continue;
+            }
+            if current_time >= seg.start && current_time < seg.end - 0.05 {
+                return Some(seg.end);
+            }
+        }
+        None
     }
 
     pub fn seek(&self, position: f64) -> Result<()> {

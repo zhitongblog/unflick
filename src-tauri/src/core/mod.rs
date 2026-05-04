@@ -7,6 +7,8 @@ pub mod i18n;
 pub mod library;
 pub mod settings;
 pub mod whisper;
+pub mod sponsorblock;
+pub mod url_post_play;
 
 #[cfg(target_os = "windows")]
 pub mod win_assoc;

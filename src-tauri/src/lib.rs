@@ -447,6 +447,12 @@ pub fn run() {
 /// to exist before render-context construction (the context binds to mpv).
 /// We tolerate any error here — the GUI will simply fall back to the
 /// HTML5 path that's still wired up. The surface starts hidden.
+// TODO(v0.9 merge): wire `core::url_post_play::after_play_url_hooks` from
+// CLI/GUI/MCP play handlers once P0 lands. The function lives in
+// `src-tauri/src/core/url_post_play.rs` and takes:
+//   `Arc<Player>`, `String` (page URL), `Option<PathBuf>` (yt-dlp), `UrlPostPlaySettings`.
+// It spawns SponsorBlock fetch + yt-dlp subtitle download on tokio; the
+// auto-skip polling task below picks up segments via `enable_sponsorblock`.
 #[cfg(target_os = "windows")]
 fn bring_up_video_pipeline(
     window: &tauri::WebviewWindow,
@@ -480,6 +486,11 @@ fn bring_up_video_pipeline(
 
     let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
         .map_err(|e| format!("start render loop: {e}"))?;
+
+    // SponsorBlock auto-skip polling task. Cheap (250 ms tick, just reads
+    // a property and runs an in-memory check) so it stays running for the
+    // process lifetime regardless of whether the user ever plays a URL.
+    core::url_post_play::spawn_sponsor_skip_task(Arc::clone(&player));
 
     state
         .render_player
@@ -520,6 +531,8 @@ fn bring_up_video_pipeline(
 
     let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
         .map_err(|e| format!("start render loop: {e}"))?;
+
+    core::url_post_play::spawn_sponsor_skip_task(Arc::clone(&player));
 
     state
         .render_player
@@ -589,6 +602,9 @@ fn bring_up_video_pipeline(
             .map_err(|e| format!("create render player: {e}"))?,
     );
     let render_loop = RenderLoop::start_passive(Arc::clone(&player), Arc::clone(&surface));
+
+    core::url_post_play::spawn_sponsor_skip_task(Arc::clone(&player));
+
     state
         .render_player
         .set(player)

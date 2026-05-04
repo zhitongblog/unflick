@@ -43,6 +43,7 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "screenshot" => ("screenshot", json!({"output": args.get("output")})),
         "save_position" => ("save_position", json!({"path": args["path"], "position": args["position"]})),
         "get_position" => ("get_position", json!({"path": args["path"]})),
+        "sponsor_segments" => ("sponsor_segments", json!({"url": args["url"]})),
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -423,6 +424,17 @@ pub fn tool_definitions() -> Value {
             "name": "filter_reset",
             "description": "Reset all video filters to 0 (neutral)",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "sponsor_segments",
+            "description": "Fetch SponsorBlock skip segments for a YouTube URL. Returns the configured categories plus a list of {start, end, category, action_type, uuid} segments. Empty list when none exist (404). Errors only on network/parse failure or non-YouTube URLs.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "YouTube URL (watch / shorts / youtu.be / embed)" }
+                },
+                "required": ["url"]
+            }
         },
         {
             "name": "shutdown",
