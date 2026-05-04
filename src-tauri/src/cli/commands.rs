@@ -280,10 +280,28 @@ pub fn run_cli(cli: Cli) -> i32 {
             // Auto-start daemon if not running
             ensure_daemon();
 
+            // Surface URL extraction progress on stderr so the user sees
+            // *something* during the up-to-60s yt-dlp call. stdout is the
+            // JSON command result the caller pipes elsewhere — keep it
+            // clean.
+            if crate::core::yt_dlp::is_http_url(&file) {
+                eprintln!("[unflick] resolving {}...", file);
+            }
+
             let mut args = json!({"file": file});
             if let Some(s) = seek { args["seek"] = json!(s); }
             if let Some(v) = volume { args["volume"] = json!(v); }
             if let Some(sp) = speed { args["speed"] = json!(sp); }
+            // Forward the saved proxy setting (if any) to the daemon so
+            // yt-dlp can use it. The daemon will only use it for URL
+            // extraction; local-file plays ignore it.
+            if let Ok(all) = crate::core::settings::read_all() {
+                if let Some(p) = all.get("proxy").and_then(|v| v.as_str()) {
+                    if !p.is_empty() {
+                        args["proxy"] = json!(p);
+                    }
+                }
+            }
             send("play", args)
         }
         Some(Commands::Pause) => {
@@ -398,6 +416,31 @@ pub fn run_cli(cli: Cli) -> i32 {
         println!("{}", json);
         0
     } else {
+        // For categorized URL extraction failures, lead with a friendly
+        // line on stderr before dumping the full JSON. That way scripts
+        // that only `tail -1` stderr see something useful, and humans
+        // running interactively see "this video requires login..."
+        // instead of a wall of yt-dlp Python traceback.
+        if let Some(kind) = result
+            .data
+            .as_ref()
+            .and_then(|d| d.get("error_kind"))
+            .and_then(|k| k.as_str())
+        {
+            let human = match kind {
+                "login_required" => "this video requires login (try setting cookies-from-browser in settings)",
+                "geo_blocked" => "this video is not available in your region",
+                "private" => "this video is private",
+                "unsupported_site" => "this site is not supported by yt-dlp",
+                "network" => "network error reaching the site (check your connection or proxy)",
+                "timeout" => "extraction timed out after 60s",
+                "cancelled" => "extraction was cancelled",
+                _ => "",
+            };
+            if !human.is_empty() {
+                eprintln!("[unflick] {}", human);
+            }
+        }
         eprintln!("{}", json);
         1
     }

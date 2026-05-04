@@ -105,7 +105,8 @@
     "whatSupported": "어떤 URL을 지원하나요?",
     "ytDlpMissing": "URL 재생에는 yt-dlp 가 필요하지만 찾을 수 없습니다.",
     "ytDlpUpdate": "yt-dlp 업데이트",
-    "extracting": "스트림 URL 추출 중…"
+    "extracting": "스트림 URL 추출 중…",
+    "cancel": "취소"
   },
   "context": {
     "openFile": "파일 열기…",

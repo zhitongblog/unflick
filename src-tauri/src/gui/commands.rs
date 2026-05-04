@@ -534,6 +534,15 @@ pub fn check_yt_dlp(app: AppHandle) -> Result<Value, String> {
 /// Run yt-dlp to extract a direct stream URL from an upstream page (YouTube,
 /// Bilibili, Twitch VOD, etc.). The returned URL can be fed straight to a
 /// `<video>` element. `proxy` is optional and forwarded as `--proxy` if set.
+///
+/// Response shape (additive — old callers see `stream_url` and ignore the
+/// new optional fields):
+///   `{ "stream_url": "https://...", "error_kind"?: string, "error_message"?: string }`
+///
+/// On categorized failure, `stream_url` is empty and the two error fields
+/// describe what went wrong. The Tauri command itself returns Ok(...) in
+/// both success and categorized-failure cases so the frontend can switch
+/// on `error_kind` instead of parsing free-form error strings.
 #[command]
 pub async fn extract_stream_url(
     app: AppHandle,
@@ -544,57 +553,32 @@ pub async fn extract_stream_url(
         "yt-dlp not found. Install it from https://github.com/yt-dlp/yt-dlp or place yt-dlp.exe next to unflick.".to_string()
     })?;
 
-    // Resolve proxy: "system" means read the OS proxy settings; empty/None means
-    // no proxy; otherwise use the literal URL the user supplied.
+    // Resolve proxy: "system" means read the OS proxy settings; empty/None
+    // means no proxy; otherwise use the literal URL the user supplied.
     let effective_proxy = match proxy.as_deref() {
-        Some("system") => {
-            match get_system_proxy() {
-                Ok(v) => v.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()),
-                Err(_) => None,
-            }
-        }
+        Some("system") => match get_system_proxy() {
+            Ok(v) => v.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()),
+            Err(_) => None,
+        },
         Some(s) if !s.trim().is_empty() => Some(s.to_string()),
         _ => None,
     };
 
-    let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let mut cmd = std::process::Command::new(&yt_dlp);
-        cmd.arg("--get-url")
-            .arg("--no-playlist")
-            .arg("--no-warnings")
-            // Prefer a single-URL format (avoids separate audio + video streams)
-            .arg("-f")
-            .arg("best[ext=mp4]/best");
-        if let Some(p) = effective_proxy.as_deref().filter(|s| !s.trim().is_empty()) {
-            cmd.arg("--proxy").arg(p);
-        }
-        cmd.arg(&url);
+    let result = crate::core::yt_dlp::extract_stream_url(
+        &yt_dlp,
+        &url,
+        effective_proxy.as_deref(),
+    )
+    .await;
+    Ok(serde_json::to_value(&result).unwrap_or_else(|_| json!({"stream_url": ""})))
+}
 
-        // Suppress console window on Windows
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-
-        let output = cmd.output().map_err(|e| format!("yt-dlp failed to run: {}", e))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("yt-dlp error: {}", stderr.trim()));
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // yt-dlp may emit multiple URLs (one per format); take the first.
-        let stream_url = stdout
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .ok_or_else(|| "yt-dlp returned no URL".to_string())?
-            .to_string();
-        Ok(stream_url)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    Ok(json!({"stream_url": result}))
+/// Cancel any in-flight yt-dlp extraction (set a global flag; the wait loop
+/// kills the child within ~100ms). Safe to call when nothing is running.
+#[command]
+pub fn cancel_url_extraction() -> Result<Value, String> {
+    let cancelled = crate::core::yt_dlp::cancel();
+    Ok(json!({"cancelled": cancelled}))
 }
 
 

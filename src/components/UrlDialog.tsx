@@ -121,7 +121,17 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
           {extracting && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-brand-purple/20 bg-brand-purple/5 px-3 py-2 text-[11px] text-brand-purple">
               <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-              <span>{t.urlDialog.resolvingSite.replace("{site}", extracting.site)}</span>
+              <span className="flex-1">{t.urlDialog.resolvingSite.replace("{site}", extracting.site)}</span>
+              <button
+                className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10.5px] font-medium text-white/60 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white/85"
+                onClick={async () => {
+                  try { await invoke("cancel_url_extraction"); } catch { /* ignore */ }
+                  setPlayed(false);
+                  onClose();
+                }}
+              >
+                {t.urlDialog.cancel}
+              </button>
             </div>
           )}
 
