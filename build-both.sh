@@ -10,7 +10,7 @@
 # AI edition adds: whisper-cli + ggml-tiny model + whisper DLLs.
 set -e
 
-VERSION="0.8.5"
+VERSION="0.9.0"
 NSIS_DIR="src-tauri/target/release/bundle/nsis"
 MSI_DIR="src-tauri/target/release/bundle/msi"
 

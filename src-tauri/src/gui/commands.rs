@@ -612,6 +612,35 @@ pub fn cancel_url_extraction() -> Result<Value, String> {
     Ok(json!({"cancelled": cancelled}))
 }
 
+/// After the GUI plays a resolved stream URL, the frontend calls this with
+/// the *original* page URL so we can fire SponsorBlock + auto-subtitle
+/// hooks on the live render-thread Player. The CLI/MCP daemon does this
+/// itself — see `core::daemon::dispatch_command`'s `play` arm — but the
+/// GUI's split (extract-then-play sequence) would otherwise lose the
+/// page URL by the time playback starts.
+#[command]
+pub fn arm_post_play_hooks(
+    app: AppHandle,
+    url: String,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    if !crate::core::yt_dlp::is_http_url(&url) {
+        return Ok(json!({"armed": false, "reason": "not a URL"}));
+    }
+    // Reach into render_player directly because GuiPlayer::mpv() returns
+    // &Player but the hook needs an owned Arc to keep the player alive
+    // across the spawned tokio tasks.
+    let player_arc = gui_player
+        .render_player
+        .get()
+        .ok_or_else(|| "render player not initialised".to_string())?
+        .clone();
+    let yt_dlp_path = find_yt_dlp(&app);
+    let settings = crate::core::url_post_play::read_settings_snapshot();
+    crate::core::url_post_play::after_play_url_hooks(player_arc, url, yt_dlp_path, settings);
+    Ok(json!({"armed": true}))
+}
+
 
 #[command]
 pub fn player_play(

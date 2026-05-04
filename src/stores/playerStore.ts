@@ -226,6 +226,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       throw e;
     }
 
+    // URL play path: now that mpv is loading the resolved stream, fire the
+    // post-play hooks against the *original* page URL so SponsorBlock can
+    // fetch sponsor segments and yt-dlp can grab subtitle tracks. The hook
+    // is fire-and-forget; everything happens on tokio in the backend and
+    // never blocks the UI.
+    if (isUrl(file)) {
+      invoke("arm_post_play_hooks", { url: file }).catch(() => {});
+    }
+
     // History — skip in incognito mode.
     if (!useIncognitoStore.getState().enabled) {
       invoke("record_play", { path: file }).catch(() => {});

@@ -52,7 +52,7 @@ pub fn start_daemon() -> i32 {
                 let player = Arc::clone(&player);
                 let playlist = Arc::clone(&playlist);
                 let db = Arc::clone(&db);
-                thread::spawn(move || handle_client(stream, &player, &playlist, &db));
+                thread::spawn(move || handle_client(stream, player, playlist, db));
             }
             Err(e) => {
                 eprintln!("connection error: {}", e);
@@ -63,7 +63,7 @@ pub fn start_daemon() -> i32 {
     0
 }
 
-fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist, db: &Database) {
+fn handle_client(stream: TcpStream, player: Arc<Player>, playlist: Arc<Playlist>, db: Arc<Database>) {
     let reader = BufReader::new(stream.try_clone().unwrap());
     let mut writer = stream;
 
@@ -88,13 +88,13 @@ fn handle_client(stream: TcpStream, player: &Player, playlist: &Playlist, db: &D
         let cmd = request["command"].as_str().unwrap_or("");
         let args = &request["args"];
 
-        let result = dispatch_command(player, playlist, db, cmd, args);
+        let result = dispatch_command(&player, &playlist, &db, cmd, args);
         let json = serde_json::to_string(&result).unwrap();
         let _ = writeln!(writer, "{}", json);
     }
 }
 
-fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &str, args: &Value) -> CommandResult {
+fn dispatch_command(player: &Arc<Player>, playlist: &Playlist, db: &Database, cmd: &str, args: &Value) -> CommandResult {
     match cmd {
         "play" => {
             let file = args["file"].as_str().unwrap_or("");
@@ -177,7 +177,24 @@ fn dispatch_command(player: &Player, playlist: &Playlist, db: &Database, cmd: &s
             });
 
             match player.play(&resolved, effective_seek, volume, speed) {
-                Ok(()) => CommandResult::ok(format!("playing {}", file)),
+                Ok(()) => {
+                    // URL play path: kick off SponsorBlock fetch + auto-
+                    // subtitle download via the post-play hook. The hook
+                    // returns immediately (everything spawned on tokio
+                    // background tasks); auto-skip itself runs in the
+                    // polling loop set up at app startup in `lib.rs`.
+                    if crate::core::yt_dlp::is_http_url(file) {
+                        let yt_dlp_path = crate::core::yt_dlp::find_yt_dlp();
+                        let settings = crate::core::url_post_play::read_settings_snapshot();
+                        crate::core::url_post_play::after_play_url_hooks(
+                            Arc::clone(player),
+                            file.to_string(),
+                            yt_dlp_path,
+                            settings,
+                        );
+                    }
+                    CommandResult::ok(format!("playing {}", file))
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }

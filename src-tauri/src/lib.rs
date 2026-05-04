@@ -327,6 +327,7 @@ pub fn run() {
             commands::check_yt_dlp,
             commands::extract_stream_url,
             commands::cancel_url_extraction,
+            commands::arm_post_play_hooks,
             commands::yt_dlp_info,
             commands::update_yt_dlp,
             commands::get_system_proxy,
