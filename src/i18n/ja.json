@@ -60,7 +60,12 @@
     "next": "次へ",
     "prev": "前へ",
     "clear": "プレイリストをクリア",
-    "removeEntry": "この項目を削除"
+    "removeEntry": "この項目を削除",
+    "repeat": "リピート",
+    "repeatOff": "オフ",
+    "repeatOne": "1件",
+    "repeatAll": "すべて",
+    "shuffle": "シャッフル"
   },
   "subtitle": {
     "title": "字幕",
@@ -68,11 +73,21 @@
     "loadFile": "字幕ファイルを読み込む…",
     "generate": "AI で生成",
     "generating": "生成中…",
-    "noTracks": "字幕トラックがありません。"
+    "noTracks": "字幕トラックがありません。",
+    "delay": "遅延",
+    "reset": "リセット",
+    "style": "字幕スタイル",
+    "styleSize": "サイズ",
+    "stylePosition": "位置",
+    "styleColor": "色",
+    "styleOutline": "縁取り",
+    "styleBold": "太字"
   },
   "audio": {
     "title": "音声トラック",
-    "noTracks": "音声トラックがありません。"
+    "noTracks": "音声トラックがありません。",
+    "delay": "遅延",
+    "reset": "リセット"
   },
   "filters": {
     "title": "ビデオフィルター",
@@ -196,5 +211,72 @@
       "autoDownload": "ストリーミング URL の字幕を自動ダウンロード",
       "languages": "言語（カンマ区切り、例: en,zh-CN）"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "字幕遅延",
+    "audioDelay": "音声遅延",
+    "loopStart": "ループ開始",
+    "loopEnd": "ループ終了",
+    "looping": "ループ中",
+    "loopCleared": "ループを解除しました",
+    "speed": "速度",
+    "bookmarked": "ブックマークしました"
+  },
+  "chapters": {
+    "title": "チャプター",
+    "none": "このファイルにチャプターはありません。"
+  },
+  "keybinds": {
+    "section": "キーボードショートカット",
+    "hint": "ショートカットをクリックして、割り当てたいキーを押します。Esc でキャンセル。",
+    "press": "キーを押してください…",
+    "resetAll": "すべてリセット",
+    "reset": "リセット",
+    "changed": "変更済み",
+    "groups": {
+      "playback": "再生",
+      "volume": "音量",
+      "navigation": "ナビゲーション",
+      "tracks": "字幕と音声",
+      "window": "ウィンドウ",
+      "capture": "キャプチャ",
+      "app": "アプリケーション"
+    }
+  },
+  "mouse": {
+    "section": "マウス",
+    "hint": "ホイール、クリック、右ドラッグジェスチャー。右ドラッグは一定距離を超えて初めてジェスチャーとみなされ、通常の右クリックはメニューを開きます。",
+    "none": "なし",
+    "triggers": {
+      "wheel_up": "ホイール上",
+      "wheel_down": "ホイール下",
+      "click": "クリック",
+      "double_click": "ダブルクリック",
+      "middle_click": "中クリック",
+      "gesture_left": "左へドラッグ",
+      "gesture_right": "右へドラッグ",
+      "gesture_up": "上へドラッグ",
+      "gesture_down": "下へドラッグ"
+    }
+  },
+  "recent": {
+    "title": "最近再生した項目",
+    "clear": "クリア"
+  },
+  "bookmarks": {
+    "title": "ブックマーク",
+    "add": "この位置をブックマーク",
+    "none": "このファイルにはまだブックマークがありません。",
+    "rename": "名前を変更",
+    "remove": "削除",
+    "namePlaceholder": "この位置に名前を付ける"
+  },
+  "music": {
+    "section": "ミュージックモード",
+    "noTrack": "再生していません",
+    "unknownArtist": "不明なアーティスト",
+    "toggle": "ミュージックモード",
+    "auto": "音声ファイルはミュージックモードで開く",
+    "autoHint": "映像のないファイルは、黒い画面ではなくコンパクト表示で開きます。"
   }
 }

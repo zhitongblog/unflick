@@ -3,11 +3,16 @@ import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useStrings } from "../i18n/utils";
+import { formatDelay } from "../lib/format";
+import { findSubtitlesOnline } from "../lib/subtitleSearch";
 
 export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { file, subtitles, loadSubtitle, selectSubtitle } = usePlayerStore();
+  const { file, subtitles, loadSubtitle, selectSubtitle, subDelay, setSubDelay } =
+    usePlayerStore();
   const { whisperMode, whisperBinaryPath, whisperModelPath } = useSettingsStore();
+  const t = useStrings();
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -133,6 +138,34 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
         </button>
       ))}
 
+      {/* Timing. AI-generated tracks in particular tend to land a few
+          hundred ms off, and until now there was no way to correct them. */}
+      <div className="mx-2 my-1 border-t border-white/6" />
+      <div className="flex items-center gap-1 px-3 py-1.5">
+        <span className="flex-1 text-[11px] text-white/60">{t.subtitle.delay}</span>
+        <button
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] leading-none text-white/50 transition-colors hover:bg-white/10 hover:text-white/90"
+          title="z"
+          onClick={() => setSubDelay(-0.1, true)}
+        >
+          −
+        </button>
+        <button
+          className="min-w-[52px] rounded px-1 text-[11px] tabular-nums text-white/80 transition-colors hover:bg-white/10"
+          title={t.subtitle.reset}
+          onClick={() => setSubDelay(0, false)}
+        >
+          {formatDelay(subDelay)}
+        </button>
+        <button
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] leading-none text-white/50 transition-colors hover:bg-white/10 hover:text-white/90"
+          title="Shift+Z"
+          onClick={() => setSubDelay(0.1, true)}
+        >
+          +
+        </button>
+      </div>
+
       <div className="mx-2 my-1 border-t border-white/6" />
 
       <button
@@ -145,6 +178,20 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
         Load subtitle file...
+      </button>
+
+      <button
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/40 transition-colors hover:bg-white/6 hover:text-white/70"
+        onClick={() => {
+          onClose();
+          findSubtitlesOnline();
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        Find subtitles online...
       </button>
 
       {whisperMode === "local" && file && (

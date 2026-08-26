@@ -60,7 +60,12 @@
     "next": "Weiter",
     "prev": "Zurück",
     "clear": "Wiedergabeliste leeren",
-    "removeEntry": "Eintrag entfernen"
+    "removeEntry": "Eintrag entfernen",
+    "repeat": "Wiederholen",
+    "repeatOff": "Aus",
+    "repeatOne": "Eins",
+    "repeatAll": "Alle",
+    "shuffle": "Zufall"
   },
   "subtitle": {
     "title": "Untertitel",
@@ -68,11 +73,21 @@
     "loadFile": "Untertiteldatei laden…",
     "generate": "Mit KI generieren",
     "generating": "Wird erzeugt…",
-    "noTracks": "Keine Untertitel-Spuren geladen."
+    "noTracks": "Keine Untertitel-Spuren geladen.",
+    "delay": "Verzögerung",
+    "reset": "Zurücksetzen",
+    "style": "Untertitelstil",
+    "styleSize": "Größe",
+    "stylePosition": "Position",
+    "styleColor": "Farbe",
+    "styleOutline": "Umrandung",
+    "styleBold": "Fett"
   },
   "audio": {
     "title": "Tonspur",
-    "noTracks": "Keine Tonspuren."
+    "noTracks": "Keine Tonspuren.",
+    "delay": "Verzögerung",
+    "reset": "Zurücksetzen"
   },
   "filters": {
     "title": "Videofilter",
@@ -196,5 +211,72 @@
       "autoDownload": "Untertitel für Streaming-URLs automatisch herunterladen",
       "languages": "Sprachen (komma-getrennt, z. B. en,zh-CN)"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "Untertitelverzögerung",
+    "audioDelay": "Audioverzögerung",
+    "loopStart": "Schleifenstart",
+    "loopEnd": "Schleifenende",
+    "looping": "Schleife aktiv",
+    "loopCleared": "Schleife gelöscht",
+    "speed": "Geschwindigkeit",
+    "bookmarked": "Lesezeichen gesetzt"
+  },
+  "chapters": {
+    "title": "Kapitel",
+    "none": "Diese Datei hat keine Kapitel."
+  },
+  "keybinds": {
+    "section": "Tastenkürzel",
+    "hint": "Kürzel anklicken, dann die gewünschten Tasten drücken. Esc bricht ab.",
+    "press": "Tasten drücken…",
+    "resetAll": "Alle zurücksetzen",
+    "reset": "Zurücksetzen",
+    "changed": "geändert",
+    "groups": {
+      "playback": "Wiedergabe",
+      "volume": "Lautstärke",
+      "navigation": "Navigation",
+      "tracks": "Untertitel & Audio",
+      "window": "Fenster",
+      "capture": "Aufnahme",
+      "app": "Anwendung"
+    }
+  },
+  "mouse": {
+    "section": "Maus",
+    "hint": "Rad, Klicks und Rechts-Ziehgesten. Ein Rechtsziehen gilt erst ab einer deutlichen Distanz als Geste — ein einfacher Rechtsklick öffnet weiterhin das Menü.",
+    "none": "Keine",
+    "triggers": {
+      "wheel_up": "Rad hoch",
+      "wheel_down": "Rad runter",
+      "click": "Klick",
+      "double_click": "Doppelklick",
+      "middle_click": "Mittelklick",
+      "gesture_left": "Nach links ziehen",
+      "gesture_right": "Nach rechts ziehen",
+      "gesture_up": "Nach oben ziehen",
+      "gesture_down": "Nach unten ziehen"
+    }
+  },
+  "recent": {
+    "title": "Zuletzt gespielt",
+    "clear": "Löschen"
+  },
+  "bookmarks": {
+    "title": "Lesezeichen",
+    "add": "Diese Stelle merken",
+    "none": "Für diese Datei gibt es noch keine Lesezeichen.",
+    "rename": "Umbenennen",
+    "remove": "Löschen",
+    "namePlaceholder": "Diese Stelle benennen"
+  },
+  "music": {
+    "section": "Musikmodus",
+    "noTrack": "Nichts wird abgespielt",
+    "unknownArtist": "Unbekannter Künstler",
+    "toggle": "Musikmodus",
+    "auto": "Audiodateien im Musikmodus öffnen",
+    "autoHint": "Eine Datei ohne Bild öffnet sich im kompakten Layout statt als schwarzes Rechteck."
   }
 }

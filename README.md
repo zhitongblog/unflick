@@ -4,7 +4,9 @@
 
 **[unflick.app](https://unflick.app)** · MIT · Cross-platform · CLI + MCP first
 
-unflick plays your video files and your YouTube / Bilibili / Twitch / Vimeo / 26 other streaming-site URLs, in a beautiful native window — and it's the only video player that AI agents (Claude, Cursor, Codex, anything that speaks MCP) can drive natively. Auto-skips YouTube sponsor segments via SponsorBlock. Generates AI subtitles locally with whisper.cpp. CLI and MCP coverage for every feature.
+unflick plays your video files and your YouTube / Bilibili / Twitch / Vimeo / 26 other streaming-site URLs, in a beautiful native window. Auto-skips YouTube sponsor segments via SponsorBlock. Finds subtitles on OpenSubtitles, or generates them locally with whisper.cpp when none exist.
+
+What makes it different: **MCP is a built-in control surface, not a third-party wrapper.** Other players can be scripted from the outside; in unflick the CLI, the MCP server and the window share one player instance. Ask Claude to skip to the next chapter and the video *you are watching* skips — same mpv, same playback, no second hidden process. Every feature ships headless before it gets a button.
 
 ## Install
 
@@ -33,11 +35,19 @@ irm https://unflick.app/install.ps1 | iex
 
 unflick exposes the same playback engine through three surfaces:
 
-- **GUI** — modern player window with libmpv-quality playback, keyboard shortcuts, drag-and-drop, picture-in-picture, true fullscreen.
-- **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick screenshot`, `unflick clip 0 5`, `unflick library scan`, `unflick subtitle generate`. Output is JSON; pipe it to `jq` and automate.
-- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 26+ tools (play, pause, seek, screenshot, clip, sponsor_segments, generate_subtitles, library_search, …) plus live resources.
+- **GUI** — modern player window with libmpv-quality playback, keyboard shortcuts, drag-and-drop, picture-in-picture, true fullscreen, chapters, bookmarks, A-B loop, frame stepping, subtitle timing and styling.
+- **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate.
+- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 87 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
 
-The CLI and MCP work without a window — every feature ships fully headless before it gets a GUI button.
+All three drive **the same player**. When the window is open it hosts the control port, so `unflick pause` from a terminal — or an agent calling `pause` over MCP — pauses the video on screen rather than some invisible second instance. With no window running, the CLI and MCP fall back to a headless daemon and everything still works.
+
+### What an agent can do that a wrapper can't
+
+Because MCP talks to the player rather than at it, an agent gets tools that need the player's own state:
+
+- **`search_transcript` / `seek_to_text`** — "skip to where she explains the refund policy". Searches whatever subtitles are open: a loaded file, a sidecar `.srt`, an embedded track, or the ones you just generated with whisper.
+- **`generate_chapters` / `set_chapters`** — give a file that shipped without chapters a real chapter list. It's not just data back: the chapters appear on the progress bar and respond to `chapter_seek` and PgUp/PgDn.
+- **`describe_frame`** — hand the model the frame that's on screen right now, as an image. Same player, so it sees what you see.
 
 ## Free, ad-free, local — by charter
 

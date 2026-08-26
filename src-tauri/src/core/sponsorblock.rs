@@ -7,10 +7,10 @@
 //!
 //! No API key, no auth — purely public, anonymous reads.
 
-use std::time::Duration;
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+
+use super::http::{agent, url_encode};
 
 const SPONSORBLOCK_API: &str = "https://sponsor.ajay.app/api/skipSegments";
 
@@ -71,11 +71,7 @@ pub async fn fetch_segments(youtube_id: &str, categories: &[&str]) -> Result<Vec
     // ureq is sync; run it on a blocking thread pool so we don't block the
     // tokio runtime.
     tokio::task::spawn_blocking(move || -> Result<Vec<Segment>> {
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(3))
-            .timeout(Duration::from_secs(5))
-            .build();
-        let resp = agent.get(&url).call();
+        let resp = agent(3, 5).get(&url).call();
         match resp {
             Ok(r) => {
                 let body = r
@@ -170,21 +166,6 @@ fn take_id(s: &str) -> Option<String> {
 /// Minimal percent-encoder for the few characters that matter in a query
 /// string: `[`, `]`, `"`, `,`, space. We don't pull in url::form_urlencoded
 /// just for this one call.
-fn url_encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            _ => {
-                out.push_str(&format!("%{:02X}", b));
-            }
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

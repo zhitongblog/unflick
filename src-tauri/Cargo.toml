@@ -1,6 +1,6 @@
 [package]
 name = "unflick"
-version = "0.9.2"
+version = "0.10.0"
 description = "A free, ad-free video player for humans and AI"
 authors = ["xiangdong li"]
 edition = "2021"

@@ -206,6 +206,22 @@ input[type="range"]::-webkit-slider-thumb:active {
   transform: scale(1.1);
 }
 
+/* ── Vertical equaliser sliders ──
+   The rule above sets `height: 4px` for every range input, which is the
+   right default for a horizontal track and exactly wrong for a vertical
+   one. `input[type="range"]` outranks a bare Tailwind `.h-24`, so the
+   override has to carry the same element+attribute selector to win. */
+input[type="range"].eq-slider {
+  width: 4px;
+  height: 6rem;
+  /* `writing-mode: vertical-lr` (set inline) is the modern way to stand a
+     range input on end; the appearance keyword is the fallback for
+     WebView2 builds that predate it. */
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* ── Focus ring ── */
 button:focus-visible {
   outline: 2px solid rgba(124, 58, 237, 0.5);

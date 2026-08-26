@@ -6,12 +6,30 @@ use std::path::PathBuf;
 use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
 
-/// Absolute path to the settings file.
-pub fn settings_path() -> PathBuf {
+/// Environment override for the settings directory.
+///
+/// The integration tests need this for the same reason they need
+/// `UNFLICK_DATA_DIR`: settings.json holds keybindings, subtitle styling
+/// and SponsorBlock preferences, and a test run must not rewrite the ones
+/// the developer is actually using — nor race another test doing the same.
+pub const CONFIG_DIR_ENV: &str = "UNFLICK_CONFIG_DIR";
+
+/// Directory holding unflick's settings file.
+pub fn config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var(CONFIG_DIR_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+    {
+        return PathBuf::from(dir);
+    }
     dirs_next::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("unflick")
-        .join("settings.json")
+}
+
+/// Absolute path to the settings file.
+pub fn settings_path() -> PathBuf {
+    config_dir().join("settings.json")
 }
 
 /// Read the entire settings blob. Returns an empty object if the file is missing.
@@ -43,6 +61,40 @@ pub fn write_all(value: &Value) -> Result<()> {
     let pretty = serde_json::to_string_pretty(value).unwrap();
     std::fs::write(&path, pretty)
         .map_err(|e| anyhow!("failed to write settings: {}", e))?;
+    Ok(())
+}
+
+/// Merge a JSON object into the stored settings, key by key.
+///
+/// This exists because settings.json has three writers. The GUI's settings
+/// panel sends a blob built from the fields it models; the CLI and MCP server
+/// write keys it has never heard of (keybindings, mouse bindings, the
+/// OpenSubtitles key). Writing the blob wholesale deleted every one of those
+/// the first time a user changed any setting in the window - silently, and
+/// without anything to point at afterwards.
+pub fn merge(incoming: &Value) -> Result<()> {
+    let mut all = read_all()?;
+    merge_into(&mut all, incoming)?;
+    write_all(&all)
+}
+
+/// The merge itself, split out so it can be tested without a config
+/// directory - `CONFIG_DIR_ENV` is process-global and the unit tests run in
+/// parallel against one process.
+///
+/// Top-level only. Nothing stored here needs deep merging, and a deep merge
+/// would make removing a key from a nested object impossible: the settings
+/// panel could then never turn a keybinding off.
+pub fn merge_into(base: &mut Value, incoming: &Value) -> Result<()> {
+    let incoming = incoming
+        .as_object()
+        .ok_or_else(|| anyhow!("settings payload must be a JSON object"))?;
+    let target = base
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("settings is not an object"))?;
+    for (key, value) in incoming {
+        target.insert(key.clone(), value.clone());
+    }
     Ok(())
 }
 
@@ -111,4 +163,52 @@ pub fn cookies_browser() -> Option<String> {
         return None;
     }
     Some(s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_preserves_keys_the_caller_does_not_know_about() {
+        // The regression: the GUI sends the fields it models, and the CLI's
+        // keybindings used to vanish with the first save.
+        let mut stored = json!({
+            "keybindings": {"space": "play_pause"},
+            "opensubtitles_api_key": "secret",
+            "volume": 40
+        });
+        let from_gui = json!({"volume": 80, "theme": "dark"});
+
+        merge_into(&mut stored, &from_gui).unwrap();
+
+        assert_eq!(stored["keybindings"]["space"], "play_pause");
+        assert_eq!(stored["opensubtitles_api_key"], "secret");
+        assert_eq!(stored["volume"], 80, "incoming value should win");
+        assert_eq!(stored["theme"], "dark", "new keys should be added");
+    }
+
+    #[test]
+    fn merge_replaces_nested_objects_wholesale() {
+        // Deliberate: a deep merge would make it impossible to remove a
+        // single binding, since an absent key would just keep the old value.
+        let mut stored = json!({"keybindings": {"space": "play_pause", "f": "fullscreen"}});
+        merge_into(&mut stored, &json!({"keybindings": {"space": "play_pause"}})).unwrap();
+
+        assert!(stored["keybindings"].get("f").is_none());
+    }
+
+    #[test]
+    fn merge_rejects_non_objects() {
+        let mut stored = json!({});
+        assert!(merge_into(&mut stored, &json!([1, 2, 3])).is_err());
+        assert!(merge_into(&mut stored, &json!("nope")).is_err());
+    }
+
+    #[test]
+    fn merge_into_empty_settings_is_just_the_payload() {
+        let mut stored = json!({});
+        merge_into(&mut stored, &json!({"a": 1})).unwrap();
+        assert_eq!(stored, json!({"a": 1}));
+    }
 }

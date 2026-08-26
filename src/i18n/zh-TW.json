@@ -60,7 +60,12 @@
     "next": "下一個",
     "prev": "上一個",
     "clear": "清空播放列表",
-    "removeEntry": "移除此項"
+    "removeEntry": "移除此項",
+    "repeat": "重複",
+    "repeatOff": "關閉",
+    "repeatOne": "單一",
+    "repeatAll": "全部",
+    "shuffle": "隨機"
   },
   "subtitle": {
     "title": "字幕",
@@ -68,11 +73,21 @@
     "loadFile": "載入字幕檔…",
     "generate": "AI 生成",
     "generating": "生成中…",
-    "noTracks": "尚未載入字幕軌。"
+    "noTracks": "尚未載入字幕軌。",
+    "delay": "延遲",
+    "reset": "重設",
+    "style": "字幕樣式",
+    "styleSize": "大小",
+    "stylePosition": "位置",
+    "styleColor": "顏色",
+    "styleOutline": "描邊",
+    "styleBold": "粗體"
   },
   "audio": {
     "title": "音軌",
-    "noTracks": "沒有音軌。"
+    "noTracks": "沒有音軌。",
+    "delay": "延遲",
+    "reset": "重設"
   },
   "filters": {
     "title": "影片濾鏡",
@@ -196,5 +211,72 @@
       "autoDownload": "為串流媒體網址自動下載字幕",
       "languages": "語言（逗號分隔，例如 en,zh-CN）"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "字幕延遲",
+    "audioDelay": "音訊延遲",
+    "loopStart": "循環起點",
+    "loopEnd": "循環終點",
+    "looping": "循環中",
+    "loopCleared": "已清除循環",
+    "speed": "速度",
+    "bookmarked": "已加入書籤"
+  },
+  "chapters": {
+    "title": "章節",
+    "none": "此檔案沒有章節。"
+  },
+  "keybinds": {
+    "section": "鍵盤快速鍵",
+    "hint": "點擊某個快速鍵，然後按下你想要的按鍵。Esc 取消。",
+    "press": "請按鍵…",
+    "resetAll": "全部重設",
+    "reset": "重設",
+    "changed": "已修改",
+    "groups": {
+      "playback": "播放",
+      "volume": "音量",
+      "navigation": "導覽",
+      "tracks": "字幕與音訊",
+      "window": "視窗",
+      "capture": "擷取",
+      "app": "應用程式"
+    }
+  },
+  "mouse": {
+    "section": "滑鼠",
+    "hint": "滾輪、點擊和右鍵拖曳手勢。右鍵拖曳要超過一定距離才算手勢——普通右鍵點擊仍會開啟選單。",
+    "none": "無",
+    "triggers": {
+      "wheel_up": "滾輪上",
+      "wheel_down": "滾輪下",
+      "click": "單擊",
+      "double_click": "雙擊",
+      "middle_click": "中鍵",
+      "gesture_left": "向左拖",
+      "gesture_right": "向右拖",
+      "gesture_up": "向上拖",
+      "gesture_down": "向下拖"
+    }
+  },
+  "recent": {
+    "title": "最近播放",
+    "clear": "清除"
+  },
+  "bookmarks": {
+    "title": "書籤",
+    "add": "在此處加入書籤",
+    "none": "這個檔案還沒有書籤。",
+    "rename": "重新命名",
+    "remove": "刪除",
+    "namePlaceholder": "為這個位置命名"
+  },
+  "music": {
+    "section": "音樂模式",
+    "noTrack": "未在播放",
+    "unknownArtist": "未知演出者",
+    "toggle": "音樂模式",
+    "auto": "音訊檔案自動切換到音樂模式",
+    "autoHint": "沒有畫面的檔案會用精簡版面開啟，而不是一塊黑色矩形。"
   }
 }

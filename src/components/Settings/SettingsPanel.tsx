@@ -1,9 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettingsStore } from "../../stores/settingsStore";
+import {
+  useSettingsStore,
+  DEFAULT_SUBTITLE_STYLE,
+  type SubtitleStyle,
+} from "../../stores/settingsStore";
 import { LOCALES, LOCALE_NAMES } from "../../i18n/config";
 import { useStrings } from "../../i18n/utils";
+import KeybindSettings from "./KeybindSettings";
+import MouseSettings from "./MouseSettings";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -12,20 +18,77 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
-    alwaysOnTop, preferredQuality, cookiesBrowser,
+    alwaysOnTop, musicModeAuto, preferredQuality, cookiesBrowser,
     sponsorblockEnabled, sponsorblockCategories, autoDownloadSubtitles, subtitleLanguages,
     setWhisperMode, setWhisperModelPath, setWhisperBinaryPath,
-    setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop,
+    setTheme, setProxy, setLocale, setScreenshotDir, setAlwaysOnTop, setMusicModeAuto,
     setPreferredQuality, setCookiesBrowser,
     setSponsorblockEnabled, setSponsorblockCategories,
     setAutoDownloadSubtitles, setSubtitleLanguages,
+    subtitleStyle, setSubtitleStyle,
     saveSettings,
   } = useSettingsStore();
   const t = useStrings();
 
+  /**
+   * Apply one subtitle style property everywhere at once: to mpv (so the
+   * change is visible while the panel is still open), to the store, and to
+   * disk. Applying live is the whole point — you can't judge subtitle size
+   * from a number.
+   */
+  const applySubtitleStyle = (name: keyof SubtitleStyle, value: number | string | boolean) => {
+    setSubtitleStyle({ [name]: value } as Partial<SubtitleStyle>);
+    invoke("subtitle_style_set", { name, value }).catch((e) =>
+      console.error("subtitle_style_set failed:", e),
+    );
+    void saveSettings();
+  };
+
+  const resetSubtitleStyle = () => {
+    setSubtitleStyle(DEFAULT_SUBTITLE_STYLE);
+    for (const [name, value] of Object.entries(DEFAULT_SUBTITLE_STYLE)) {
+      invoke("subtitle_style_set", { name, value }).catch(() => {});
+    }
+    void saveSettings();
+  };
+
   const [draftMode, setDraftMode] = useState(whisperMode);
   const [draftModelPath, setDraftModelPath] = useState(whisperModelPath ?? "");
   const [draftBinaryPath, setDraftBinaryPath] = useState(whisperBinaryPath ?? "");
+  // Read straight from settings.json rather than through settingsStore: the
+  // store owns a fixed set of fields and rewrites them as one blob, while
+  // these keys are shared with the CLI and the subtitle dialog.
+  const [osKey, setOsKey] = useState("");
+  const [osLanguages, setOsLanguages] = useState("");
+  const [osConfigured, setOsConfigured] = useState(false);
+
+  useEffect(() => {
+    invoke<{ configured: boolean; languages: string[] }>("opensubtitles_configured")
+      .then((c) => {
+        setOsConfigured(c.configured);
+        setOsLanguages(c.languages.join(","));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const saveOsSetting = async (key: string, value: string) => {
+    try {
+      await invoke("settings_set_key", { key, value });
+      if (key === "opensubtitles_api_key") {
+        setOsConfigured(value.length > 0);
+        // Don't keep the key in component state once it's stored; the
+        // placeholder says it's saved.
+        setOsKey("");
+      }
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: { kind: "error", message: `Could not save: ${String(e).slice(0, 100)}` },
+        }),
+      );
+    }
+  };
+
   const [draftProxy, setDraftProxy] = useState(proxy ?? "");
   const [draftSubLangs, setDraftSubLangs] = useState(subtitleLanguages.join(","));
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -252,6 +315,74 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               </p>
             </div>
 
+            <KeybindSettings />
+
+            <MouseSettings />
+
+            {/* Subtitle style. Changes apply to mpv immediately so the
+                sliders can be judged against the video behind the panel. */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                  {t.subtitle.style}
+                </p>
+                <button
+                  className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
+                  onClick={resetSubtitleStyle}
+                >
+                  {t.subtitle.reset}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {([
+                  { key: "scale", label: t.subtitle.styleSize, min: 0.5, max: 2.5, step: 0.05, format: (v: number) => `${v.toFixed(2)}×` },
+                  { key: "pos", label: t.subtitle.stylePosition, min: 0, max: 150, step: 5, format: (v: number) => String(v) },
+                  { key: "border_size", label: t.subtitle.styleOutline, min: 0, max: 10, step: 0.5, format: (v: number) => v.toFixed(1) },
+                ] as const).map(({ key, label, min, max, step, format }) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <span className="w-20 flex-shrink-0 text-[11px] text-white/55">{label}</span>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={subtitleStyle[key]}
+                      onChange={(e) => applySubtitleStyle(key, Number(e.target.value))}
+                      className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/10 accent-brand-purple"
+                    />
+                    <span className="w-12 flex-shrink-0 text-right text-[11px] tabular-nums text-white/40">
+                      {format(subtitleStyle[key])}
+                    </span>
+                  </div>
+                ))}
+
+                <div className="flex items-center gap-3">
+                  <span className="w-20 flex-shrink-0 text-[11px] text-white/55">
+                    {t.subtitle.styleColor}
+                  </span>
+                  <input
+                    type="color"
+                    // mpv wants #RRGGBBAA; the native picker only gives
+                    // #RRGGBB, so opacity is pinned opaque here.
+                    value={subtitleStyle.color.slice(0, 7)}
+                    onChange={(e) => applySubtitleStyle("color", `${e.target.value.toUpperCase()}FF`)}
+                    className="h-6 w-10 cursor-pointer rounded border border-white/10 bg-transparent"
+                  />
+                  <button
+                    className={`ml-auto rounded-lg border px-3 py-1 text-[11px] font-medium transition-all ${
+                      subtitleStyle.bold
+                        ? "border-brand-purple/40 bg-brand-purple/15 text-white"
+                        : "border-white/10 bg-white/4 text-white/50 hover:border-white/20 hover:text-white/80"
+                    }`}
+                    onClick={() => applySubtitleStyle("bold", !subtitleStyle.bold)}
+                  >
+                    {t.subtitle.styleBold}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* AI Subtitles */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
@@ -347,6 +478,74 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   AI subtitle generation is disabled. Select Local Whisper or OpenAI API to enable.
                 </p>
               )}
+            </div>
+
+            {/* Online subtitles. Kept out of the settings draft/save cycle:
+                these two keys are written straight through with
+                settings_set_key, so they can also be set from the subtitle
+                dialog and from the CLI without three writers racing over one
+                blob. */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                Online Subtitles
+              </p>
+              <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
+                <div>
+                  <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                    OpenSubtitles API Key
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={osKey}
+                      onChange={(e) => setOsKey(e.target.value)}
+                      placeholder={osConfigured ? "•••••••• (saved)" : "Paste your API key"}
+                      className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
+                    />
+                    <button
+                      type="button"
+                      disabled={!osKey.trim()}
+                      onClick={() => saveOsSetting("opensubtitles_api_key", osKey.trim())}
+                      className="rounded-lg bg-white/8 px-3 py-2 text-[11px] text-white/70 transition-colors hover:bg-white/14 disabled:opacity-30"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
+                    Your own free key from{" "}
+                    <a
+                      href="https://www.opensubtitles.com/consumers"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-brand-purple underline decoration-brand-purple/40 underline-offset-2"
+                    >
+                      opensubtitles.com
+                    </a>
+                    . Downloads count against your personal daily allowance, so unflick
+                    doesn&apos;t ship a shared one.
+                  </p>
+                </div>
+
+                <div className="border-t border-white/6 pt-3">
+                  <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
+                    Preferred Languages
+                  </label>
+                  <input
+                    type="text"
+                    value={osLanguages}
+                    onChange={(e) => setOsLanguages(e.target.value)}
+                    onBlur={() =>
+                      saveOsSetting("opensubtitles_languages", osLanguages.trim())
+                    }
+                    placeholder="en"
+                    className="w-full rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
+                  />
+                  <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
+                    Comma-separated codes, searched in order — e.g.{" "}
+                    <span className="font-mono text-white/45">zh-CN,en</span>.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Network */}
@@ -704,6 +903,41 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <span
                     className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
                       alwaysOnTop ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+            </div>
+
+            {/* Music mode for audio files */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.music.section}
+              </p>
+              <button
+                onClick={() => setMusicModeAuto(!musicModeAuto)}
+                className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] transition-all ${
+                  musicModeAuto
+                    ? "border-brand-purple/30 bg-brand-purple/10"
+                    : "border-white/6 bg-white/4 hover:border-white/10"
+                }`}
+              >
+                <div className="flex flex-col items-start gap-0.5 text-left">
+                  <span className={musicModeAuto ? "text-brand-purple" : "text-white/55"}>
+                    {t.music.auto}
+                  </span>
+                  <span className="text-[10px] leading-snug text-white/30">
+                    {t.music.autoHint}
+                  </span>
+                </div>
+                <span
+                  className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                    musicModeAuto ? "bg-brand-purple/70" : "bg-white/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                      musicModeAuto ? "left-[18px]" : "left-0.5"
                     }`}
                   />
                 </span>

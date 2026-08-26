@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tauri::{command, State, AppHandle, Emitter, Manager};
 use serde_json::{json, Value};
 
@@ -642,7 +644,10 @@ pub fn arm_post_play_hooks(
 }
 
 
-#[command]
+/// Runs off the main thread: `play` now waits for mpv's verdict, and an
+/// unreachable share takes that wait to its full deadline. A sync command
+/// would freeze the window for the duration.
+#[command(async)]
 pub fn player_play(
     file: String,
     seek: Option<f64>,
@@ -703,12 +708,40 @@ pub fn player_set_speed(rate: f64, gui_player: State<'_, GuiPlayer>) -> Result<V
 pub fn player_status(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
     let status = player.status();
-    serde_json::to_value(&status).map_err(|e| e.to_string())
+    let mut value = serde_json::to_value(&status).map_err(|e| e.to_string())?;
+
+    // Fold the A-B loop and timing offsets into the same poll the frontend
+    // already runs. These are no longer GUI-owned state: since v0.10 the
+    // CLI and MCP drive this very player, so `unflick loop a` or an agent
+    // calling `subtitle_delay` has to show up on screen. Reading them here
+    // costs three extra property lookups on a poll that was happening
+    // anyway, and avoids a second round-trip.
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("ab_loop".into(), json!(player.ab_loop_status()));
+        obj.insert("sub_delay".into(), json!(player.sub_delay()));
+        obj.insert("audio_delay".into(), json!(player.audio_delay()));
+        // Current chapter index, so the chapter list can highlight the
+        // right row as playback crosses a boundary on its own.
+        let chapters = player.chapter_list();
+        obj.insert(
+            "chapter".into(),
+            json!(chapters.iter().position(|c| c.current).map(|i| i as i64)),
+        );
+        // Count too, so the frontend can notice chapters appearing without
+        // re-fetching the whole list every 250 ms. An agent calling
+        // generate_chapters mid-playback should put ticks on the progress
+        // bar while the user is watching, not on the next file.
+        obj.insert("chapter_count".into(), json!(chapters.len()));
+    }
+    Ok(value)
 }
 
 #[command]
 pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    // `mut` is only exercised by the Linux branch below; without this the
+    // other two platforms warn on every build.
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut path = output.unwrap_or_else(|| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -736,69 +769,69 @@ pub fn player_screenshot(output: Option<String>, gui_player: State<'_, GuiPlayer
     Ok(json!({"path": path}))
 }
 
+/// Toggle picture-in-picture. Thin wrapper: `gui::window` owns the modes and
+/// the geometry to come back to, so this and `unflick window mode pip` land
+/// in exactly the same place.
 #[command]
-pub fn toggle_pip(app: AppHandle, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::OnceLock;
-    // Track PiP state independently of always-on-top. The previous
-    // implementation inferred "in PiP" from is_always_on_top(), which
-    // breaks the moment the user enables the global Always-on-Top
-    // setting — toggle_pip then routes into the *exit* branch even
-    // when not in PiP, so the button visibly does nothing the second
-    // time it's pressed and PiP can only be undone via the right-click
-    // menu's separate handler.
-    static IN_PIP: OnceLock<AtomicBool> = OnceLock::new();
-    static PRE_AOT: OnceLock<AtomicBool> = OnceLock::new();
-    let in_pip = IN_PIP.get_or_init(|| AtomicBool::new(false));
-    let pre_aot = PRE_AOT.get_or_init(|| AtomicBool::new(false));
+pub fn toggle_pip(
+    host: State<'_, Arc<crate::gui::window::TauriWindowHost>>,
+) -> Result<Value, String> {
+    let mode = host.toggle(crate::core::window::WindowMode::Pip)?;
+    Ok(json!({"pip": mode == crate::core::window::WindowMode::Pip, "mode": mode.as_str()}))
+}
 
-    let window = app.get_webview_window("main").ok_or("no main window")?;
+/// Read or set the window mode from the UI. Same surface as the CLI's
+/// `window mode`, against the same state.
+#[command]
+pub fn window_mode(
+    mode: Option<String>,
+    host: State<'_, Arc<crate::gui::window::TauriWindowHost>>,
+) -> Result<Value, String> {
+    use crate::core::window::{WindowHost, WindowMode};
+    let target = match mode {
+        None => host.mode(),
+        Some(m) => {
+            let parsed: WindowMode = m.parse()?;
+            host.set_mode(parsed)?;
+            parsed
+        }
+    };
+    Ok(json!({"mode": target.as_str()}))
+}
 
-    if in_pip.load(Ordering::Relaxed) {
-        // Exit PiP: restore the AOT state we captured on entry + normal size
-        let restore_aot = pre_aot.load(Ordering::Relaxed);
-        window
-            .set_always_on_top(restore_aot)
-            .map_err(|e| e.to_string())?;
-        if let Some(rl) = gui_player.render_loop.get() {
-            rl.set_always_on_top(restore_aot);
+/// Flip between music mode and normal — what the button and the hotkey want.
+#[command]
+pub fn toggle_music_mode(
+    host: State<'_, Arc<crate::gui::window::TauriWindowHost>>,
+) -> Result<Value, String> {
+    let mode = host.toggle(crate::core::window::WindowMode::Music)?;
+    Ok(json!({"mode": mode.as_str()}))
+}
+
+/// Tags and cover art for whatever is loaded — what music mode renders.
+///
+/// The cover comes back as a data URL on top of its path: the webview cannot
+/// read an arbitrary file off disk, and the timeline previews already take
+/// this route. It is one small JPEG per file, fetched once when the file
+/// changes.
+#[command]
+pub fn now_playing(
+    cover: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let np = crate::core::nowplaying::now_playing(&player, cover.unwrap_or(true));
+    let mut value = serde_json::to_value(&np).map_err(|e| e.to_string())?;
+
+    if let Some(path) = np.cover.as_deref() {
+        if let Ok(bytes) = std::fs::read(path) {
+            value["cover_data_url"] = json!(format!(
+                "data:image/jpeg;base64,{}",
+                crate::core::vision::base64_encode(&bytes)
+            ));
         }
-        let _ = window.set_size(tauri::LogicalSize::new(1024.0, 640.0));
-        let _ = window.center();
-        in_pip.store(false, Ordering::Relaxed);
-        Ok(json!({"pip": false}))
-    } else {
-        // Enter PiP: capture current AOT so we can restore on exit,
-        // then force AOT on + shrink + park bottom-right.
-        let cur_aot = window.is_always_on_top().unwrap_or(false);
-        pre_aot.store(cur_aot, Ordering::Relaxed);
-        window.set_always_on_top(true).map_err(|e| e.to_string())?;
-        if let Some(rl) = gui_player.render_loop.get() {
-            rl.set_always_on_top(true);
-        }
-        let _ = window.set_size(tauri::LogicalSize::new(400.0, 250.0));
-        // Position bottom-right of the current monitor instead of a fixed
-        // (1400, 700) hard-coded for a 1080p Windows display. The original
-        // value would land off-screen on a small mac display.
-        if let Some(monitor) = window.current_monitor().ok().flatten() {
-            let scale = monitor.scale_factor();
-            let mon_size = monitor.size();
-            let mon_pos = monitor.position();
-            // Convert physical → logical for set_position.
-            let mon_w_logical = mon_size.width as f64 / scale;
-            let mon_h_logical = mon_size.height as f64 / scale;
-            let mon_x_logical = mon_pos.x as f64 / scale;
-            let mon_y_logical = mon_pos.y as f64 / scale;
-            // 16 px gap from screen edges.
-            let x = mon_x_logical + mon_w_logical - 400.0 - 16.0;
-            let y = mon_y_logical + mon_h_logical - 250.0 - 60.0; // extra room for taskbar/dock
-            let _ = window.set_position(tauri::LogicalPosition::new(x, y));
-        } else {
-            let _ = window.center();
-        }
-        in_pip.store(true, Ordering::Relaxed);
-        Ok(json!({"pip": true}))
     }
+    Ok(value)
 }
 
 #[command]
@@ -956,9 +989,19 @@ pub fn library_scan(dir: String, gui_player: State<'_, GuiPlayer>) -> Result<Val
 
 #[command]
 pub fn save_position(path: String, position: f64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    // Duration comes from the live player rather than the caller: the
+    // "is this file finished?" rule lives in `db::remember_position` so
+    // GUI, CLI and MCP can't drift apart on it. Callers just report where
+    // playback got to. A duration of 0 (unknown / already unloaded) makes
+    // the rule skip its end-of-file check, which is the safe direction.
+    let duration = gui_player
+        .mpv()
+        .map(|p| p.status().duration)
+        .unwrap_or(0.0);
     let db_lock = gui_player.db.lock().unwrap();
     if let Some(db) = db_lock.as_ref() {
-        db.save_position(&path, position).map_err(|e| e.to_string())?;
+        db.remember_position(&path, position, duration)
+            .map_err(|e| e.to_string())?;
     }
     Ok(json!({"saved": true}))
 }
@@ -1000,6 +1043,156 @@ pub fn subtitle_load(path: String, gui_player: State<'_, GuiPlayer>) -> Result<V
     Ok(json!({"message": format!("subtitle loaded: {}", path)}))
 }
 
+// --- online subtitles (OpenSubtitles) --------------------------------------
+//
+// Network work goes on a blocking thread: these are sync HTTP calls that can
+// take seconds, and running them on the command thread would freeze the
+// window for the duration. The player is only touched before (to learn what
+// is playing) and after (to load the result), never across the await.
+
+#[command]
+pub fn opensubtitles_configured() -> Result<Value, String> {
+    Ok(json!({
+        "configured": crate::core::opensubtitles::is_configured(),
+        "languages": crate::core::opensubtitles::default_languages(),
+    }))
+}
+
+#[command]
+pub async fn subtitle_search_online(
+    query: Option<String>,
+    file: Option<String>,
+    languages: Option<String>,
+    hash: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let target = file.or_else(|| {
+        gui_player
+            .mpv()
+            .ok()
+            .and_then(|p| p.status().file)
+    });
+    let req = crate::core::opensubtitles::SearchRequest {
+        query,
+        file: target,
+        languages,
+        hash: hash.unwrap_or(true),
+    };
+
+    let outcome = tokio::task::spawn_blocking(move || crate::core::opensubtitles::run_search(&req))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&outcome).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn subtitle_download_online(
+    file_id: i64,
+    file: Option<String>,
+    language: Option<String>,
+    load: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let video = file.or_else(|| gui_player.mpv().ok().and_then(|p| p.status().file));
+    let language = language.unwrap_or_default();
+    let fallback = subtitle_cache_dir();
+
+    let video_for_task = video.clone();
+    let dl = tokio::task::spawn_blocking(move || {
+        crate::core::opensubtitles::run_download(
+            file_id,
+            video_for_task.as_deref(),
+            &language,
+            None,
+            &fallback,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    let mut out = serde_json::to_value(&dl).map_err(|e| e.to_string())?;
+    out["loaded"] = json!(load_subtitle_after_download(
+        &gui_player,
+        &dl.path,
+        load.unwrap_or(true),
+        &mut out
+    ));
+    Ok(out)
+}
+
+#[command]
+pub async fn subtitle_auto_online(
+    query: Option<String>,
+    file: Option<String>,
+    languages: Option<String>,
+    load: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let target = file.or_else(|| gui_player.mpv().ok().and_then(|p| p.status().file));
+    let req = crate::core::opensubtitles::SearchRequest {
+        query,
+        file: target,
+        languages,
+        hash: true,
+    };
+    let fallback = subtitle_cache_dir();
+
+    let (dl, best, outcome) =
+        tokio::task::spawn_blocking(move || crate::core::opensubtitles::run_auto(&req, &fallback))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+    let mut out = serde_json::to_value(&dl).map_err(|e| e.to_string())?;
+    out["moviehash_match"] = json!(best.moviehash_match);
+    out["language"] = json!(best.language);
+    out["release"] = json!(best.release);
+    out["candidates"] = json!(outcome.results.len());
+    out["query"] = json!(outcome.query);
+    out["loaded"] = json!(load_subtitle_after_download(
+        &gui_player,
+        &dl.path,
+        load.unwrap_or(true),
+        &mut out
+    ));
+    Ok(out)
+}
+
+/// Where downloads go when the video's own directory can't take them.
+fn subtitle_cache_dir() -> std::path::PathBuf {
+    dirs_next::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("unflick")
+}
+
+/// Load a freshly downloaded subtitle, recording rather than raising a
+/// failure: the file is on disk and the download quota is already spent, so
+/// reporting the whole operation as failed would misdescribe it.
+fn load_subtitle_after_download(
+    gui_player: &State<'_, GuiPlayer>,
+    path: &str,
+    load: bool,
+    out: &mut Value,
+) -> bool {
+    if !load {
+        return false;
+    }
+    let loaded = gui_player
+        .mpv()
+        .map_err(|e| e.to_string())
+        .and_then(|p| p.subtitle_load(path).map_err(|e| e.to_string()));
+    match loaded {
+        Ok(()) => true,
+        Err(e) => {
+            out["load_error"] = json!(e);
+            false
+        }
+    }
+}
+
 #[command]
 pub fn subtitle_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
@@ -1028,14 +1221,14 @@ pub fn playlist_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
     serde_json::to_value(&entries).map_err(|e| e.to_string())
 }
 
-#[command]
+#[command(async)]
 pub fn playlist_next(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     match gui_player.playlist.next() {
         Some(path) => {
             // Active player drives the new track. Pre-pipeline-init we
             // silently skip — the playlist still advances.
             if let Ok(player) = gui_player.mpv() {
-                let _ = player.play(&path, None, None, None);
+                player.play(&path, None, None, None).map_err(|e| e.to_string())?;
             }
             Ok(json!({"path": path}))
         }
@@ -1043,12 +1236,12 @@ pub fn playlist_next(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
     }
 }
 
-#[command]
+#[command(async)]
 pub fn playlist_prev(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     match gui_player.playlist.prev() {
         Some(path) => {
             if let Ok(player) = gui_player.mpv() {
-                let _ = player.play(&path, None, None, None);
+                player.play(&path, None, None, None).map_err(|e| e.to_string())?;
             }
             Ok(json!({"path": path}))
         }
@@ -1062,11 +1255,11 @@ pub fn playlist_remove(index: usize, gui_player: State<'_, GuiPlayer>) -> Result
     Ok(json!({"message": format!("removed index {}", index)}))
 }
 
-#[command]
+#[command(async)]
 pub fn playlist_play_index(index: usize, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let path = gui_player.playlist.set_current(index).map_err(|e| e)?;
     if let Ok(player) = gui_player.mpv() {
-        let _ = player.play(&path, None, None, None);
+        player.play(&path, None, None, None).map_err(|e| e.to_string())?;
     }
     Ok(json!({"path": path}))
 }
@@ -1327,35 +1520,161 @@ pub async fn translate_subtitles(
     Ok(json!({"translated_srt": result}))
 }
 
-// ─── Settings persistence ─────────────────────────────────────────────────────
+// --- Audio processing (v0.12) ----------------------------------------------
+//
+// Straight to the player: unlike the online-subtitle commands there is no
+// network here, so nothing needs a blocking thread. Persistence goes through
+// `core::audio::save` so the GUI, CLI and MCP all restore the same curve.
+
+/// Shape the audio state for the frontend, saving it first.
+fn audio_payload(player: &crate::core::player::Player, save: bool) -> Value {
+    let settings = player.audio_settings();
+    if save {
+        if let Err(e) = crate::core::audio::save(&settings) {
+            eprintln!("[unflick] could not persist audio settings: {}", e);
+        }
+    }
+    json!({
+        "enabled": settings.equalizer,
+        "bands": settings.bands,
+        "frequencies": crate::core::audio::BANDS,
+        "preamp": settings.preamp,
+        "normalize": settings.normalize,
+        "flat": settings.is_flat(),
+        "max_gain": crate::core::audio::MAX_GAIN_DB,
+        "pitch_correction": player.pitch_correction(),
+    })
+}
 
 #[command]
-pub fn save_settings(settings: String) -> Result<Value, String> {
-    let settings_path = dirs_next::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("unflick")
-        .join("settings.json");
-    if let Some(parent) = settings_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+pub fn equalizer_get(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    Ok(audio_payload(&player, false))
+}
+
+#[command]
+pub fn equalizer_set(
+    band: Option<i64>,
+    gain: Option<f64>,
+    bands: Option<Vec<f64>>,
+    enabled: Option<bool>,
+    normalize: Option<bool>,
+    preamp: Option<f64>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let mut next = player.audio_settings();
+    let mut shape_changed = false;
+
+    if let Some(on) = enabled {
+        next.equalizer = on;
+        shape_changed = true;
     }
-    std::fs::write(&settings_path, &settings).map_err(|e| e.to_string())?;
+    if let Some(on) = normalize {
+        next.normalize = on;
+        shape_changed = true;
+    }
+    if let Some(p) = preamp {
+        next.preamp = p;
+        shape_changed = true;
+    }
+    if let Some(list) = bands {
+        next.bands = list;
+        shape_changed = true;
+    }
+
+    // Shape first: a band set on a chain that is about to be rebuilt would be
+    // overwritten by the rebuild.
+    if shape_changed {
+        player.set_audio_settings(next).map_err(|e| e.to_string())?;
+    }
+    if let Some(index) = band {
+        let index = crate::core::audio::parse_band(index).map_err(|e| e.to_string())?;
+        let gain = gain.ok_or_else(|| "gain required when setting a band".to_string())?;
+        player.set_band(index, gain).map_err(|e| e.to_string())?;
+    }
+
+    Ok(audio_payload(&player, true))
+}
+
+#[command]
+pub fn equalizer_preset(name: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.set_audio_preset(&name).map_err(|e| e.to_string())?;
+    Ok(audio_payload(&player, true))
+}
+
+#[command]
+pub fn equalizer_presets() -> Result<Value, String> {
+    Ok(json!(crate::core::audio::PRESETS
+        .iter()
+        .map(|p| json!({
+            "name": p.name,
+            "description": p.description,
+            "bands": p.bands,
+        }))
+        .collect::<Vec<_>>()))
+}
+
+#[command]
+pub fn equalizer_reset(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.reset_audio().map_err(|e| e.to_string())?;
+    Ok(audio_payload(&player, true))
+}
+
+#[command]
+pub fn pitch_correction(
+    enabled: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    if let Some(on) = enabled {
+        player.set_pitch_correction(on).map_err(|e| e.to_string())?;
+    }
+    Ok(json!({ "enabled": player.pitch_correction() }))
+}
+
+// ─── Settings persistence ─────────────────────────────────────────────────────
+
+/// Persist the frontend's settings blob, **merging** it into whatever is
+/// already on disk.
+///
+/// Merging rather than overwriting is load-bearing. settings.json is shared
+/// with the CLI and MCP server, which write keys the GUI has never heard of:
+/// keybindings, mouse bindings, the OpenSubtitles key. The frontend builds
+/// its payload from the fields it models, so a wholesale write silently
+/// deleted every one of those the first time a user touched any setting in
+/// the window. See `core::settings::merge`.
+#[command]
+pub fn save_settings(settings: String) -> Result<Value, String> {
+    let incoming: Value = serde_json::from_str(&settings)
+        .map_err(|e| format!("settings payload is not valid JSON: {}", e))?;
+    crate::core::settings::merge(&incoming).map_err(|e| e.to_string())?;
+    Ok(json!({"saved": true}))
+}
+
+/// Write a single settings key without touching anything else.
+///
+/// The blob write above is for the settings panel, which owns a known set of
+/// fields. This is for one-off keys collected elsewhere in the UI - the
+/// OpenSubtitles key entered in the subtitle dialog - where round-tripping
+/// the whole settings object would be both pointless and a chance to lose
+/// something.
+#[command]
+pub fn settings_set_key(key: String, value: Value) -> Result<Value, String> {
+    if key.trim().is_empty() {
+        return Err("settings key must not be empty".into());
+    }
+    crate::core::settings::set(key.trim(), value).map_err(|e| e.to_string())?;
     Ok(json!({"saved": true}))
 }
 
 #[command]
 pub fn load_settings() -> Result<Value, String> {
-    let settings_path = dirs_next::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("unflick")
-        .join("settings.json");
-    match std::fs::read_to_string(&settings_path) {
-        Ok(content) => {
-            let value: serde_json::Value =
-                serde_json::from_str(&content).map_err(|e| e.to_string())?;
-            Ok(value)
-        }
-        Err(_) => Ok(json!({})),
-    }
+    // Via `core::settings` so the GUI, CLI and MCP all resolve the same file,
+    // including the UNFLICK_CONFIG_DIR override the tests rely on.
+    crate::core::settings::read_all().map_err(|e| e.to_string())
 }
 
 // ─── Audio track commands ─────────────────────────────────────────────────────
@@ -1417,6 +1736,378 @@ pub fn reset_video_filters(gui_player: State<'_, GuiPlayer>) -> Result<Value, St
         let _ = player.set_property_i64(prop, 0);
     }
     Ok(json!({"message": "filters reset"}))
+}
+
+// ─── Timing, chapters, A-B loop, frame stepping ────────────────────────────────
+//
+// Thin wrappers over `core::player`. The same logic is reachable from the CLI
+// and MCP through `core::daemon`; these exist so the React layer doesn't have
+// to round-trip through the control socket to talk to its own player.
+
+/// Get or set the subtitle delay. `seconds` omitted reads the current value;
+/// `relative` nudges it instead of replacing it.
+#[command]
+pub fn subtitle_delay(
+    seconds: Option<f64>,
+    relative: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let current = player.sub_delay();
+    let Some(value) = seconds else {
+        return Ok(json!({"seconds": current}));
+    };
+    let target = if relative.unwrap_or(false) { current + value } else { value };
+    player.set_sub_delay(target).map_err(|e| e.to_string())?;
+    Ok(json!({"seconds": target}))
+}
+
+/// Get or set the audio delay (lip-sync correction).
+#[command]
+pub fn audio_delay(
+    seconds: Option<f64>,
+    relative: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let current = player.audio_delay();
+    let Some(value) = seconds else {
+        return Ok(json!({"seconds": current}));
+    };
+    let target = if relative.unwrap_or(false) { current + value } else { value };
+    player.set_audio_delay(target).map_err(|e| e.to_string())?;
+    Ok(json!({"seconds": target}))
+}
+
+#[command]
+pub fn subtitle_style_get(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    Ok(player.subtitle_style())
+}
+
+#[command]
+pub fn subtitle_style_set(
+    name: String,
+    value: Value,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.set_subtitle_style(&name, &value).map_err(|e| e.to_string())?;
+    Ok(player.subtitle_style())
+}
+
+#[command]
+pub fn chapter_list(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    Ok(json!(player.chapter_list()))
+}
+
+#[command]
+pub fn chapter_seek(index: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.chapter_seek(index).map_err(|e| e.to_string())?;
+    Ok(json!({"index": index}))
+}
+
+/// Step one chapter in either direction. `delta` is +1 / -1.
+#[command]
+pub fn chapter_step(delta: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let index = player.chapter_step(delta).map_err(|e| e.to_string())?;
+    Ok(json!({"index": index}))
+}
+
+/// A-B loop control. `action` is one of a | b | clear | status; `position`
+/// defaults to wherever playback currently is.
+#[command]
+pub fn ab_loop(
+    action: String,
+    position: Option<f64>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let state = match action.as_str() {
+        "status" => player.ab_loop_status(),
+        "a" => player.ab_loop_set_a(position).map_err(|e| e.to_string())?,
+        "b" => player.ab_loop_set_b(position).map_err(|e| e.to_string())?,
+        "clear" => {
+            player.ab_loop_clear().map_err(|e| e.to_string())?;
+            player.ab_loop_status()
+        }
+        other => return Err(format!("unknown ab_loop action: {}", other)),
+    };
+    Ok(json!(state))
+}
+
+/// Step one frame. `delta` is +1 forward or -1 back. Pauses playback.
+#[command]
+pub fn frame_step(delta: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    if delta >= 0 {
+        player.frame_step().map_err(|e| e.to_string())?;
+    } else {
+        player.frame_back_step().map_err(|e| e.to_string())?;
+    }
+    Ok(json!({"position": player.status().position}))
+}
+
+#[command]
+pub fn playlist_repeat(
+    mode: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    if let Some(m) = mode {
+        let parsed = crate::core::types::RepeatMode::parse(&m)
+            .ok_or_else(|| format!("unknown repeat mode: {} (expected off | one | all)", m))?;
+        gui_player.playlist.set_repeat_mode(parsed);
+    }
+    Ok(json!({"mode": gui_player.playlist.repeat_mode().as_str()}))
+}
+
+#[command]
+pub fn playlist_shuffle(
+    enabled: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    if let Some(e) = enabled {
+        gui_player.playlist.set_shuffle(e);
+    }
+    Ok(json!({"enabled": gui_player.playlist.shuffle_enabled()}))
+}
+
+// ─── Keyboard bindings ─────────────────────────────────────────────────────
+//
+// Thin wrappers over `core::keybind`, which owns the action catalogue and
+// the settings-file storage. The frontend builds its key → action map from
+// `keybind_list` rather than keeping its own copy of the defaults.
+
+#[command]
+pub fn keybind_list() -> Result<Value, String> {
+    crate::core::keybind::list().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn keybind_set(action: String, key: String) -> Result<Value, String> {
+    let normalized = crate::core::keybind::set(&action, &key).map_err(|e| e.to_string())?;
+    Ok(json!({ "action": action, "key": normalized }))
+}
+
+#[command]
+pub fn keybind_reset(action: Option<String>) -> Result<Value, String> {
+    let count = crate::core::keybind::reset(action.as_deref()).map_err(|e| e.to_string())?;
+    Ok(json!({ "reset": count }))
+}
+
+// ─── Picture geometry ──────────────────────────────────────────────────────
+
+#[command]
+pub fn video_transform_get(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    Ok(player.video_transform())
+}
+
+#[command]
+pub fn video_transform_set(
+    name: String,
+    value: Value,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.set_video_transform(&name, &value).map_err(|e| e.to_string())?;
+    Ok(player.video_transform())
+}
+
+#[command]
+pub fn video_transform_reset(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.reset_video_transform().map_err(|e| e.to_string())?;
+    Ok(player.video_transform())
+}
+
+/// Mirror the window's incognito switch into the shared flag, so a CLI or
+/// MCP `play` against this same player also leaves no history.
+#[command]
+pub fn set_incognito(enabled: bool, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    gui_player
+        .incognito
+        .store(enabled, std::sync::atomic::Ordering::Relaxed);
+    Ok(json!({ "enabled": enabled }))
+}
+
+/// Recently played files, newest first. Used by the drop zone, which is
+/// exactly where someone is looking when they want to reopen something.
+#[command]
+pub fn recent_list(limit: Option<usize>, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let entries = db
+        .recent(limit.unwrap_or(12).clamp(1, 200))
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(entries).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn recent_clear(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let n = db.clear_recent().map_err(|e| e.to_string())?;
+    Ok(json!({ "cleared": n }))
+}
+
+// ─── Bookmarks ────────────────────────────────────────────────────────────
+//
+// The GUI keeps the *jump* on its own side: seeking within the open file is
+// one call, but opening a different one has to go through the frontend's
+// play pipeline (yt-dlp extraction, sidecar subtitles, history). So these
+// commands cover storage only, and `playerStore.gotoBookmark` decides which
+// of the two it is. The CLI and MCP get a server-side `bookmark_goto`
+// instead, since they have no frontend to route through.
+
+#[command]
+pub fn bookmark_add(
+    name: Option<String>,
+    position: Option<f64>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let status = gui_player.mpv().map_err(|e| e.to_string())?.status();
+    let path = file
+        .or(status.file.clone())
+        .ok_or_else(|| "nothing is playing".to_string())?;
+    let position = match position {
+        Some(p) => p,
+        None if Some(&path) == status.file.as_ref() => status.position,
+        None => return Err("position is required for a file that isn't playing".to_string()),
+    };
+    let name = name.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let bookmark = db.add_bookmark(&path, position, name).map_err(|e| e.to_string())?;
+    serde_json::to_value(bookmark).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn bookmark_list(
+    file: Option<String>,
+    all: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let scope = if all.unwrap_or(false) {
+        None
+    } else {
+        Some(
+            file.or(gui_player
+                .mpv()
+                .map_err(|e| e.to_string())?
+                .status()
+                .file)
+                .ok_or_else(|| "nothing is playing".to_string())?,
+        )
+    };
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let list = db.list_bookmarks(scope.as_deref()).map_err(|e| e.to_string())?;
+    serde_json::to_value(list).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn bookmark_rename(
+    id: i64,
+    name: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let name = name.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let bookmark = db.rename_bookmark(id, name).map_err(|e| e.to_string())?;
+    serde_json::to_value(bookmark).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn bookmark_remove(id: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    if !db.remove_bookmark(id).map_err(|e| e.to_string())? {
+        return Err(format!("no bookmark with id {}", id));
+    }
+    Ok(json!({ "removed": id }))
+}
+
+#[command]
+pub fn bookmark_clear(
+    file: Option<String>,
+    all: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let scope = if all.unwrap_or(false) {
+        None
+    } else {
+        Some(
+            file.or(gui_player
+                .mpv()
+                .map_err(|e| e.to_string())?
+                .status()
+                .file)
+                .ok_or_else(|| "nothing is playing".to_string())?,
+        )
+    };
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let n = db.clear_bookmarks(scope.as_deref()).map_err(|e| e.to_string())?;
+    Ok(json!({ "cleared": n }))
+}
+
+#[command]
+pub fn mouse_list() -> Result<Value, String> {
+    crate::core::mousebind::list().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn mouse_set(trigger: String, action: String) -> Result<Value, String> {
+    let applied = crate::core::mousebind::set(&trigger, &action).map_err(|e| e.to_string())?;
+    Ok(json!({ "trigger": trigger, "action": applied }))
+}
+
+#[command]
+pub fn mouse_reset(trigger: Option<String>) -> Result<Value, String> {
+    let count = crate::core::mousebind::reset(trigger.as_deref()).map_err(|e| e.to_string())?;
+    Ok(json!({ "reset": count }))
+}
+
+/// Preview frame for a position on the timeline, as a `data:` URL the
+/// progress bar can drop straight into an `<img>`.
+///
+/// Called on hover, so it must stay cheap: `core::thumbnail` buckets the
+/// timeline and caches to disk, and the frontend debounces on top of that.
+/// Errors are normal here — streams have no previews, and a file may not
+/// have a decodable frame at the requested point — so callers should treat
+/// a failure as "no preview", not as something to report.
+#[command]
+pub fn thumbnail_at(
+    position: f64,
+    width: Option<u32>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let status = player.status();
+    let file = status.file.ok_or_else(|| "nothing is playing".to_string())?;
+
+    let thumb = crate::core::thumbnail::thumbnail_at(
+        &file,
+        position,
+        status.duration,
+        width.unwrap_or(160),
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(json!({
+        "position": thumb.bucket_seconds,
+        "dataUrl": format!(
+            "data:image/jpeg;base64,{}",
+            crate::core::vision::base64_encode(&thumb.bytes)
+        ),
+    }))
 }
 
 /// Check if whisper is bundled with this installation

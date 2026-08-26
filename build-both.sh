@@ -10,7 +10,21 @@
 # AI edition adds: whisper-cli + ggml-tiny model + whisper DLLs.
 set -e
 
-VERSION="0.9.2"
+# Read the version from package.json rather than repeating it here. It used
+# to be hardcoded, which meant a release bump had to be applied in four
+# places and a missed one made the `cp` below fail *after* a full release
+# build had already run.
+VERSION="$(node -p "require('./package.json').version")"
+echo "Building unflick ${VERSION}"
+
+# Guard against exactly the drift this is meant to prevent.
+CARGO_VERSION="$(grep -m1 '^version = ' src-tauri/Cargo.toml | cut -d'"' -f2)"
+CONF_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+if [ "$VERSION" != "$CARGO_VERSION" ] || [ "$VERSION" != "$CONF_VERSION" ]; then
+  echo "version mismatch: package.json=${VERSION} Cargo.toml=${CARGO_VERSION} tauri.conf.json=${CONF_VERSION}" >&2
+  exit 1
+fi
+
 NSIS_DIR="src-tauri/target/release/bundle/nsis"
 MSI_DIR="src-tauri/target/release/bundle/msi"
 

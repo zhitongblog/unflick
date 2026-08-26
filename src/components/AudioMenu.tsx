@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { usePlayerStore } from "../stores/playerStore";
+import { useStrings } from "../i18n/utils";
+import { formatDelay } from "../lib/format";
 
 interface AudioTrack {
   id: number;
@@ -10,10 +13,18 @@ interface AudioTrack {
   selected: boolean;
 }
 
-export default function AudioMenu({ onClose }: { onClose: () => void }) {
+export default function AudioMenu({
+  onClose,
+  onOpenEqualizer,
+}: {
+  onClose: () => void;
+  onOpenEqualizer: () => void;
+}) {
   const [tracks, setTracks] = useState<AudioTrack[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { audioDelay, setAudioDelay } = usePlayerStore();
+  const t = useStrings();
 
   useEffect(() => {
     invoke<AudioTrack[]>("audio_list")
@@ -83,6 +94,57 @@ export default function AudioMenu({ onClose }: { onClose: () => void }) {
           </button>
         );
       })}
+
+      {/* Lip-sync correction. Lives here rather than in settings because
+          it's per-file and you only reach for it while watching. */}
+      <div className="mx-2 my-1 border-t border-white/6" />
+      <div className="flex items-center gap-1 px-3 py-1.5">
+        <span className="flex-1 text-[11px] text-white/60">{t.audio.delay}</span>
+        <button
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] leading-none text-white/50 transition-colors hover:bg-white/10 hover:text-white/90"
+          title="Ctrl+-"
+          onClick={() => setAudioDelay(-0.1, true)}
+        >
+          −
+        </button>
+        <button
+          className="min-w-[52px] rounded px-1 text-[11px] tabular-nums text-white/80 transition-colors hover:bg-white/10"
+          title={t.audio.reset}
+          onClick={() => setAudioDelay(0, false)}
+        >
+          {formatDelay(audioDelay)}
+        </button>
+        <button
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] leading-none text-white/50 transition-colors hover:bg-white/10 hover:text-white/90"
+          title="Ctrl+="
+          onClick={() => setAudioDelay(0.1, true)}
+        >
+          +
+        </button>
+      </div>
+
+      <div className="mx-2 my-1 border-t border-white/6" />
+
+      <button
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/40 transition-colors hover:bg-white/6 hover:text-white/70"
+        onClick={() => {
+          onClose();
+          onOpenEqualizer();
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="4" y1="21" x2="4" y2="14" />
+          <line x1="4" y1="10" x2="4" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12" y2="3" />
+          <line x1="20" y1="21" x2="20" y2="16" />
+          <line x1="20" y1="12" x2="20" y2="3" />
+          <line x1="1" y1="14" x2="7" y2="14" />
+          <line x1="9" y1="8" x2="15" y2="8" />
+          <line x1="17" y1="16" x2="23" y2="16" />
+        </svg>
+        Equalizer...
+      </button>
     </motion.div>
   );
 }

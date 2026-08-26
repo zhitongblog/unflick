@@ -18,8 +18,15 @@ pub struct GuiPlayer {
     /// release the GL context cleanly. Lives the whole app lifetime.
     pub render_loop: OnceLock<RenderLoop>,
 
-    pub playlist: Playlist,
+    /// Shared with the embedded control server (see `core::daemon`) so a
+    /// `playlist_add` from the CLI or an AI agent lands in the same list the
+    /// window is showing. `Arc` derefs to `Playlist`, so existing
+    /// `gui_player.playlist.add(..)` call sites are unchanged.
+    pub playlist: Arc<Playlist>,
     pub db: Mutex<Option<Database>>,
+    /// Shared with the embedded control server so a CLI or MCP `play`
+    /// respects the window's incognito switch. See `ControlContext`.
+    pub incognito: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl GuiPlayer {
@@ -30,8 +37,9 @@ impl GuiPlayer {
         Self {
             render_player: OnceLock::new(),
             render_loop: OnceLock::new(),
-            playlist: Playlist::new(),
+            playlist: Arc::new(Playlist::new()),
             db: Mutex::new(db),
+            incognito: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 

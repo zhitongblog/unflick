@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../../stores/playerStore";
@@ -11,6 +11,12 @@ import VolumeControl from "./VolumeControl";
 import VideoFilters from "../VideoFilters";
 import SubtitleMenu from "../SubtitleMenu";
 import AudioMenu from "../AudioMenu";
+import Equalizer from "../Equalizer";
+import ChapterMenu from "../ChapterMenu";
+import BookmarkMenu from "../BookmarkMenu";
+import { useStrings } from "../../i18n/utils";
+import { formatTime } from "../../lib/format";
+import { findSubtitlesOnline } from "../../lib/subtitleSearch";
 
 // Same platform branch as App.tsx: Windows uses Win32 native menus
 // (show_native_context_menu), macOS / Linux use the React popover
@@ -111,6 +117,27 @@ function AudioIcon() {
   );
 }
 
+function ChapterIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+function BookmarkIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 function extractFileName(path: string): string {
   const parts = path.replace(/\\/g, "/").split("/");
   const name = parts[parts.length - 1] || path;
@@ -125,6 +152,16 @@ const barBtnClass = (active?: boolean) =>
       : "text-white/35 hover:text-white/70 hover:bg-white/6"
   } active:scale-90`;
 
+function MusicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  );
+}
+
 export default function PlayerBar() {
   const { file, state } = usePlayerStore();
   const toggleLibrary = useLibraryStore((s) => s.toggleLibrary);
@@ -133,6 +170,26 @@ export default function PlayerBar() {
   // false because the button onClicks short-circuit to native menus.
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
   const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showEqualizer, setShowEqualizer] = useState(false);
+  const [showChapterMenu, setShowChapterMenu] = useState(false);
+  const [showBookmarkMenu, setShowBookmarkMenu] = useState(false);
+  const chapters = usePlayerStore((s) => s.chapters);
+  const bookmarks = usePlayerStore((s) => s.bookmarks);
+
+  // Shift+B (or whatever it's rebound to) reaches the popover through an
+  // event: the keyboard map lives in App, the open/closed state lives here,
+  // and neither has a reason to know about the other.
+  useEffect(() => {
+    const toggle = () => {
+      setShowBookmarkMenu((v) => !v);
+      setShowChapterMenu(false);
+      setShowAudioMenu(false);
+      setShowSubtitleMenu(false);
+    };
+    window.addEventListener("unflick:toggle-bookmarks", toggle);
+    return () => window.removeEventListener("unflick:toggle-bookmarks", toggle);
+  }, []);
+  const t = useStrings();
 
   // Native menu helpers: build the items + actions for subtitle/audio buttons.
   // Done at click time so the lists reflect current state.
@@ -178,6 +235,9 @@ export default function PlayerBar() {
       }
     });
 
+    items.push({ label: "Find subtitles online…", separator: false, disabled: false });
+    actions.push(() => findSubtitlesOnline());
+
     if (ss.whisperMode === "local" && ps.file) {
       items.push({ label: "Generate AI Subtitles", separator: false, disabled: false });
       const args = {
@@ -203,6 +263,42 @@ export default function PlayerBar() {
           }));
         }
       });
+    }
+
+    await showNativeMenuAt(btn, items, actions);
+  };
+
+  const handleChapterButton = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!IS_WINDOWS) {
+      setShowChapterMenu((v) => !v);
+      setShowAudioMenu(false);
+      setShowSubtitleMenu(false);
+      return;
+    }
+    const btn = e.currentTarget;
+    // Read through getState() rather than the `chapters` closure: the list
+    // is refreshed asynchronously after a file loads, and the click may
+    // land on a render that predates the refresh.
+    const list = usePlayerStore.getState().chapters;
+
+    const items: NativeItem[] = [];
+    const actions: NativeAction[] = [];
+
+    if (list.length === 0) {
+      items.push({ label: t.chapters.none, separator: false, disabled: true });
+      actions.push(null);
+    } else {
+      for (const c of list) {
+        const label = c.title ?? `${t.chapters.title} ${c.index + 1}`;
+        items.push({
+          label: `${c.current ? "✓ " : ""}${label}\t${formatTime(c.time)}`,
+          separator: false,
+          disabled: false,
+        });
+        actions.push(() => {
+          void usePlayerStore.getState().seekChapter(c.index);
+        });
+      }
     }
 
     await showNativeMenuAt(btn, items, actions);
@@ -241,6 +337,11 @@ export default function PlayerBar() {
         });
       }
     }
+
+    items.push({ label: "", separator: true, disabled: false });
+    actions.push(null);
+    items.push({ label: "Equalizer…", separator: false, disabled: false });
+    actions.push(() => setShowEqualizer(true));
 
     await showNativeMenuAt(btn, items, actions);
   };
@@ -306,7 +407,13 @@ export default function PlayerBar() {
             </button>
             {!IS_WINDOWS && (
               <AnimatePresence>
-                {showAudioMenu && <AudioMenu onClose={() => setShowAudioMenu(false)} />}
+                {showAudioMenu && (
+                  <AudioMenu
+                    onClose={() => setShowAudioMenu(false)}
+                    onOpenEqualizer={() => setShowEqualizer(true)}
+                  />
+                )}
+                {showEqualizer && <Equalizer onClose={() => setShowEqualizer(false)} />}
               </AnimatePresence>
             )}
           </div>
@@ -326,6 +433,50 @@ export default function PlayerBar() {
                 {showSubtitleMenu && <SubtitleMenu onClose={() => setShowSubtitleMenu(false)} />}
               </AnimatePresence>
             )}
+          </div>
+
+          {/* Chapters — only shown for files that have any, so the bar
+              doesn't carry a permanently-dead button. */}
+          {chapters.length > 0 && (
+            <div className="relative">
+              <button
+                className={barBtnClass(showChapterMenu)}
+                onClick={handleChapterButton}
+                title={`${t.chapters.title} (PgUp / PgDn)`}
+                disabled={state === "stopped"}
+              >
+                <ChapterIcon />
+              </button>
+              {!IS_WINDOWS && (
+                <AnimatePresence>
+                  {showChapterMenu && <ChapterMenu onClose={() => setShowChapterMenu(false)} />}
+                </AnimatePresence>
+              )}
+            </div>
+          )}
+
+          {/* Bookmarks. Unlike the track and chapter menus, this one stays a
+              React popover on Windows too: it is a management surface —
+              rename and delete live in it — and a native menu can't hold an
+              editable field. The video popup hides itself while it's open,
+              the same way it does for the settings panel. */}
+          <div className="relative">
+            <button
+              className={barBtnClass(showBookmarkMenu)}
+              onClick={() => setShowBookmarkMenu((v) => !v)}
+              title={`${t.bookmarks.title} (B / Shift+B)`}
+              disabled={state === "stopped"}
+            >
+              <BookmarkIcon />
+              {bookmarks.length > 0 && (
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand-purple" />
+              )}
+            </button>
+            <AnimatePresence>
+              {showBookmarkMenu && (
+                <BookmarkMenu onClose={() => setShowBookmarkMenu(false)} />
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Playlist */}
@@ -354,6 +505,15 @@ export default function PlayerBar() {
             title="Picture-in-Picture (P)"
           >
             <PipIcon />
+          </button>
+
+          {/* Music mode */}
+          <button
+            className={barBtnClass()}
+            onClick={() => invoke("toggle_music_mode").catch(console.error)}
+            title={`${t.music.toggle} (Ctrl+M)`}
+          >
+            <MusicIcon />
           </button>
 
           {/* Fullscreen */}

@@ -2,22 +2,73 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 
+use super::audio::{self, AudioSettings};
+use super::source;
 use super::sponsorblock::Segment;
-use super::types::{AudioTrack, FileInfo, PlaybackState, PlayerStatus, SubtitleTrack};
-use crate::mpv::ffi::{MPV_EVENT_END_FILE, MPV_EVENT_FILE_LOADED};
+use super::types::{
+    AbLoop, AudioTrack, Chapter, FileInfo, PlaybackState, PlayerStatus, SubtitleTrack,
+};
+use crate::mpv::ffi::{
+    MPV_EVENT_END_FILE, MPV_EVENT_FILE_LOADED, MPV_EVENT_NONE, MPV_EVENT_START_FILE,
+};
 use crate::mpv::MpvHandle;
+
+/// How long `play` waits for mpv to confirm the source actually opened.
+///
+/// Long enough for a file on a share across a slow LAN, short enough that a
+/// caller pointed at a dead host gets an answer instead of hanging. A source
+/// still opening when this runs out is reported as pending rather than
+/// failed — it may well come up a second later.
+const LOAD_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What `play` learned about the source before it returned.
+///
+/// `loadfile` is asynchronous and never fails on its own, so without waiting
+/// for mpv's verdict every call looks like a success — including a typo'd
+/// path and an unreachable share. Callers need to be able to tell those
+/// apart from a file that really is on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadOutcome {
+    /// mpv reported the file open. There is picture (or sound) now.
+    Loaded,
+    /// Still opening when the deadline ran out. Usually a slow network
+    /// source; it may still come up, so this is not an error.
+    Pending,
+}
+
+/// Playback rate limits, as enforced by mpv itself.
+pub const SPEED_MIN: f64 = 0.01;
+pub const SPEED_MAX: f64 = 100.0;
 
 /// Core player logic backed by libmpv.
 pub struct Player {
     mpv: MpvHandle,
     /// Cache the last known file path since mpv may not have "path" available after stop.
     current_file: Mutex<Option<String>>,
+    /// Equaliser / normalisation state.
+    ///
+    /// Held here rather than read back from mpv because mpv's `af` is a flat
+    /// string: recovering "band 4 is at +3 dB" from it would mean parsing our
+    /// own filter syntax back out, and any hand-edited `af` would then be
+    /// misread as ours. This is the source of truth; mpv holds a projection
+    /// of it. See `core::audio`.
+    audio: Mutex<AudioSettings>,
+
     /// SponsorBlock segments for the currently loaded file. Cleared on stop.
     /// Driven by the auto-skip polling task; safe to mutate while the polling
     /// task reads.
     sponsor_segments: Mutex<Vec<Segment>>,
+    /// Chapters synthesised for a file that has none of its own — derived
+    /// from its transcript, or handed to us by an AI agent that read it.
+    ///
+    /// mpv can't be given chapters at runtime, so these live alongside it
+    /// and `chapter_list` merges them in. Everything downstream (the CLI,
+    /// the progress bar ticks, PgUp/PgDn) then works on a file that shipped
+    /// without chapters. Cleared whenever the file changes, since they
+    /// describe one specific recording.
+    virtual_chapters: Mutex<Vec<Chapter>>,
 }
 
 impl Player {
@@ -26,7 +77,9 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
+            virtual_chapters: Mutex::new(Vec::new()),
         })
     }
 
@@ -42,7 +95,9 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
+            virtual_chapters: Mutex::new(Vec::new()),
         })
     }
 
@@ -58,7 +113,9 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
+            virtual_chapters: Mutex::new(Vec::new()),
         })
     }
 
@@ -68,7 +125,9 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
+            virtual_chapters: Mutex::new(Vec::new()),
         })
     }
 
@@ -82,11 +141,19 @@ impl Player {
         Ok(Self {
             mpv,
             current_file: Mutex::new(None),
+            audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
+            virtual_chapters: Mutex::new(Vec::new()),
         })
     }
 
-    pub fn play(&self, path: &str, seek: Option<f64>, volume: Option<i64>, speed: Option<f64>) -> Result<()> {
+    pub fn play(
+        &self,
+        path: &str,
+        seek: Option<f64>,
+        volume: Option<i64>,
+        speed: Option<f64>,
+    ) -> Result<LoadOutcome> {
         // Set volume/speed before loading file
         if let Some(v) = volume {
             self.mpv.set_property_i64("volume", v.clamp(0, 100))?;
@@ -95,23 +162,106 @@ impl Player {
             self.mpv.set_property_f64("speed", s)?;
         }
 
+        // A share is a file as far as mpv is concerned, so its cache stays
+        // off — and a 4K remux read over Wi-Fi stutters at every seek. Turn
+        // the cache on for the one source we can identify from the path
+        // alone, and hand everything else back to mpv's own judgement.
+        let _ = self.mpv.set_property_string(
+            "cache",
+            if source::is_unc_path(path) { "yes" } else { "auto" },
+        );
+
+        // Nothing else in unflick reads mpv's event queue — auto-advance
+        // polls `eof-reached` instead — so whatever the last file left in
+        // there is still sitting there. Clear it first, or the end-of-file
+        // event from the *previous* file gets read as this one failing.
+        while self.mpv.wait_event(0.0).0 != MPV_EVENT_NONE {}
+
         // Load the file
         self.mpv.command(&["loadfile", path])?;
+
+        let outcome = self.await_load(path)?;
+
+        // `pause` is a global mpv property, not per-file, and `keep-open=yes`
+        // leaves it set after a file reaches its end. Without clearing it
+        // here, anything loaded next comes up paused at 0:00 — which the
+        // playlist auto-advance hits every single time, and a plain
+        // `unflick play <file>` hits too once the previous file ran out.
+        // A command named "play" should play.
+        let _ = self.mpv.set_property_bool("pause", false);
+
+        // Re-apply the audio chain for the new file. `af` is a global option
+        // that in principle survives a file change, but re-applying is what
+        // makes a restored-from-settings equaliser take effect at all: the
+        // state is loaded when the Player is built, long before mpv has an
+        // audio chain to put filters in. Doing it here also means one code
+        // path for "restore on startup" and "keep it across files".
+        let _ = self.apply_chain(&self.audio_settings());
+
         *self.current_file.lock().unwrap() = Some(path.to_string());
         // Clear stale SponsorBlock segments — they were for the previous
         // file. The URL play path will re-arm via after_play_url_hooks.
         if let Ok(mut segs) = self.sponsor_segments.lock() {
             segs.clear();
         }
+        // Synthesised chapters describe one specific recording, so they go
+        // with it. Leaving them would put another file's chapter marks on
+        // this one's timeline.
+        if let Ok(mut ch) = self.virtual_chapters.lock() {
+            ch.clear();
+        }
 
-        // Wait a moment for the file to start loading, then seek if needed
         if let Some(pos) = seek {
-            // Give mpv a moment to start the file
-            thread::sleep(Duration::from_millis(200));
+            // A loaded file can be seeked immediately. One that is still
+            // opening cannot, so fall back to the old guess of a moment —
+            // it is the best available when mpv hasn't said anything yet.
+            if outcome == LoadOutcome::Pending {
+                thread::sleep(Duration::from_millis(200));
+            }
             let _ = self.mpv.set_property_f64("time-pos", pos);
         }
 
-        Ok(())
+        Ok(outcome)
+    }
+
+    /// Block until mpv says the source opened, failed, or the deadline passes.
+    ///
+    /// An end-of-file event arriving before file-loaded means the source never
+    /// opened: a wrong path, an unreachable host, a codec mpv can't read. That
+    /// is the case worth reporting — a `play` that returns "playing" for a file
+    /// nobody can see is the kind of lie that sends people looking for the bug
+    /// in their own script.
+    fn await_load(&self, path: &str) -> Result<LoadOutcome> {
+        let deadline = std::time::Instant::now() + LOAD_TIMEOUT;
+        // `loadfile` over a file that is already playing ends that file
+        // first, so an end-of-file event only speaks for the new file once
+        // mpv has said it started on it.
+        let mut started = false;
+        while std::time::Instant::now() < deadline {
+            match self.mpv.wait_event(0.1).0 {
+                MPV_EVENT_START_FILE => started = true,
+                MPV_EVENT_FILE_LOADED => return Ok(LoadOutcome::Loaded),
+                MPV_EVENT_END_FILE if started => {
+                    // mpv has unloaded whatever was playing before, so the
+                    // state that described it has to go with it.
+                    self.forget_current();
+                    bail!("could not open {}", path);
+                }
+                _ => {}
+            }
+        }
+        Ok(LoadOutcome::Pending)
+    }
+
+    /// Drop everything that described the file mpv was playing.
+    fn forget_current(&self) {
+        *self.current_file.lock().unwrap() = None;
+        if let Ok(mut segs) = self.sponsor_segments.lock() {
+            segs.clear();
+        }
+        if let Ok(mut ch) = self.virtual_chapters.lock() {
+            ch.clear();
+        }
     }
 
     pub fn pause(&self) -> Result<()> {
@@ -137,6 +287,9 @@ impl Player {
         *self.current_file.lock().unwrap() = None;
         if let Ok(mut segs) = self.sponsor_segments.lock() {
             segs.clear();
+        }
+        if let Ok(mut ch) = self.virtual_chapters.lock() {
+            ch.clear();
         }
         Ok(())
     }
@@ -187,9 +340,37 @@ impl Player {
         self.mpv.set_property_i64("volume", volume.clamp(0, 100))
     }
 
+    /// URL schemes this mpv build can actually open, straight from mpv.
+    ///
+    /// Read at call time rather than cached: the bundled libmpv on Windows and
+    /// a distro's libmpv on Linux are built against different ffmpeg options,
+    /// and the difference is exactly what the caller is asking about.
+    pub fn supported_protocols(&self) -> Vec<String> {
+        self.mpv
+            .get_property_string("protocol-list")
+            .map(|list| {
+                let mut names: Vec<String> = list
+                    .split(',')
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                names.sort();
+                names.dedup();
+                names
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn speed(&self) -> f64 {
+        self.mpv.get_property_f64("speed").unwrap_or(1.0)
+    }
+
+    /// mpv refuses anything outside this band and reports the rejection as a
+    /// generic property error, which reads like a bug rather than a bad
+    /// argument. Reject it here so the message says what is wrong.
     pub fn set_speed(&self, speed: f64) -> Result<()> {
-        if speed <= 0.0 {
-            bail!("speed must be positive");
+        if !speed.is_finite() || !(SPEED_MIN..=SPEED_MAX).contains(&speed) {
+            bail!("speed must be between {} and {}", SPEED_MIN, SPEED_MAX);
         }
         self.mpv.set_property_f64("speed", speed)
     }
@@ -204,6 +385,10 @@ impl Player {
 
     pub fn get_property_string(&self, name: &str) -> Result<String> {
         self.mpv.get_property_string(name)
+    }
+
+    pub fn get_property_bool(&self, name: &str) -> Result<bool> {
+        self.mpv.get_property_bool(name)
     }
 
     pub fn status(&self) -> PlayerStatus {
@@ -291,6 +476,514 @@ impl Player {
     /// Select an audio track by ID (0 to disable)
     pub fn audio_select(&self, id: i64) -> Result<()> {
         self.mpv.set_property_i64("aid", id)
+    }
+
+    // ─── Subtitle / audio timing ──────────────────────────────────────────
+    //
+    // Positive `sub-delay` shows subtitles *later*. This matters most for
+    // whisper-generated tracks, which routinely land a few hundred ms off
+    // the dialogue — before this existed there was no way to correct them.
+
+    pub fn sub_delay(&self) -> f64 {
+        self.mpv.get_property_f64("sub-delay").unwrap_or(0.0)
+    }
+
+    pub fn set_sub_delay(&self, seconds: f64) -> Result<()> {
+        self.mpv.set_property_f64("sub-delay", seconds)
+    }
+
+    pub fn audio_delay(&self) -> f64 {
+        self.mpv.get_property_f64("audio-delay").unwrap_or(0.0)
+    }
+
+    pub fn set_audio_delay(&self, seconds: f64) -> Result<()> {
+        self.mpv.set_property_f64("audio-delay", seconds)
+    }
+
+    // ─── Chapters ─────────────────────────────────────────────────────────
+
+    /// Chapters for the current file: the container's own, or the
+    /// synthesised ones if it has none. Empty when there are neither.
+    pub fn chapter_list(&self) -> Vec<Chapter> {
+        let real = self.container_chapters();
+        if !real.is_empty() {
+            return real;
+        }
+        self.virtual_chapter_list()
+    }
+
+    /// Replace the synthesised chapters. Times are clamped to the file and
+    /// sorted, so a caller can hand over a rough list without pre-cleaning
+    /// it. Passing an empty list clears them.
+    pub fn set_virtual_chapters(&self, mut entries: Vec<(f64, String)>) -> Result<usize> {
+        if !self.container_chapters().is_empty() {
+            bail!("this file already has its own chapters");
+        }
+        let duration = self.mpv.get_property_f64("duration").unwrap_or(0.0);
+
+        entries.retain(|(time, _)| time.is_finite() && *time >= 0.0);
+        if duration > 0.0 {
+            entries.retain(|(time, _)| *time < duration);
+        }
+        entries.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        entries.dedup_by(|a, b| (a.0 - b.0).abs() < 0.5);
+
+        let chapters: Vec<Chapter> = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, (time, title))| Chapter {
+                index: index as i64,
+                title: Some(title),
+                time,
+                current: false,
+            })
+            .collect();
+
+        let count = chapters.len();
+        *self.virtual_chapters.lock().unwrap() = chapters;
+        Ok(count)
+    }
+
+    pub fn clear_virtual_chapters(&self) {
+        self.virtual_chapters.lock().unwrap().clear();
+    }
+
+    /// Synthesised chapters with `current` resolved against playback position.
+    fn virtual_chapter_list(&self) -> Vec<Chapter> {
+        let mut chapters = self.virtual_chapters.lock().unwrap().clone();
+        if chapters.is_empty() {
+            return chapters;
+        }
+        // mpv owns `current` for real chapters; for ours we work it out from
+        // the clock — the last chapter whose start we've passed.
+        let pos = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
+        let current = chapters
+            .iter()
+            .rposition(|c| pos >= c.time)
+            .unwrap_or(0);
+        for (i, c) in chapters.iter_mut().enumerate() {
+            c.current = i == current;
+        }
+        chapters
+    }
+
+    /// Read mpv's `chapter-list`. Empty when the container has no chapters
+    /// (most streaming sources).
+    fn container_chapters(&self) -> Vec<Chapter> {
+        let count = self.mpv.get_property_i64("chapter-list/count").unwrap_or(0);
+        let current = self.mpv.get_property_i64("chapter").unwrap_or(-1);
+        let mut chapters = Vec::new();
+        for i in 0..count {
+            let title = self
+                .mpv
+                .get_property_string(&format!("chapter-list/{}/title", i))
+                .ok()
+                .filter(|s| !s.is_empty());
+            let time = self
+                .mpv
+                .get_property_f64(&format!("chapter-list/{}/time", i))
+                .unwrap_or(0.0);
+            chapters.push(Chapter {
+                index: i,
+                title,
+                time,
+                current: i == current,
+            });
+        }
+        chapters
+    }
+
+    /// Jump to a chapter by 0-based index. Works for container chapters and
+    /// synthesised ones alike — the latter seek by time, since mpv doesn't
+    /// know about them.
+    pub fn chapter_seek(&self, index: i64) -> Result<()> {
+        let count = self.mpv.get_property_i64("chapter-list/count").unwrap_or(0);
+        if count > 0 {
+            if index < 0 || index >= count {
+                bail!("chapter {} out of range (0..{})", index, count - 1);
+            }
+            return self.mpv.set_property_i64("chapter", index);
+        }
+
+        let virtual_chapters = self.virtual_chapters.lock().unwrap();
+        if virtual_chapters.is_empty() {
+            bail!("this file has no chapters");
+        }
+        let target = virtual_chapters
+            .get(index.max(0) as usize)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "chapter {} out of range (0..{})",
+                    index,
+                    virtual_chapters.len() - 1
+                )
+            })?;
+        let time = target.time;
+        drop(virtual_chapters);
+        self.seek(time)
+    }
+
+    /// Step one chapter forward (`delta = 1`) or back (`delta = -1`).
+    /// Clamps at both ends rather than wrapping or erroring at the edges.
+    pub fn chapter_step(&self, delta: i64) -> Result<i64> {
+        let count = self.mpv.get_property_i64("chapter-list/count").unwrap_or(0);
+        if count > 0 {
+            let current = self.mpv.get_property_i64("chapter").unwrap_or(0);
+            let target = (current + delta).clamp(0, count - 1);
+            self.mpv.set_property_i64("chapter", target)?;
+            return Ok(target);
+        }
+
+        let chapters = self.virtual_chapter_list();
+        if chapters.is_empty() {
+            bail!("this file has no chapters");
+        }
+        let current = chapters.iter().position(|c| c.current).unwrap_or(0) as i64;
+        let target = (current + delta).clamp(0, chapters.len() as i64 - 1);
+        self.chapter_seek(target)?;
+        Ok(target)
+    }
+
+    // ─── A-B loop ─────────────────────────────────────────────────────────
+    //
+    // mpv stores the bounds in `ab-loop-a` / `ab-loop-b`, which hold either
+    // a time in seconds or the literal string "no" when unset. We read them
+    // as strings for exactly that reason — a get_property_f64 on an unset
+    // bound fails, which is indistinguishable from a real error.
+
+    fn read_ab_bound(&self, prop: &str) -> Option<f64> {
+        let raw = self.mpv.get_property_string(prop).ok()?;
+        if raw == "no" {
+            return None;
+        }
+        raw.parse::<f64>().ok()
+    }
+
+    pub fn ab_loop_status(&self) -> AbLoop {
+        let a = self.read_ab_bound("ab-loop-a");
+        let b = self.read_ab_bound("ab-loop-b");
+        AbLoop {
+            active: a.is_some() && b.is_some(),
+            a,
+            b,
+        }
+    }
+
+    /// Set the A bound. `None` uses the current playback position, which is
+    /// what the `[` hotkey does.
+    pub fn ab_loop_set_a(&self, position: Option<f64>) -> Result<AbLoop> {
+        let pos = position.unwrap_or_else(|| self.mpv.get_property_f64("time-pos").unwrap_or(0.0));
+        self.mpv.set_property_f64("ab-loop-a", pos.max(0.0))?;
+        Ok(self.ab_loop_status())
+    }
+
+    /// Set the B bound. `None` uses the current playback position.
+    pub fn ab_loop_set_b(&self, position: Option<f64>) -> Result<AbLoop> {
+        let pos = position.unwrap_or_else(|| self.mpv.get_property_f64("time-pos").unwrap_or(0.0));
+        self.mpv.set_property_f64("ab-loop-b", pos.max(0.0))?;
+        Ok(self.ab_loop_status())
+    }
+
+    pub fn ab_loop_clear(&self) -> Result<()> {
+        self.mpv.set_property_string("ab-loop-a", "no")?;
+        self.mpv.set_property_string("ab-loop-b", "no")
+    }
+
+    // ─── Frame stepping ───────────────────────────────────────────────────
+    //
+    // Both mpv commands pause playback as a side effect, which is the
+    // expected behaviour — you step frames to inspect a still.
+
+    pub fn frame_step(&self) -> Result<()> {
+        self.mpv.command(&["frame-step"])
+    }
+
+    pub fn frame_back_step(&self) -> Result<()> {
+        self.mpv.command(&["frame-back-step"])
+    }
+
+    // ─── Subtitle styling ─────────────────────────────────────────────────
+
+    /// Read every styling property as JSON, using mpv's own defaults for
+    /// anything unavailable.
+    pub fn subtitle_style(&self) -> serde_json::Value {
+        serde_json::json!({
+            "scale": self.mpv.get_property_f64("sub-scale").unwrap_or(1.0),
+            "pos": self.mpv.get_property_i64("sub-pos").unwrap_or(100),
+            "color": self.mpv.get_property_string("sub-color").unwrap_or_else(|_| "#FFFFFFFF".into()),
+            "border_size": self.mpv.get_property_f64("sub-border-size").unwrap_or(3.0),
+            "bold": self.mpv.get_property_bool("sub-bold").unwrap_or(false),
+        })
+    }
+
+    /// Set one styling property. Values are clamped to ranges that stay
+    /// legible — an unclamped `sub-scale` of 0 makes subtitles vanish with
+    /// no obvious way back.
+    pub fn set_subtitle_style(&self, name: &str, value: &serde_json::Value) -> Result<()> {
+        match name {
+            "scale" => {
+                let v = value.as_f64().unwrap_or(1.0).clamp(0.1, 10.0);
+                self.mpv.set_property_f64("sub-scale", v)
+            }
+            "pos" => {
+                let v = value.as_i64().unwrap_or(100).clamp(0, 150);
+                self.mpv.set_property_i64("sub-pos", v)
+            }
+            "color" => {
+                let v = value.as_str().unwrap_or("#FFFFFFFF");
+                self.mpv.set_property_string("sub-color", v)
+            }
+            "border_size" => {
+                let v = value.as_f64().unwrap_or(3.0).clamp(0.0, 20.0);
+                self.mpv.set_property_f64("sub-border-size", v)
+            }
+            "bold" => {
+                let v = value.as_bool().unwrap_or(false);
+                self.mpv.set_property_bool("sub-bold", v)
+            }
+            _ => bail!(
+                "unknown subtitle style: {} (expected scale | pos | color | border_size | bold)",
+                name
+            ),
+        }
+    }
+}
+
+/// Styling keys accepted by `set_subtitle_style`, for CLI/MCP validation
+/// and help text.
+pub const SUBTITLE_STYLE_KEYS: &[&str] = &["scale", "pos", "color", "border_size", "bold"];
+
+/// Geometry knobs accepted by `set_video_transform`.
+// --- Audio processing ------------------------------------------------------
+
+impl Player {
+    /// Current equaliser / normalisation state.
+    pub fn audio_settings(&self) -> AudioSettings {
+        self.audio.lock().unwrap().clone()
+    }
+
+    /// Replace the whole audio state and rebuild the filter chain.
+    pub fn set_audio_settings(&self, next: AudioSettings) -> Result<AudioSettings> {
+        let next = next.normalized();
+        let applied = self.apply_chain(&next)?;
+        *self.audio.lock().unwrap() = applied.clone();
+        Ok(applied)
+    }
+
+    /// Set one band's gain.
+    ///
+    /// Rebuilds the chain, like every other change. See the note on
+    /// `af-command` in `core::audio` for why there is no cheaper path.
+    pub fn set_band(&self, index: usize, gain_db: f64) -> Result<AudioSettings> {
+        let mut next = self.audio_settings();
+        if next.bands.len() != audio::BANDS.len() {
+            next.bands.resize(audio::BANDS.len(), 0.0);
+        }
+        next.bands[index] = gain_db;
+        self.set_audio_settings(next)
+    }
+
+    /// Apply a named preset's curve, leaving preamp and normalisation alone.
+    pub fn set_audio_preset(&self, name: &str) -> Result<AudioSettings> {
+        let preset = audio::preset(name)?;
+        let mut next = self.audio_settings();
+        next.bands = preset.bands.to_vec();
+        // Choosing a curve means wanting to hear it.
+        next.equalizer = true;
+        self.set_audio_settings(next)
+    }
+
+    /// Drop every audio filter and return to a flat, unprocessed signal.
+    pub fn reset_audio(&self) -> Result<AudioSettings> {
+        self.set_audio_settings(AudioSettings::default())
+    }
+
+    /// Push a chain to mpv, or clear it when there is nothing to apply.
+    ///
+    /// A filter that fails to initialise takes the rest of the chain with it
+    /// and can leave playback silent, so a rejected chain is rolled back to
+    /// no filters rather than left half-applied.
+    fn apply_chain(&self, settings: &AudioSettings) -> Result<AudioSettings> {
+        let chain = audio::build_chain(settings);
+        let result = if chain.is_empty() {
+            self.mpv.command(&["af", "clr", ""])
+        } else {
+            self.mpv.command(&["af", "set", &chain])
+        };
+
+        match result {
+            Ok(()) => Ok(settings.clone()),
+            Err(e) => {
+                let _ = self.mpv.command(&["af", "clr", ""]);
+                Err(anyhow!(
+                    "mpv rejected the audio filter chain ({}); filters cleared. \
+                     This usually means the bundled ffmpeg lacks a filter: {}",
+                    e,
+                    chain
+                ))
+            }
+        }
+    }
+
+    /// Whether mpv is correcting pitch when playback speed changes.
+    ///
+    /// Without it, 1.5x speech sounds like a chipmunk. mpv defaults this on,
+    /// but people who want the pitch to move — musicians checking a tempo
+    /// change — need it off, and nothing exposed the switch.
+    /// The filter chain mpv is actually running, as mpv reports it.
+    ///
+    /// Ground truth, deliberately separate from `audio_settings`: that one is
+    /// what we asked for, this is what took effect. When they disagree the
+    /// chain failed to initialise, and without this the two are
+    /// indistinguishable from the outside.
+    pub fn audio_chain(&self) -> String {
+        self.mpv.get_property_string("af").unwrap_or_default()
+    }
+
+    pub fn pitch_correction(&self) -> bool {
+        self.mpv
+            .get_property_bool("audio-pitch-correction")
+            .unwrap_or(true)
+    }
+
+    pub fn set_pitch_correction(&self, on: bool) -> Result<()> {
+        self.mpv.set_property_bool("audio-pitch-correction", on)
+    }
+}
+
+pub const VIDEO_TRANSFORM_KEYS: &[&str] =
+    &["aspect", "rotate", "zoom", "panscan", "deinterlace"];
+
+impl Player {
+    /// How the picture is currently being fitted to the window.
+    ///
+    /// Separate from `filter_*` (brightness, contrast, …): those change
+    /// what the pixels look like, these change where they go. Users reach
+    /// for them for different reasons — a squashed 4:3 broadcast, a phone
+    /// video recorded sideways, black bars they want cropped away.
+    pub fn video_transform(&self) -> serde_json::Value {
+        let aspect = self
+            .mpv
+            .get_property_f64("video-aspect-override")
+            .unwrap_or(-1.0);
+        serde_json::json!({
+            // mpv reports -1 for "use whatever the container says".
+            "aspect": if aspect <= 0.0 { "auto".to_string() } else { format!("{:.4}", aspect) },
+            "rotate": self.mpv.get_property_i64("video-rotate").unwrap_or(0),
+            // Exposed as a linear multiplier; mpv stores log2 of it.
+            "zoom": 2f64.powf(self.mpv.get_property_f64("video-zoom").unwrap_or(0.0)),
+            "panscan": self.mpv.get_property_f64("panscan").unwrap_or(0.0),
+            "deinterlace": self.mpv.get_property_bool("deinterlace").unwrap_or(false),
+        })
+    }
+
+    /// Set one geometry knob.
+    ///
+    /// `aspect` takes `auto`, a ratio like `16:9`, or a decimal. `zoom` is
+    /// a plain multiplier — 1 is fit-to-window, 2 is twice as large —
+    /// which is converted to the log2 scale mpv actually stores, because
+    /// nobody thinks about zoom in logarithms.
+    pub fn set_video_transform(&self, name: &str, value: &serde_json::Value) -> Result<()> {
+        match name {
+            "aspect" => {
+                let raw = value
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| value.as_f64().map(|f| f.to_string()))
+                    .unwrap_or_default();
+                let ratio = parse_aspect(&raw)?;
+                self.mpv.set_property_f64("video-aspect-override", ratio)
+            }
+            "rotate" => {
+                // mpv accepts 0-359 but only right angles are meaningful
+                // for video, and anything else looks like a mistake.
+                let raw = value.as_i64().unwrap_or(0);
+                let degrees = raw.rem_euclid(360);
+                if degrees % 90 != 0 {
+                    bail!("rotate must be 0, 90, 180 or 270 (got {})", raw);
+                }
+                self.mpv.set_property_i64("video-rotate", degrees)
+            }
+            "zoom" => {
+                let scale = value.as_f64().unwrap_or(1.0);
+                if !(scale.is_finite() && scale > 0.0) {
+                    bail!("zoom must be a positive multiplier");
+                }
+                let clamped = scale.clamp(0.25, 8.0);
+                self.mpv.set_property_f64("video-zoom", clamped.log2())
+            }
+            "panscan" => {
+                let v = value.as_f64().unwrap_or(0.0).clamp(0.0, 1.0);
+                self.mpv.set_property_f64("panscan", v)
+            }
+            "deinterlace" => {
+                let on = value.as_bool().unwrap_or(false);
+                self.mpv.set_property_bool("deinterlace", on)
+            }
+            _ => bail!(
+                "unknown video transform: {} (expected {})",
+                name,
+                VIDEO_TRANSFORM_KEYS.join(" | ")
+            ),
+        }
+    }
+
+    /// Back to "show it the way the file says".
+    pub fn reset_video_transform(&self) -> Result<()> {
+        self.mpv.set_property_f64("video-aspect-override", -1.0)?;
+        self.mpv.set_property_i64("video-rotate", 0)?;
+        self.mpv.set_property_f64("video-zoom", 0.0)?;
+        self.mpv.set_property_f64("panscan", 0.0)?;
+        self.mpv.set_property_bool("deinterlace", false)
+    }
+}
+
+/// `auto` → -1 (mpv's "use the container"), `16:9` → 1.777…, `1.85` → 1.85.
+fn parse_aspect(raw: &str) -> Result<f64> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.eq_ignore_ascii_case("auto") || raw == "-1" {
+        return Ok(-1.0);
+    }
+    if let Some((w, h)) = raw.split_once(':') {
+        let w: f64 = w.trim().parse().map_err(|_| anyhow::anyhow!("bad aspect: {}", raw))?;
+        let h: f64 = h.trim().parse().map_err(|_| anyhow::anyhow!("bad aspect: {}", raw))?;
+        if !(w > 0.0 && h > 0.0) {
+            bail!("aspect ratio parts must be positive: {}", raw);
+        }
+        return Ok(w / h);
+    }
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad aspect: {} (try auto, 16:9, or 1.78)", raw))?;
+    if value <= 0.0 {
+        bail!("aspect must be positive: {}", raw);
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_aspect;
+
+    #[test]
+    fn aspect_accepts_ratios_decimals_and_auto() {
+        assert_eq!(parse_aspect("auto").unwrap(), -1.0);
+        assert_eq!(parse_aspect("").unwrap(), -1.0);
+        assert_eq!(parse_aspect("-1").unwrap(), -1.0);
+        assert!((parse_aspect("16:9").unwrap() - 16.0 / 9.0).abs() < 1e-9);
+        assert!((parse_aspect(" 4 : 3 ").unwrap() - 4.0 / 3.0).abs() < 1e-9);
+        assert!((parse_aspect("1.85").unwrap() - 1.85).abs() < 1e-9);
+    }
+
+    #[test]
+    fn aspect_rejects_nonsense() {
+        // A zero or negative side would make mpv squash the picture to
+        // nothing, with no obvious way back.
+        assert!(parse_aspect("16:0").is_err());
+        assert!(parse_aspect("0:9").is_err());
+        assert!(parse_aspect("-2").is_err());
+        assert!(parse_aspect("widescreen").is_err());
+        assert!(parse_aspect("16:9:4").is_err());
     }
 }
 

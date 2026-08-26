@@ -61,6 +61,57 @@ pub struct AudioTrack {
     pub selected: bool,
 }
 
+/// One entry from mpv's `chapter-list`. `index` is the 0-based position
+/// used by `chapter_seek`; `time` is the chapter's start in seconds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Chapter {
+    pub index: i64,
+    pub title: Option<String>,
+    pub time: f64,
+    pub current: bool,
+}
+
+/// A-B loop state. Either bound may be unset — mpv reports `"no"` for an
+/// unset bound, which we normalise to `None`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbLoop {
+    pub a: Option<f64>,
+    pub b: Option<f64>,
+    /// True only when both bounds are set, i.e. the loop is actually active.
+    pub active: bool,
+}
+
+/// How the playlist behaves when a file ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RepeatMode {
+    /// Stop after the last entry.
+    Off,
+    /// Replay the current entry forever.
+    One,
+    /// Wrap around to the first entry after the last.
+    All,
+}
+
+impl RepeatMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "off" | "none" => Some(Self::Off),
+            "one" | "single" => Some(Self::One),
+            "all" | "loop" => Some(Self::All),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::One => "one",
+            Self::All => "all",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistEntry {
     pub index: usize,

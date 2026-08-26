@@ -60,7 +60,12 @@
     "next": "下一个",
     "prev": "上一个",
     "clear": "清空播放列表",
-    "removeEntry": "移除此项"
+    "removeEntry": "移除此项",
+    "repeat": "重复",
+    "repeatOff": "关闭",
+    "repeatOne": "单个",
+    "repeatAll": "全部",
+    "shuffle": "随机"
   },
   "subtitle": {
     "title": "字幕",
@@ -68,11 +73,21 @@
     "loadFile": "加载字幕文件…",
     "generate": "AI 生成",
     "generating": "生成中…",
-    "noTracks": "没有加载字幕轨。"
+    "noTracks": "没有加载字幕轨。",
+    "delay": "延迟",
+    "reset": "重置",
+    "style": "字幕样式",
+    "styleSize": "大小",
+    "stylePosition": "位置",
+    "styleColor": "颜色",
+    "styleOutline": "描边",
+    "styleBold": "粗体"
   },
   "audio": {
     "title": "音轨",
-    "noTracks": "没有音轨。"
+    "noTracks": "没有音轨。",
+    "delay": "延迟",
+    "reset": "重置"
   },
   "filters": {
     "title": "视频滤镜",
@@ -196,5 +211,72 @@
       "autoDownload": "为流媒体地址自动下载字幕",
       "languages": "语言（逗号分隔，例如 en,zh-CN）"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "字幕延迟",
+    "audioDelay": "音频延迟",
+    "loopStart": "循环起点",
+    "loopEnd": "循环终点",
+    "looping": "循环中",
+    "loopCleared": "已清除循环",
+    "speed": "速度",
+    "bookmarked": "已添加书签"
+  },
+  "chapters": {
+    "title": "章节",
+    "none": "此文件没有章节。"
+  },
+  "keybinds": {
+    "section": "键盘快捷键",
+    "hint": "点击某个快捷键，然后按下你想要的按键。Esc 取消。",
+    "press": "请按键…",
+    "resetAll": "全部重置",
+    "reset": "重置",
+    "changed": "已修改",
+    "groups": {
+      "playback": "播放",
+      "volume": "音量",
+      "navigation": "导航",
+      "tracks": "字幕与音频",
+      "window": "窗口",
+      "capture": "捕获",
+      "app": "应用"
+    }
+  },
+  "mouse": {
+    "section": "鼠标",
+    "hint": "滚轮、点击和右键拖拽手势。右键拖拽要超过一定距离才算手势——普通右键点击仍然打开菜单。",
+    "none": "无",
+    "triggers": {
+      "wheel_up": "滚轮上",
+      "wheel_down": "滚轮下",
+      "click": "单击",
+      "double_click": "双击",
+      "middle_click": "中键",
+      "gesture_left": "向左拖",
+      "gesture_right": "向右拖",
+      "gesture_up": "向上拖",
+      "gesture_down": "向下拖"
+    }
+  },
+  "recent": {
+    "title": "最近播放",
+    "clear": "清除"
+  },
+  "bookmarks": {
+    "title": "书签",
+    "add": "在此处添加书签",
+    "none": "这个文件还没有书签。",
+    "rename": "重命名",
+    "remove": "删除",
+    "namePlaceholder": "给这个位置起个名字"
+  },
+  "music": {
+    "section": "音乐模式",
+    "noTrack": "未在播放",
+    "unknownArtist": "未知艺术家",
+    "toggle": "音乐模式",
+    "auto": "音频文件自动切换到音乐模式",
+    "autoHint": "没有画面的文件会用紧凑布局打开，而不是一块黑色矩形。"
   }
 }

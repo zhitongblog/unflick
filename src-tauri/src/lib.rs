@@ -257,6 +257,26 @@ pub fn run() {
                 }
             }
 
+            // The one owner of the window's shape. Managed here rather than
+            // built in `new()` because it needs the AppHandle, and shared
+            // with the control server so `unflick window mode music` reaches
+            // the same window the buttons do.
+            let window_host = Arc::new(gui::window::TauriWindowHost::new(app.handle().clone()));
+            app.manage(Arc::clone(&window_host));
+
+            // ── Embedded control server ────────────────────────────────────
+            // Host the same TCP command surface the headless daemon serves,
+            // but against *this* window's player. Without it, `unflick pause`
+            // and MCP `pause` would spawn (or talk to) a separate vo=null mpv
+            // the user can't see, while the video on screen kept playing.
+            spawn_embedded_control_server(app.state::<GuiPlayer>(), window_host);
+
+            // Timeline previews accumulate on disk as people watch things.
+            // Trim once per launch, off the startup path — it walks the
+            // cache directory and there's no reason to make the window
+            // wait for it.
+            std::thread::spawn(core::thumbnail::prune_cache);
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -295,6 +315,9 @@ pub fn run() {
             commands::player_status,
             commands::player_screenshot,
             commands::toggle_pip,
+            commands::window_mode,
+            commands::toggle_music_mode,
+            commands::now_playing,
             commands::set_fullscreen,
             commands::exit_fullscreen,
             commands::open_file_dialog,
@@ -307,6 +330,17 @@ pub fn run() {
             commands::library_clear,
             // Subtitles
             commands::subtitle_load,
+            commands::opensubtitles_configured,
+            commands::equalizer_get,
+            commands::equalizer_set,
+            commands::equalizer_preset,
+            commands::equalizer_presets,
+            commands::equalizer_reset,
+            commands::pitch_correction,
+            commands::settings_set_key,
+            commands::subtitle_search_online,
+            commands::subtitle_download_online,
+            commands::subtitle_auto_online,
             commands::subtitle_list,
             commands::subtitle_select,
             // Playlist
@@ -351,6 +385,41 @@ pub fn run() {
             commands::set_video_filter,
             commands::get_video_filters,
             commands::reset_video_filters,
+            // Timing / chapters / A-B loop / frame stepping / playlist modes
+            commands::subtitle_delay,
+            commands::audio_delay,
+            commands::subtitle_style_get,
+            commands::subtitle_style_set,
+            commands::chapter_list,
+            commands::chapter_seek,
+            commands::chapter_step,
+            commands::ab_loop,
+            commands::frame_step,
+            commands::playlist_repeat,
+            commands::playlist_shuffle,
+            // Timeline previews
+            commands::thumbnail_at,
+            // Keyboard bindings
+            commands::keybind_list,
+            commands::keybind_set,
+            commands::keybind_reset,
+            commands::mouse_list,
+            commands::mouse_set,
+            commands::mouse_reset,
+            // Recently played
+            // Picture geometry
+            commands::video_transform_get,
+            commands::video_transform_set,
+            commands::video_transform_reset,
+            commands::set_incognito,
+            commands::recent_list,
+            commands::recent_clear,
+            // Bookmarks
+            commands::bookmark_add,
+            commands::bookmark_list,
+            commands::bookmark_rename,
+            commands::bookmark_remove,
+            commands::bookmark_clear,
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.
@@ -440,6 +509,62 @@ pub fn run() {
             }
             let _ = (app_handle, event);
         });
+}
+
+/// Host the CLI/MCP control protocol inside the GUI process, bound to the
+/// on-screen render player.
+///
+/// unflick has always shipped a headless daemon for `unflick play` and the
+/// MCP server. That daemon builds its own `vo=null` mpv, which is invisible
+/// by construction — so an AI agent driving unflick got audio and a status
+/// JSON, but never the picture, and never the window the user was looking
+/// at. Hosting the same server here makes the three interfaces share one
+/// player instead of merely one codebase.
+///
+/// The GUI wins ties: any headless daemon already on the port is asked to
+/// exit first. If it declines (another GUI holds it) or the bind still
+/// fails, we log and carry on — the window stays fully usable, it just
+/// isn't the one answering CLI commands.
+fn spawn_embedded_control_server(
+    state: tauri::State<'_, GuiPlayer>,
+    window_host: Arc<gui::window::TauriWindowHost>,
+) {
+    let Some(player) = state.render_player.get().cloned() else {
+        eprintln!("[unflick] control server: no render player, skipping");
+        return;
+    };
+    let playlist = Arc::clone(&state.playlist);
+    let incognito = Arc::clone(&state.incognito);
+
+    // A second SQLite connection to the same library.db. The GUI's own
+    // handle stays in GuiPlayer; rusqlite serialises writes per connection
+    // and our write volume (position saves, scan upserts) is far below
+    // anything that would contend.
+    let db = match db::Database::open() {
+        Ok(d) => Arc::new(d),
+        Err(e) => {
+            eprintln!("[unflick] control server: database open failed: {e}");
+            return;
+        }
+    };
+
+    std::thread::spawn(move || {
+        if !core::daemon::request_port_handover() {
+            eprintln!("[unflick] control server: port busy, CLI/MCP will use the existing host");
+            return;
+        }
+        let ctx = Arc::new(core::daemon::ControlContext {
+            player,
+            playlist,
+            db,
+            embedded: true,
+            incognito,
+            window: Some(window_host),
+        });
+        if let Err(e) = core::daemon::serve_control(ctx) {
+            eprintln!("[unflick] control server: bind failed: {e}");
+        }
+    });
 }
 
 /// Bring up the v0.8 video pipeline on the main window.

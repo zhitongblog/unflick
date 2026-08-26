@@ -60,7 +60,12 @@
     "next": "Suivant",
     "prev": "Précédent",
     "clear": "Vider la playlist",
-    "removeEntry": "Supprimer cette entrée"
+    "removeEntry": "Supprimer cette entrée",
+    "repeat": "Répéter",
+    "repeatOff": "Désactivé",
+    "repeatOne": "Un",
+    "repeatAll": "Tout",
+    "shuffle": "Aléatoire"
   },
   "subtitle": {
     "title": "Sous-titres",
@@ -68,11 +73,21 @@
     "loadFile": "Charger un fichier de sous-titres…",
     "generate": "Générer avec l'IA",
     "generating": "Génération…",
-    "noTracks": "Aucune piste de sous-titres chargée."
+    "noTracks": "Aucune piste de sous-titres chargée.",
+    "delay": "Décalage",
+    "reset": "Réinitialiser",
+    "style": "Style des sous-titres",
+    "styleSize": "Taille",
+    "stylePosition": "Position",
+    "styleColor": "Couleur",
+    "styleOutline": "Contour",
+    "styleBold": "Gras"
   },
   "audio": {
     "title": "Piste audio",
-    "noTracks": "Aucune piste audio."
+    "noTracks": "Aucune piste audio.",
+    "delay": "Décalage",
+    "reset": "Réinitialiser"
   },
   "filters": {
     "title": "Filtres vidéo",
@@ -196,5 +211,72 @@
       "autoDownload": "Télécharger automatiquement les sous-titres pour les URL de streaming",
       "languages": "Langues (séparées par des virgules, ex. en,zh-CN)"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "Décalage des sous-titres",
+    "audioDelay": "Décalage audio",
+    "loopStart": "Début de boucle",
+    "loopEnd": "Fin de boucle",
+    "looping": "Boucle active",
+    "loopCleared": "Boucle effacée",
+    "speed": "Vitesse",
+    "bookmarked": "Signet ajouté"
+  },
+  "chapters": {
+    "title": "Chapitres",
+    "none": "Ce fichier n'a pas de chapitres."
+  },
+  "keybinds": {
+    "section": "Raccourcis clavier",
+    "hint": "Cliquez sur un raccourci, puis appuyez sur les touches voulues. Échap annule.",
+    "press": "Appuyez sur des touches…",
+    "resetAll": "Tout réinitialiser",
+    "reset": "Réinitialiser",
+    "changed": "modifié",
+    "groups": {
+      "playback": "Lecture",
+      "volume": "Volume",
+      "navigation": "Navigation",
+      "tracks": "Sous-titres et audio",
+      "window": "Fenêtre",
+      "capture": "Capture",
+      "app": "Application"
+    }
+  },
+  "mouse": {
+    "section": "Souris",
+    "hint": "Molette, clics et gestes par glisser-droit. Un glisser-droit ne devient un geste qu’au-delà d’une distance nette — un simple clic droit ouvre toujours le menu.",
+    "none": "Aucune",
+    "triggers": {
+      "wheel_up": "Molette haut",
+      "wheel_down": "Molette bas",
+      "click": "Clic",
+      "double_click": "Double clic",
+      "middle_click": "Clic milieu",
+      "gesture_left": "Glisser à gauche",
+      "gesture_right": "Glisser à droite",
+      "gesture_up": "Glisser vers le haut",
+      "gesture_down": "Glisser vers le bas"
+    }
+  },
+  "recent": {
+    "title": "Lus récemment",
+    "clear": "Effacer"
+  },
+  "bookmarks": {
+    "title": "Signets",
+    "add": "Marquer ce moment",
+    "none": "Aucun signet dans ce fichier.",
+    "rename": "Renommer",
+    "remove": "Supprimer",
+    "namePlaceholder": "Nommer cet endroit"
+  },
+  "music": {
+    "section": "Mode musique",
+    "noTrack": "Aucune lecture",
+    "unknownArtist": "Artiste inconnu",
+    "toggle": "Mode musique",
+    "auto": "Ouvrir les fichiers audio en mode musique",
+    "autoHint": "Un fichier sans image s'ouvre dans la disposition compacte plutôt qu'en rectangle noir."
   }
 }

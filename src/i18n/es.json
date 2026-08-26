@@ -60,7 +60,12 @@
     "next": "Siguiente",
     "prev": "Anterior",
     "clear": "Vaciar la lista",
-    "removeEntry": "Eliminar entrada"
+    "removeEntry": "Eliminar entrada",
+    "repeat": "Repetir",
+    "repeatOff": "Desactivado",
+    "repeatOne": "Uno",
+    "repeatAll": "Todo",
+    "shuffle": "Aleatorio"
   },
   "subtitle": {
     "title": "Subtítulos",
@@ -68,11 +73,21 @@
     "loadFile": "Cargar archivo de subtítulos…",
     "generate": "Generar con IA",
     "generating": "Generando…",
-    "noTracks": "No hay pistas de subtítulos cargadas."
+    "noTracks": "No hay pistas de subtítulos cargadas.",
+    "delay": "Retardo",
+    "reset": "Restablecer",
+    "style": "Estilo de subtítulos",
+    "styleSize": "Tamaño",
+    "stylePosition": "Posición",
+    "styleColor": "Color",
+    "styleOutline": "Contorno",
+    "styleBold": "Negrita"
   },
   "audio": {
     "title": "Pista de audio",
-    "noTracks": "Sin pistas de audio."
+    "noTracks": "Sin pistas de audio.",
+    "delay": "Retardo",
+    "reset": "Restablecer"
   },
   "filters": {
     "title": "Filtros de vídeo",
@@ -196,5 +211,72 @@
       "autoDownload": "Descargar subtítulos automáticamente para URL de streaming",
       "languages": "Idiomas (separados por comas, p. ej. en,zh-CN)"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "Retardo de subtítulos",
+    "audioDelay": "Retardo de audio",
+    "loopStart": "Inicio del bucle",
+    "loopEnd": "Fin del bucle",
+    "looping": "En bucle",
+    "loopCleared": "Bucle borrado",
+    "speed": "Velocidad",
+    "bookmarked": "Marcador añadido"
+  },
+  "chapters": {
+    "title": "Capítulos",
+    "none": "Este archivo no tiene capítulos."
+  },
+  "keybinds": {
+    "section": "Atajos de teclado",
+    "hint": "Haz clic en un atajo y pulsa las teclas que quieras. Esc cancela.",
+    "press": "Pulsa las teclas…",
+    "resetAll": "Restablecer todo",
+    "reset": "Restablecer",
+    "changed": "modificado",
+    "groups": {
+      "playback": "Reproducción",
+      "volume": "Volumen",
+      "navigation": "Navegación",
+      "tracks": "Subtítulos y audio",
+      "window": "Ventana",
+      "capture": "Captura",
+      "app": "Aplicación"
+    }
+  },
+  "mouse": {
+    "section": "Ratón",
+    "hint": "Rueda, clics y gestos de arrastre con el botón derecho. Un arrastre solo cuenta como gesto a partir de cierta distancia; un clic derecho normal sigue abriendo el menú.",
+    "none": "Ninguna",
+    "triggers": {
+      "wheel_up": "Rueda arriba",
+      "wheel_down": "Rueda abajo",
+      "click": "Clic",
+      "double_click": "Doble clic",
+      "middle_click": "Clic central",
+      "gesture_left": "Arrastrar izquierda",
+      "gesture_right": "Arrastrar derecha",
+      "gesture_up": "Arrastrar arriba",
+      "gesture_down": "Arrastrar abajo"
+    }
+  },
+  "recent": {
+    "title": "Reproducidos recientemente",
+    "clear": "Borrar"
+  },
+  "bookmarks": {
+    "title": "Marcadores",
+    "add": "Marcar este momento",
+    "none": "Este archivo aún no tiene marcadores.",
+    "rename": "Renombrar",
+    "remove": "Eliminar",
+    "namePlaceholder": "Nombra este punto"
+  },
+  "music": {
+    "section": "Modo música",
+    "noTrack": "Nada en reproducción",
+    "unknownArtist": "Artista desconocido",
+    "toggle": "Modo música",
+    "auto": "Abrir archivos de audio en modo música",
+    "autoHint": "Un archivo sin imagen se abre con el diseño compacto en lugar de un rectángulo negro."
   }
 }

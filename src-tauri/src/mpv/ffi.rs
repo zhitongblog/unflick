@@ -30,6 +30,11 @@ pub const MPV_RENDER_UPDATE_FRAME: u64 = 1 << 0;
 pub const MPV_EVENT_NONE: c_int = 0;
 #[allow(dead_code)]
 pub const MPV_EVENT_SHUTDOWN: c_int = 1;
+/// mpv has begun loading a file. Everything before it in the queue belongs
+/// to whatever was playing previously — `loadfile` over a playing file emits
+/// that file's end-of-file first.
+#[allow(dead_code)]
+pub const MPV_EVENT_START_FILE: c_int = 6;
 #[allow(dead_code)]
 pub const MPV_EVENT_END_FILE: c_int = 7;
 #[allow(dead_code)]

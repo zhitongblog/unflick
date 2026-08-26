@@ -67,8 +67,21 @@ function PlaylistEntry({
 }
 
 export default function PlaylistPanel() {
-  const { items, isLoading, fetchPlaylist, add, remove, clear, playAt, togglePlaylist } =
-    usePlaylistStore();
+  const {
+    items,
+    isLoading,
+    fetchPlaylist,
+    add,
+    remove,
+    clear,
+    playAt,
+    togglePlaylist,
+    repeat,
+    shuffle,
+    fetchModes,
+    cycleRepeat,
+    toggleShuffle,
+  } = usePlaylistStore();
   const t = useStrings();
   const play = usePlayerStore((s) => s.play);
   const hasFetchedRef = useRef(false);
@@ -77,8 +90,16 @@ export default function PlaylistPanel() {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
       fetchPlaylist();
+      fetchModes();
     }
-  }, [fetchPlaylist]);
+  }, [fetchPlaylist, fetchModes]);
+
+  const repeatLabel =
+    repeat === "one"
+      ? t.playlist.repeatOne
+      : repeat === "all"
+        ? t.playlist.repeatAll
+        : t.playlist.repeatOff;
 
   const handleAddFile = async () => {
     try {
@@ -174,12 +195,51 @@ export default function PlaylistPanel() {
           ))}
         </div>
 
-        {/* Footer */}
+        {/* Footer: item count plus the two playback-order toggles. Both
+            report backend state — the Rust playlist owns repeat/shuffle so
+            CLI and MCP see the same setting. */}
         {!isLoading && items.length > 0 && (
-          <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <div
+            className="flex items-center justify-between px-4 py-2"
+            style={{ borderTop: "1px solid var(--border-subtle)" }}
+          >
             <p className="text-[10px] text-white/15 font-medium">
               {items.length} item{items.length !== 1 ? "s" : ""}
             </p>
+            <div className="flex items-center gap-1">
+              <button
+                className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-medium transition-colors hover:bg-white/6 ${
+                  shuffle ? "text-brand-purple" : "text-white/25 hover:text-white/50"
+                }`}
+                onClick={toggleShuffle}
+                title={t.playlist.shuffle}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 3 21 3 21 8" />
+                  <line x1="4" y1="20" x2="21" y2="3" />
+                  <polyline points="21 16 21 21 16 21" />
+                  <line x1="15" y1="15" x2="21" y2="21" />
+                  <line x1="4" y1="4" x2="9" y2="9" />
+                </svg>
+              </button>
+              <button
+                className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-medium transition-colors hover:bg-white/6 ${
+                  repeat === "off" ? "text-white/25 hover:text-white/50" : "text-brand-purple"
+                }`}
+                onClick={cycleRepeat}
+                title={`${t.playlist.repeat}: ${repeatLabel}`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="17 1 21 5 17 9" />
+                  <path d="M3 11V9a4 4 0 014-4h14" />
+                  <polyline points="7 23 3 19 7 15" />
+                  <path d="M21 13v2a4 4 0 01-4 4H3" />
+                </svg>
+                {/* "1" badge distinguishes repeat-one from repeat-all,
+                    which otherwise share an icon. */}
+                {repeat === "one" && <span className="text-[9px] leading-none">1</span>}
+              </button>
+            </div>
           </div>
         )}
       </motion.div>

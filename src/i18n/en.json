@@ -60,7 +60,12 @@
     "next": "Next",
     "prev": "Previous",
     "clear": "Clear playlist",
-    "removeEntry": "Remove this entry"
+    "removeEntry": "Remove this entry",
+    "repeat": "Repeat",
+    "repeatOff": "Off",
+    "repeatOne": "One",
+    "repeatAll": "All",
+    "shuffle": "Shuffle"
   },
   "subtitle": {
     "title": "Subtitles",
@@ -68,11 +73,21 @@
     "loadFile": "Load subtitle file…",
     "generate": "Generate with AI",
     "generating": "Generating…",
-    "noTracks": "No subtitle tracks loaded."
+    "noTracks": "No subtitle tracks loaded.",
+    "delay": "Delay",
+    "reset": "Reset",
+    "style": "Subtitle style",
+    "styleSize": "Size",
+    "stylePosition": "Position",
+    "styleColor": "Colour",
+    "styleOutline": "Outline",
+    "styleBold": "Bold"
   },
   "audio": {
     "title": "Audio Track",
-    "noTracks": "No audio tracks."
+    "noTracks": "No audio tracks.",
+    "delay": "Delay",
+    "reset": "Reset"
   },
   "filters": {
     "title": "Video Filters",
@@ -196,5 +211,72 @@
       "autoDownload": "Auto-download subtitles for streaming URLs",
       "languages": "Languages (comma-separated, e.g. en,zh-CN)"
     }
+  },
+  "hotkeys": {
+    "subtitleDelay": "Subtitle delay",
+    "audioDelay": "Audio delay",
+    "loopStart": "Loop start",
+    "loopEnd": "Loop end",
+    "looping": "Looping",
+    "loopCleared": "Loop cleared",
+    "speed": "Speed",
+    "bookmarked": "Bookmarked"
+  },
+  "chapters": {
+    "title": "Chapters",
+    "none": "This file has no chapters."
+  },
+  "keybinds": {
+    "section": "Keyboard shortcuts",
+    "hint": "Click a shortcut, then press the keys you want. Esc cancels.",
+    "press": "Press keys…",
+    "resetAll": "Reset all",
+    "reset": "Reset",
+    "changed": "changed",
+    "groups": {
+      "playback": "Playback",
+      "volume": "Volume",
+      "navigation": "Navigation",
+      "tracks": "Subtitles & audio",
+      "window": "Window",
+      "capture": "Capture",
+      "app": "Application"
+    }
+  },
+  "mouse": {
+    "section": "Mouse",
+    "hint": "Wheel, clicks and right-drag gestures. A right-drag only counts as a gesture past a clear distance — a plain right-click still opens the menu.",
+    "none": "None",
+    "triggers": {
+      "wheel_up": "Wheel up",
+      "wheel_down": "Wheel down",
+      "click": "Click",
+      "double_click": "Double click",
+      "middle_click": "Middle click",
+      "gesture_left": "Drag left",
+      "gesture_right": "Drag right",
+      "gesture_up": "Drag up",
+      "gesture_down": "Drag down"
+    }
+  },
+  "recent": {
+    "title": "Recently played",
+    "clear": "Clear"
+  },
+  "bookmarks": {
+    "title": "Bookmarks",
+    "add": "Bookmark this moment",
+    "none": "No bookmarks in this file yet.",
+    "rename": "Rename",
+    "remove": "Delete",
+    "namePlaceholder": "Name this spot"
+  },
+  "music": {
+    "section": "Music mode",
+    "noTrack": "Nothing playing",
+    "unknownArtist": "Unknown artist",
+    "toggle": "Music mode",
+    "auto": "Switch to music mode for audio files",
+    "autoHint": "A file with no picture opens in the compact layout instead of a black rectangle."
   }
 }

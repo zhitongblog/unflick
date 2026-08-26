@@ -4,12 +4,23 @@ pub mod render_loop;
 pub mod types;
 pub mod daemon;
 pub mod i18n;
+pub mod keybind;
+pub mod mousebind;
 pub mod library;
 pub mod settings;
 pub mod whisper;
 pub mod yt_dlp;
+pub mod audio;
+pub mod http;
+pub mod nowplaying;
+pub mod source;
 pub mod sponsorblock;
+pub mod opensubtitles;
+pub mod thumbnail;
+pub mod transcript;
+pub mod vision;
 pub mod url_post_play;
+pub mod window;
 
 #[cfg(target_os = "windows")]
 pub mod win_assoc;

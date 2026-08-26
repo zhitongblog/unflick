@@ -2,8 +2,20 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePlayerStore } from "../../stores/playerStore";
 import { usePlaylistStore } from "../../stores/playlistStore";
+import { formatSpeed } from "../../lib/format";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+/**
+ * Fine-tune bounds and step. The presets cover the rates people ask for by
+ * name; this covers the ones they arrive at by ear — 1.35× for a slow
+ * lecturer. Narrower than mpv's own 0.01–100 on purpose: the popover is not
+ * where anyone sets 40× playback, and a slider spanning four orders of
+ * magnitude is useless for the adjustment this control exists to make.
+ */
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 4;
+const SPEED_STEP = 0.05;
 
 function PrevIcon() {
   return (
@@ -77,6 +89,24 @@ export default function PlaybackControls() {
     else if (file) play(file);
   };
 
+  /**
+   * Nudge by whole steps off a rounded base, so arriving here from a preset
+   * like 1.25 keeps the readout on the same grid instead of drifting to
+   * 1.2999999.
+   */
+  const nudgeSpeed = (direction: number) => {
+    const base = Math.round(speed / SPEED_STEP) * SPEED_STEP;
+    const next = Math.min(SPEED_MAX, Math.max(SPEED_MIN, base + direction * SPEED_STEP));
+    setSpeed(parseFloat(next.toFixed(2)));
+  };
+
+  const nudgeBtnClass = (enabled: boolean) =>
+    `flex h-6 w-6 items-center justify-center rounded-md text-[13px] leading-none transition-colors ${
+      enabled
+        ? "text-white/60 hover:bg-white/10 hover:text-white"
+        : "cursor-not-allowed text-white/20"
+    }`;
+
   const iconBtnClass = (enabled: boolean) =>
     `rounded-full p-2 transition-all duration-150 ${
       enabled
@@ -141,7 +171,7 @@ export default function PlaybackControls() {
           onClick={() => setShowSpeedMenu(!showSpeedMenu)}
           title="Playback speed"
         >
-          {speed}x
+          {formatSpeed(speed)}
         </button>
 
         <AnimatePresence>
@@ -161,9 +191,44 @@ export default function PlaybackControls() {
                   }`}
                   onClick={() => { setSpeed(rate); setShowSpeedMenu(false); }}
                 >
-                  {rate}x
+                  {formatSpeed(rate)}
                 </button>
               ))}
+
+              {/* Fine tune. Stays open while you nudge — the whole point is
+                  landing on a rate the presets don't have. */}
+              <div className="mt-1 border-t border-white/10 px-3 pb-1 pt-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    className={nudgeBtnClass(speed > SPEED_MIN)}
+                    disabled={speed <= SPEED_MIN}
+                    onClick={() => nudgeSpeed(-1)}
+                    title={`-${SPEED_STEP}`}
+                  >
+                    &#8722;
+                  </button>
+                  <span className="min-w-[3.25rem] text-center text-[11px] font-medium tabular-nums text-white/80">
+                    {formatSpeed(speed)}
+                  </span>
+                  <button
+                    className={nudgeBtnClass(speed < SPEED_MAX)}
+                    disabled={speed >= SPEED_MAX}
+                    onClick={() => nudgeSpeed(1)}
+                    title={`+${SPEED_STEP}`}
+                  >
+                    +
+                  </button>
+                </div>
+                <input
+                  type="range"
+                  min={SPEED_MIN}
+                  max={SPEED_MAX}
+                  step={SPEED_STEP}
+                  value={Math.min(SPEED_MAX, Math.max(SPEED_MIN, speed))}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                  className="mt-2 w-full accent-brand-purple"
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

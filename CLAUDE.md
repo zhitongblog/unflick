@@ -34,6 +34,50 @@ After implementing any feature, Claude MUST verify it by:
 1. Running the CLI command and checking stdout/exit code
 2. Calling the MCP tool and validating the JSON response
 3. If either fails, fix before moving on — do NOT defer to "test later"
+4. **Adding a case to `src-tauri/tests/`** — a verification that lives only
+   in a chat transcript is gone the moment the session ends
+
+### Test suite
+
+```bash
+pnpm test                  # frontend unit tests (vitest, no DOM needed)
+
+cd src-tauri
+cargo test                 # everything: unit + integration
+cargo test --lib           # unit only (fast, no media needed)
+cargo test --test playback -- --test-threads=2
+```
+
+Frontend tests cover the pure logic that has no business being verified by
+hand: chord derivation in `lib/keys.ts` (which must agree byte-for-byte
+with `core::keybind::normalize`, or a binding stores fine and never fires)
+and the gesture/wheel thresholds in `lib/gesture.ts`. They deliberately
+avoid a DOM environment — the functions read plain fields, so a test can
+pass a plain object.
+
+`tests/playback.rs` and `tests/understanding.rs` drive the **real binary**
+against a **real libmpv**, because that's where the bugs live. The two
+regressions the suite was written for — a file loading paused at 0:00, and
+a finished file reopening on its last frame — both compiled cleanly and
+both made the player look broken.
+
+Three environment variables keep a test run from colliding with a player
+the developer is using at the time, and from colliding with each other.
+**Use all three for manual GUI testing too** — driving the default port
+means driving whatever the user is actually watching:
+
+| Variable | Effect |
+|---|---|
+| `UNFLICK_CONTROL_ADDR` | Control port. Tests bind 29542+ so the real 19542 is never touched |
+| `UNFLICK_DATA_DIR` | Library database location. Tests get a throwaway one, so no resume points land in a real watch history |
+| `UNFLICK_CONFIG_DIR` | settings.json location — keybindings, mouse bindings, subtitle styling |
+
+Fixture media is generated once with the bundled ffmpeg into
+`src-tauri/target/test-fixtures/` and reused. `cargo clean` disposes of it.
+
+Integration tests need libmpv and ffmpeg present: vendored on Windows,
+`brew install mpv ffmpeg` / `apt install libmpv-dev ffmpeg` elsewhere.
+CI (`.github/workflows/ci.yml`) runs all of it on Windows, macOS and Linux.
 
 ## Tech Stack
 
@@ -106,12 +150,16 @@ The binary detects the mode from arguments and routes accordingly. All three mod
 ```bash
 # Playback
 unflick play <file> [--seek <seconds>] [--volume <0-100>] [--speed <rate>]
+# <file> is a path, an http(s) URL, or a path on a mounted share
+# (\\server\share\film.mkv, /Volumes/…, /mnt/…). smb:// and nfs:// URLs are
+# refused with instructions — no mpv build we ship speaks either protocol.
+# The reply carries `loaded`: false means still opening, not on screen yet.
 unflick pause
 unflick resume
 unflick stop
 unflick seek <seconds>
 unflick volume <0-100>
-unflick speed <rate>
+unflick speed [<rate>] [--relative]     # omit the rate to read it
 unflick status                  # JSON: file, position, duration, volume, state
 
 # Playlist
@@ -120,11 +168,90 @@ unflick playlist list
 unflick playlist next
 unflick playlist prev
 unflick playlist clear
+unflick playlist repeat [off|one|all]     # omit value to read
+unflick playlist shuffle [on|off]         # omit value to read
 
 # Subtitles
+# Audio
+unflick audio eq get
+unflick audio eq on | off
+unflick audio eq band <0-9> <dB>          # 31Hz..16kHz, -12..+12
+unflick audio eq curve <10 gains>
+unflick audio eq preamp <dB>
+unflick audio eq normalize on|off
+unflick audio eq preset [name]            # omit to list
+unflick audio eq reset
+unflick audio pitch [on|off]              # keep pitch when changing speed
+
 unflick subtitle load <file>
 unflick subtitle list
 unflick subtitle select <id>
+unflick subtitle search [query] [--file <path>] [--lang zh-CN,en] [--no-hash]
+unflick subtitle download <file_id> [--lang <code>] [--no-load]
+unflick subtitle auto [query] [--lang <codes>]     # search + download best match
+unflick subtitle delay [<seconds>] [--relative]
+unflick subtitle style get
+unflick subtitle style set <scale|pos|color|border_size|bold> <value>
+
+# Audio
+unflick audio list
+unflick audio select <id>
+unflick audio delay [<seconds>] [--relative]
+
+# Chapters
+unflick chapter list
+unflick chapter seek <index>
+unflick chapter next
+unflick chapter prev
+unflick chapter generate [--count <n>]    # derive chapters from the transcript
+unflick chapter set '<json>'              # [{"time":0,"title":"Intro"}, ...]
+unflick chapter clear
+
+# Transcript (reads the subtitle track the player has open)
+unflick transcript get
+unflick transcript search <query> [--limit <n>]
+unflick transcript seek <query> [--occurrence <n>]
+
+# Picture geometry
+unflick video get
+unflick video set <aspect|rotate|zoom|panscan|deinterlace> <value>
+unflick video reset
+
+# Bookmarks (named positions, kept across sessions)
+unflick bookmark add [--name <label>] [--position <s>] [--file <path>]
+unflick bookmark list [--file <path>] [--all]
+unflick bookmark goto <id>              # seeks, or opens the file if it's another one
+unflick bookmark rename <id> <name>     # --clear drops the name
+unflick bookmark remove <id>
+unflick bookmark clear [--file <path>] [--all]
+
+# Window and what's playing
+unflick window mode [normal|pip|music]  # omit to read; needs the GUI running
+unflick nowplaying [--cover]            # title / artist / album / has_video
+
+# Recently played / privacy
+unflick recent list [--limit <n>]
+unflick recent clear
+unflick incognito [on|off]              # omit to read
+
+# Input bindings
+unflick keybind list
+unflick keybind set <action> <key>
+unflick keybind reset [<action>]
+unflick mouse list
+unflick mouse set <trigger> <action>
+unflick mouse reset [<trigger>]
+
+# Frame capture (for multimodal models)
+unflick frame capture [--output <path>] [--position <s>] [--max-edge <px>]
+
+# A-B loop / frame stepping
+unflick loop a [<seconds>]      # omit to use the current position
+unflick loop b [<seconds>]
+unflick loop clear
+unflick loop status
+unflick frame next
+unflick frame prev
 
 # Media Library
 unflick library scan <dir>
@@ -151,14 +278,51 @@ unflick --mcp                   # Start MCP server (stdio)
 | `stop` | Stop playback | `unflick stop` |
 | `seek` | Seek to position | `unflick seek` |
 | `set_volume` | Set volume level | `unflick volume` |
-| `set_speed` | Set playback speed | `unflick speed` |
+| `set_speed` | Get or set playback speed (absolute or relative) | `unflick speed` |
 | `get_status` | Get playback state | `unflick status` |
 | `screenshot` | Capture current frame | `unflick screenshot` |
 | `clip` | Extract video segment | `unflick clip` |
+| `equalizer_get` / `equalizer_set` | 10-band EQ + normalization | `unflick audio eq` |
+| `equalizer_preset` / `equalizer_presets` | Named curves | `unflick audio eq preset` |
+| `equalizer_reset` | Clear audio filters | `unflick audio eq reset` |
+| `pitch_correction` | Keep pitch when changing speed | `unflick audio pitch` |
 | `load_subtitle` | Load subtitle file | `unflick subtitle load` |
+| `get_subtitles` | Find + load the best online subtitle | `unflick subtitle auto` |
+| `find_subtitles` | Search OpenSubtitles, no download | `unflick subtitle search` |
+| `download_subtitle` | Download one search result | `unflick subtitle download` |
 | `library_scan` | Scan directory for media | `unflick library scan` |
 | `library_search` | Search media library | `unflick library search` |
 | `file_info` | Get media file metadata | `unflick info` |
+| `subtitle_delay` | Get/set subtitle timing offset | `unflick subtitle delay` |
+| `audio_delay` | Get/set audio timing offset | `unflick audio delay` |
+| `chapter_list` / `chapter_seek` | Chapter navigation | `unflick chapter …` |
+| `ab_loop` | Repeat a section | `unflick loop …` |
+| `frame_step` | Step one frame | `unflick frame next` |
+| `playlist_repeat` / `playlist_shuffle` | Playback order | `unflick playlist …` |
+| `bookmark_add` / `bookmark_list` | Save and read named positions | `unflick bookmark …` |
+| `bookmark_goto` | Jump to one, loading its file if needed | `unflick bookmark goto` |
+| `bookmark_rename` / `bookmark_remove` / `bookmark_clear` | Manage them | `unflick bookmark …` |
+| `window_mode` | Normal / picture-in-picture / music window | `unflick window mode` |
+| `now_playing` | Title, artist, album, and whether there is picture | `unflick nowplaying` |
+
+### Understanding tools
+
+These need the player's own state and can't be replicated by a wrapper
+driving unflick from outside:
+
+| Tool | Description | Maps to CLI |
+|------|-------------|-------------|
+| `search_transcript` | Find a phrase in the open subtitle track, with timestamps | `unflick transcript search` |
+| `seek_to_text` | Jump to where a phrase is spoken | `unflick transcript seek` |
+| `transcript_get` | Full transcript as timed cues | `unflick transcript get` |
+| `generate_chapters` | Derive chapters from transcript pauses | `unflick chapter generate` |
+| `set_chapters` | Supply a chapter list the model wrote itself | `unflick chapter set` |
+| `describe_frame` | Return the on-screen frame as an image block | `unflick frame capture` |
+
+Generated chapters are real navigation, not just data: they show up in
+`chapter_list`, mark the progress bar, and respond to `chapter_seek`. They
+are held next to mpv (which can't be given chapters at runtime) and cleared
+whenever the file changes.
 
 ### Resources
 | Resource | Description |

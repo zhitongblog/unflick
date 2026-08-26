@@ -31,6 +31,12 @@ const SUPPORTED_STREAMING = "HLS (.m3u8), MPEG-DASH (.mpd) live and VOD streams"
 const SUPPORTED_EXTRACT =
   STREAMING_SITES.map((s) => s.name).join(", ") + " + 1500 more (via yt-dlp)";
 const UNSUPPORTED = "Netflix, Disney+, iQIYI VIP — DRM-protected, cannot be played";
+// The box takes a path as readily as a URL, which is not obvious from a
+// field labelled "URL" — and a share is the one case where what people
+// naturally type (smb://) is the one form that does not work.
+const SUPPORTED_NETWORK =
+  String.raw`Paste a path to a mounted share: \\server\share\film.mkv on Windows, ` +
+  "/Volumes/… or /mnt/… elsewhere. smb:// and nfs:// URLs are not supported — mount first.";
 
 export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("");
@@ -41,6 +47,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const play = usePlayerStore((s) => s.play);
   const extracting = usePlayerStore((s) => s.extracting);
   const extractError = usePlayerStore((s) => s.extractError);
+  const openError = usePlayerStore((s) => s.openError);
   const proxy = useSettingsStore((s) => s.proxy);
   const savedQuality = useSettingsStore((s) => s.preferredQuality);
   const t = useStrings();
@@ -87,10 +94,10 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
   // error (or there was no extraction needed). This prevents the dialog from
   // auto-closing the moment it opens while a video is already playing.
   useEffect(() => {
-    if (played && extracting === null && !extractError) {
+    if (played && extracting === null && !extractError && !openError) {
       onClose();
     }
-  }, [played, extracting, extractError, onClose]);
+  }, [played, extracting, extractError, openError, onClose]);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
@@ -130,7 +137,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handlePlay(); }}
-              placeholder="https://...  or  https://www.youtube.com/watch?v=..."
+              placeholder="https://...  or  a path on a mounted share"
               disabled={extracting !== null}
               className="w-full rounded-lg border border-white/6 bg-white/4 px-3 py-2.5 text-[12px] text-white/70 outline-none transition-colors placeholder:text-white/15 focus:border-brand-purple/40 disabled:opacity-50"
             />
@@ -176,10 +183,12 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Error from extraction */}
-          {extractError && (
+          {/* Extraction failed, or the source itself would not open. The
+              second one is what a share URL or a dead host lands on, and it
+              carries the advice for getting to the file another way. */}
+          {(extractError || openError) && (
             <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-300/90">
-              {extractError}
+              {extractError || openError}
             </div>
           )}
 
@@ -214,6 +223,10 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
                     {" "}and place yt-dlp.exe on your PATH.
                   </p>
                 )}
+              </div>
+              <div>
+                <span className="text-emerald-300/90">✓ Network shares</span>
+                <p className="text-white/30 mt-0.5">{SUPPORTED_NETWORK}</p>
               </div>
               <div>
                 <span className="text-red-400/80">✗ DRM-protected</span>
