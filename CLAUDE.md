@@ -71,6 +71,7 @@ means driving whatever the user is actually watching:
 | `UNFLICK_CONTROL_ADDR` | Control port. Tests bind 29542+ so the real 19542 is never touched |
 | `UNFLICK_DATA_DIR` | Library database location. Tests get a throwaway one, so no resume points land in a real watch history |
 | `UNFLICK_CONFIG_DIR` | settings.json location — keybindings, mouse bindings, subtitle styling |
+| `UNFLICK_LEGACY_DIR` | Where `cleanup` looks for a stale install. Tests point it at a fake one — the real rule (never delete the live caches that share that folder) cannot be exercised against a real machine |
 
 Fixture media is generated once with the bundled ffmpeg into
 `src-tauri/target/test-fixtures/` and reused. `cargo clean` disposes of it.
@@ -225,6 +226,9 @@ unflick bookmark rename <id> <name>     # --clear drops the name
 unflick bookmark remove <id>
 unflick bookmark clear [--file <path>] [--all]
 
+# Housekeeping
+unflick cleanup [--apply]               # files an older install left behind
+
 # Window and what's playing
 unflick window mode [normal|pip|music]  # omit to read; needs the GUI running
 unflick nowplaying [--cover]            # title / artist / album / has_video
@@ -304,6 +308,7 @@ unflick --mcp                   # Start MCP server (stdio)
 | `bookmark_rename` / `bookmark_remove` / `bookmark_clear` | Manage them | `unflick bookmark …` |
 | `window_mode` | Normal / picture-in-picture / music window | `unflick window mode` |
 | `now_playing` | Title, artist, album, and whether there is picture | `unflick nowplaying` |
+| `cleanup` | Find (and optionally remove) files an older install stranded | `unflick cleanup` |
 
 ### Understanding tools
 

@@ -318,6 +318,8 @@ pub fn run() {
             commands::window_mode,
             commands::toggle_music_mode,
             commands::now_playing,
+            commands::cleanup_scan,
+            commands::cleanup_apply,
             commands::set_fullscreen,
             commands::exit_fullscreen,
             commands::open_file_dialog,

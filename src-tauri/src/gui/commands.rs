@@ -808,6 +808,21 @@ pub fn toggle_music_mode(
     Ok(json!({"mode": mode.as_str()}))
 }
 
+/// What an earlier install left behind, and how much it is worth.
+///
+/// Split from `cleanup_apply` rather than taking a flag, so that showing the
+/// number can never be one typo away from deleting half a gigabyte.
+#[command]
+pub fn cleanup_scan() -> Result<Value, String> {
+    serde_json::to_value(crate::core::cleanup::scan()).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn cleanup_apply() -> Result<Value, String> {
+    let report = crate::core::cleanup::remove_leftovers().map_err(|e| e.to_string())?;
+    serde_json::to_value(report).map_err(|e| e.to_string())
+}
+
 /// Tags and cover art for whatever is loaded — what music mode renders.
 ///
 /// The cover comes back as a data URL on top of its path: the webview cannot

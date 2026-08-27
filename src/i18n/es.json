@@ -278,5 +278,14 @@
     "toggle": "Modo música",
     "auto": "Abrir archivos de audio en modo música",
     "autoHint": "Un archivo sin imagen se abre con el diseño compacto en lugar de un rectángulo negro."
+  },
+  "disk": {
+    "section": "Disco",
+    "found": "Una versión anterior dejó {size}",
+    "hint": "La actualización movió la carpeta de instalación. Estos archivos ya no los usa nada; se conservan las miniaturas y las carátulas.",
+    "reclaim": "Liberar {size}",
+    "working": "Eliminando…",
+    "done": "{size} liberados",
+    "failed": "No se pudo eliminar todo — consulta el registro"
   }
 }

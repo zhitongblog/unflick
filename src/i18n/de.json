@@ -278,5 +278,14 @@
     "toggle": "Musikmodus",
     "auto": "Audiodateien im Musikmodus öffnen",
     "autoHint": "Eine Datei ohne Bild öffnet sich im kompakten Layout statt als schwarzes Rechteck."
+  },
+  "disk": {
+    "section": "Speicher",
+    "found": "Eine frühere Version hat {size} zurückgelassen",
+    "hint": "Beim Upgrade hat sich der Installationsordner geändert. Diese Dateien werden von nichts mehr verwendet; Vorschaubilder und Cover bleiben erhalten.",
+    "reclaim": "{size} freigeben",
+    "working": "Wird entfernt…",
+    "done": "{size} freigegeben",
+    "failed": "Es konnte nicht alles entfernt werden — siehe Protokoll"
   }
 }

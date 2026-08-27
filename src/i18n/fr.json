@@ -278,5 +278,14 @@
     "toggle": "Mode musique",
     "auto": "Ouvrir les fichiers audio en mode musique",
     "autoHint": "Un fichier sans image s'ouvre dans la disposition compacte plutôt qu'en rectangle noir."
+  },
+  "disk": {
+    "section": "Disque",
+    "found": "Une version précédente a laissé {size}",
+    "hint": "La mise à jour a déplacé le dossier d'installation. Ces fichiers ne servent plus à rien ; vos vignettes et pochettes sont conservées.",
+    "reclaim": "Libérer {size}",
+    "working": "Suppression…",
+    "done": "{size} libérés",
+    "failed": "Suppression incomplète — voir le journal"
   }
 }

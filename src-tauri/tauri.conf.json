@@ -107,7 +107,8 @@
         "languages": [
           "English",
           "SimpChinese"
-        ]
+        ],
+        "installerHooks": "./installer-hooks.nsh"
       }
     },
     "macOS": {

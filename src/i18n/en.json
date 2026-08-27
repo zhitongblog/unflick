@@ -278,5 +278,14 @@
     "toggle": "Music mode",
     "auto": "Switch to music mode for audio files",
     "autoHint": "A file with no picture opens in the compact layout instead of a black rectangle."
+  },
+  "disk": {
+    "section": "Disk",
+    "found": "An earlier version left {size} behind",
+    "hint": "Upgrading moved the install folder. These files are no longer used by anything; your thumbnails and cover art are kept.",
+    "reclaim": "Reclaim {size}",
+    "working": "Removing…",
+    "done": "Freed {size}",
+    "failed": "Could not remove everything — see the log"
   }
 }

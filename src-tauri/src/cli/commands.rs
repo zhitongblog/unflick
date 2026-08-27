@@ -153,6 +153,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: MouseAction,
     },
+    /// Find (and optionally remove) files an older unflick left behind
+    Cleanup {
+        /// Actually delete them. Without this the command only reports.
+        #[arg(long)]
+        apply: bool,
+    },
     /// The player window: normal, picture-in-picture, or music
     Window {
         #[command(subcommand)]
@@ -1112,6 +1118,36 @@ pub fn run_cli(cli: Cli) -> i32 {
                     if let Some(a) = action { args["action"] = json!(a); }
                     send("keybind_reset", args)
                 }
+            }
+        }
+        Some(Commands::Cleanup { apply }) => {
+            // No `ensure_daemon()`: this reads the filesystem, and starting
+            // a player to ask about disk space would be absurd. It also has
+            // to work when the app is too broken to start.
+            if apply {
+                match crate::core::cleanup::remove_leftovers() {
+                    Ok(report) => CommandResult::ok_with_data(
+                        format!(
+                            "removed {}",
+                            crate::core::cleanup::human_size(report.total_bytes)
+                        ),
+                        serde_json::to_value(&report).unwrap(),
+                    ),
+                    Err(e) => CommandResult::err(e.to_string()),
+                }
+            } else {
+                let report = crate::core::cleanup::scan();
+                let message = match (&report.directory, report.items.len()) {
+                    (None, _) => "nothing left behind".to_string(),
+                    (Some(_), 0) => "nothing left to remove".to_string(),
+                    (Some(dir), n) => format!(
+                        "{} in {} item(s) at {} — re-run with --apply to remove",
+                        crate::core::cleanup::human_size(report.total_bytes),
+                        n,
+                        dir
+                    ),
+                };
+                CommandResult::ok_with_data(message, serde_json::to_value(&report).unwrap())
             }
         }
         Some(Commands::Window { action }) => {

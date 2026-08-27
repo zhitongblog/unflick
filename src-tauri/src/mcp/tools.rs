@@ -12,6 +12,14 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         return handle_describe_frame(args);
     }
 
+    // `cleanup` reads and deletes files; it has no business starting a
+    // player to do it, and it has to work on the machine where the app is
+    // too broken to start — which is exactly the machine someone is trying
+    // to reclaim disk on. Same reason the CLI skips `ensure_daemon`.
+    if name == "cleanup" {
+        return handle_cleanup(args);
+    }
+
     let (cmd, daemon_args) = match name {
         "play" => ("play", args.clone()),
         "pause" => ("pause", json!({})),
@@ -131,6 +139,49 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
 /// the model receives a picture rather than a wall of base64 text. A short
 /// text line goes alongside it, because "which frame is this?" is only
 /// answerable from the timestamp.
+/// Disk housekeeping, answered without a player.
+///
+/// Every other tool routes through the daemon, which means starting mpv.
+/// This one reads and deletes files, and the machine most in need of it is
+/// the one where the app will not start — so it runs here.
+fn handle_cleanup(args: &Value) -> Value {
+    use crate::core::cleanup;
+
+    if args["apply"].as_bool().unwrap_or(false) {
+        return match cleanup::remove_leftovers() {
+            Ok(report) => cleanup_result(
+                format!("removed {}", cleanup::human_size(report.total_bytes)),
+                &report,
+                false,
+            ),
+            Err(e) => tool_result(true, json!([{"type": "text", "text": e.to_string()}])),
+        };
+    }
+
+    let report = cleanup::scan();
+    let summary = match (&report.directory, report.items.len()) {
+        (None, _) => "nothing left behind by an earlier install".to_string(),
+        (Some(_), 0) => "nothing left to remove".to_string(),
+        (Some(dir), n) => format!(
+            "{} in {} item(s) at {}",
+            cleanup::human_size(report.total_bytes),
+            n,
+            dir
+        ),
+    };
+    cleanup_result(summary, &report, false)
+}
+
+/// A one-line summary a model can act on, plus the itemised report.
+fn cleanup_result(summary: String, report: &crate::core::cleanup::Report, is_error: bool) -> Value {
+    let detail = serde_json::to_string_pretty(report).unwrap_or_default();
+    tool_result(
+        is_error,
+        json!([{"type": "text", "text": format!("{}
+{}", summary, detail)}]),
+    )
+}
+
 fn handle_describe_frame(args: &Value) -> Value {
     // Never forward `output` — writing files is the CLI's job. An agent
     // asking to see a frame wants the pixels, not a path on someone's disk.
@@ -208,6 +259,19 @@ fn tools_window() -> Value {
                         "type": "string",
                         "enum": ["normal", "pip", "music"],
                         "description": "Mode to switch to. Omit to read the current one."
+                    }
+                }
+            }
+        },
+        {
+            "name": "cleanup",
+            "description": "Find files an older unflick left behind — on Windows, upgrading from v0.9 moved the install directory and stranded roughly half a gigabyte with no uninstall entry. Reports by default; pass `apply` to delete. The live thumbnail and cover caches share that folder and are never touched.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "apply": {
+                        "type": "boolean",
+                        "description": "Delete what was found. Omit to report only."
                     }
                 }
             }

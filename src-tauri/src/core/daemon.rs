@@ -1426,6 +1426,35 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
+        // ─── Housekeeping ─────────────────────────────────────────────────
+        //
+        // Reporting and removing are separate calls, not a flag on one, so
+        // that "show me" can never be a typo away from "delete it".
+        "cleanup_scan" => {
+            let report = crate::core::cleanup::scan();
+            let message = match (&report.directory, report.items.len()) {
+                (None, _) => "nothing left behind".to_string(),
+                (Some(_), 0) => "nothing left to remove".to_string(),
+                (Some(dir), n) => format!(
+                    "{} in {} item(s) at {}",
+                    crate::core::cleanup::human_size(report.total_bytes),
+                    n,
+                    dir
+                ),
+            };
+            CommandResult::ok_with_data(message, serde_json::to_value(&report).unwrap())
+        }
+        "cleanup_apply" => match crate::core::cleanup::remove_leftovers() {
+            Ok(report) => CommandResult::ok_with_data(
+                format!(
+                    "removed {}",
+                    crate::core::cleanup::human_size(report.total_bytes)
+                ),
+                serde_json::to_value(&report).unwrap(),
+            ),
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+
         "recent_clear" => match db.clear_recent() {
             Ok(n) => CommandResult::ok_with_data(
                 format!("cleared {} history entr(ies)", n),

@@ -15,6 +15,86 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
+/**
+ * Offers back the disk an earlier install stranded.
+ *
+ * Renders nothing when there is nothing to reclaim — a permanent row
+ * reading "0 B to clean up" is the settings bloat this project keeps
+ * saying no to. Someone who never opens a terminal has no other way to
+ * learn those files exist, so this is the only surface that reaches them.
+ */
+function DiskCleanup() {
+  const t = useStrings();
+  const [report, setReport] = useState<{ total_bytes: number; items: unknown[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [freed, setFreed] = useState<number | null>(null);
+
+  useEffect(() => {
+    invoke<{ total_bytes: number; items: unknown[] }>("cleanup_scan")
+      .then((r) => setReport(r.items.length > 0 ? r : null))
+      .catch(() => setReport(null));
+  }, []);
+
+  if (!report && freed === null) return null;
+
+  const size = (bytes: number) => {
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return unit === 0 ? `${bytes} B` : `${value.toFixed(1)} ${units[unit]}`;
+  };
+
+  const reclaim = async () => {
+    if (!report) return;
+    setBusy(true);
+    try {
+      await invoke("cleanup_apply");
+      setFreed(report.total_bytes);
+      setReport(null);
+    } catch (e) {
+      console.error("[settings] cleanup_apply failed", e);
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", { detail: { kind: "error", message: t.disk.failed } }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+        {t.disk.section}
+      </p>
+      {freed !== null ? (
+        <p className="rounded-lg border border-white/6 bg-white/4 px-3 py-2.5 text-[11px] text-brand-purple">
+          {t.disk.done.replace("{size}", size(freed))}
+        </p>
+      ) : (
+        report && (
+          <div className="rounded-lg border border-white/6 bg-white/4 px-3 py-2.5">
+            <p className="text-[11px] text-white/55">
+              {t.disk.found.replace("{size}", size(report.total_bytes))}
+            </p>
+            <p className="mt-0.5 text-[10px] leading-snug text-white/30">{t.disk.hint}</p>
+            <button
+              onClick={reclaim}
+              disabled={busy}
+              className="mt-2 rounded-lg bg-brand-purple/15 px-3 py-1.5 text-[11px] font-medium text-brand-purple transition-colors hover:bg-brand-purple/25 disabled:opacity-40"
+            >
+              {busy ? t.disk.working : t.disk.reclaim.replace("{size}", size(report.total_bytes))}
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     whisperMode, whisperModelPath, whisperBinaryPath, theme, proxy, locale, screenshotDir,
@@ -908,6 +988,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </span>
               </button>
             </div>
+
+            <DiskCleanup />
 
             {/* Music mode for audio files */}
             <div>
