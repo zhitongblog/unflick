@@ -559,7 +559,8 @@ fn spawn_embedded_control_server(
             db,
             embedded: true,
             incognito,
-            window: Some(window_host),
+            window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
+            events: Some(window_host as Arc<dyn core::events::EventSink>),
         });
         if let Err(e) = core::daemon::serve_control(ctx) {
             eprintln!("[unflick] control server: bind failed: {e}");

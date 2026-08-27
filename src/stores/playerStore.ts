@@ -310,6 +310,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         chapters: [],
         bookmarks: [],
         nowPlaying: null,
+        subtitles: [],
       });
       if (s.file) {
         // mpv populates chapter-list slightly after the file loads;
@@ -319,6 +320,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           // Tags land with the file, but mpv fills `metadata` a beat after
           // the load event — same reason the chapter read waits.
           void get().refreshNowPlaying();
+          // And the tracks. mpv auto-loads a sidecar `.srt`, so a file
+          // opened from the CLI or an agent arrives with a subtitle
+          // already on screen — while the menu, which only refetched on
+          // the GUI's own play path, still showed "Off" with a tick and
+          // no way to switch tracks.
+          void get().refreshSubtitles();
         }, 400);
         void get().refreshBookmarks();
       }

@@ -163,6 +163,28 @@ function App() {
     };
   }, []);
 
+  // Lists the 250 ms status poll cannot carry.
+  //
+  // The playlist and the bookmark list live outside mpv and are too big to
+  // poll, so they were fetched when a panel mounted or the file changed —
+  // and `unflick bookmark add` from a script put a pin on the progress bar
+  // that nobody saw until the file was reopened, while `unflick playlist
+  // add` never reached an open playlist panel at all. The control server
+  // now says which list moved; we refetch that one.
+  useEffect(() => {
+    const unlisten = listen<string>("unflick:changed", (e) => {
+      if (e.payload === "bookmarks") {
+        void usePlayerStore.getState().refreshBookmarks();
+      } else if (e.payload === "playlist") {
+        void usePlaylistStore.getState().fetchPlaylist();
+        void usePlaylistStore.getState().fetchModes();
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
   // Same shape as the fullscreen listener above, and for the same reason:
   // `gui::window` owns the mode and announces it, so the PiP button, the
   // music-mode hotkey, `unflick window mode` and an agent's MCP call all

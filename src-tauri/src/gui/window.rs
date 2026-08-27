@@ -16,6 +16,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
 
+use crate::core::events::EventSink;
 use crate::core::window::{WindowHost, WindowMode};
 use crate::gui::state::GuiPlayer;
 
@@ -217,5 +218,16 @@ fn decode(value: u8) -> WindowMode {
         1 => WindowMode::Pip,
         2 => WindowMode::Music,
         _ => WindowMode::Normal,
+    }
+}
+
+/// Forwards "this list changed" from the control server to the frontend.
+///
+/// Same object as the window host purely because both are the GUI's answer
+/// to "the control server needs to reach the window", and both need nothing
+/// but the AppHandle.
+impl EventSink for TauriWindowHost {
+    fn notify(&self, topic: &str) {
+        let _ = self.app.emit("unflick:changed", topic);
     }
 }

@@ -213,6 +213,65 @@ README 里正拿 `subtitle delay -0.3` 当示例。`audio delay`、`seek` 同样
 `filter set` 之前被单独打过补丁，说明这个坑踩过一次但没扫干净。这次三处一起加了
 `allow_negative_numbers`。
 
+## 实机验证批次（2026-08-27）
+
+把积压的「GUI 待实机验证」一次跑完。方法：起 GUI，用 CLI 从外部驱动它，
+`PrintWindow` 抓图（`PW_RENDERFULLCONTENT`，窗口被遮挡也能抓），
+`PostMessage` 点按钮。抓出六个 bug，都是编译器和 headless 测试看不见的那一类。
+
+**1. CLI/MCP 改的列表到不了窗口**
+
+`unflick bookmark add` 加的书签，进度条上要等重新打开文件才出现；
+`unflick playlist add` 加的条目，**打开着的播放列表面板永远不会更新**——面板只在
+挂载时 fetch 一次。250ms 的状态轮询扛不动这两个列表（一个在 mpv 之外，一个是整表），
+所以它们一直靠「面板挂载」和「文件切换」这两个时机。
+
+修法是加一条缝：`core::events::EventSink`。控制面说哪个列表动了，GUI 转成
+`unflick:changed` 事件，前端只重取那一个。粒度故意粗——播放列表和一个文件的书签
+都是几十行，做增量同步是在发明一个没人要的协议。无头 daemon 那边是 `None`：没有
+窗口可通知。
+
+**2. Windows 上音轨菜单显示 "undefined"**
+
+`PlayerBar` 里给原生菜单自己写了个 `type AudioTrack = { id, label, active }`，
+而 `audio_list` 返回的是 `{ id, title, lang, codec, selected }`。`invoke<T>()` 是
+不检查的类型断言，所以 TypeScript 一声不吭，每一条音轨都显示 "undefined"，
+选中的那条也从来不打勾。React 版菜单（macOS/Linux）自己推导 label，是对的——
+两份实现里只有一份对。现在 label 推导和类型都收进 `src/lib/tracks.ts`，
+配三个单元测试。
+
+**3. Windows 上均衡器根本打不开**
+
+`{showEqualizer && <Equalizer/>}` 写在 `{!IS_WINDOWS && (...)}` 里面，
+而在 Windows 上打开它的是**原生菜单**那一项。于是菜单项把 flag 置真，没有任何东西
+渲染它。v0.12 #1 就这样带着一个在主力平台上什么都不做的入口发布了。
+
+**4. 均衡器的十条推子是 Windows 原生蓝**
+
+`-webkit-appearance: slider-vertical` 不只是把滑块立起来，它还强制走**原生渲染**，
+`::-webkit-slider-thumb` 一概失效。正下方的 preamp 滑块（紫色圆头）就是它们本该有的
+样子。Chromium 121 已经删掉这个关键字，`writing-mode: vertical-lr` 才是正解。
+
+**5. 原生控件在深色面板上是白的**
+
+复选框、`<select>`、滚动条由系统绘制，元素背景怎么设都没用。`color-scheme: dark`
+一行解决，`<select>` 再补 `appearance: none` + 自绘箭头 + 品牌色焦点环
+（原来是一圈系统蓝，压在紫色面板上）。
+
+**6. CLI 打开的文件，字幕菜单是空的**
+
+mpv 会自动挂同名 sidecar `.srt`——`unflick subtitle list` 看得见、屏幕上也在显示，
+但菜单里只有一个打了勾的 "Off"，也没法切轨。前端只在自己的 play 路径上
+`refreshSubtitles`；轮询发现文件变了会重取章节、书签、标签，唯独漏了字幕轨。
+
+**已验证通过**：章节刻度、书签针与弹层、播放列表面板（含 repeat/shuffle 状态）、
+均衡器（十段 + preamp + 预设 + 归一化 + 变速不变调）、画面几何（旋转实测生效，
+CLI 读回 `rotate: 90`）、最近播放、在线字幕的无 key 引导页、速度微调
+（点三下 −，1.00× → 0.85×，CLI 读回一致）、Music 模式全套。
+
+> 这条缝是 GUI 耦合的，headless 测试覆盖不到，靠实机验证——记在这里是为了下次
+> 改动它时知道回归得手动跑一遍。
+
 ## v0.13 — 装了就是默认
 
 目标：能当默认播放器用一个月不出事。

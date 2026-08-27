@@ -214,20 +214,50 @@ input[type="range"]::-webkit-slider-thumb:active {
 input[type="range"].eq-slider {
   width: 4px;
   height: 6rem;
-  /* `writing-mode: vertical-lr` (set inline) is the modern way to stand a
-     range input on end; the appearance keyword is the fallback for
-     WebView2 builds that predate it. */
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
+  /* `writing-mode: vertical-lr` (set inline) stands the input on end.
+     The `slider-vertical` appearance keyword used to be here as a fallback
+     for older WebView2 — but it does more than orient the control: it
+     forces the *native* renderer, which ignores `::-webkit-slider-thumb`.
+     The result was ten Windows-blue sliders in a purple panel, directly
+     above a preamp slider showing what they were supposed to look like.
+     Chromium removed the keyword in 121 anyway; writing-mode is the way. */
+  -webkit-appearance: none;
+  appearance: none;
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* ── Native controls ──
+   Checkboxes, select controls and scrollbars are drawn by the platform.
+   Without this they come up in the light scheme — a white checkbox and a
+   white dropdown on a near-black panel — no matter what background the
+   element carries. */
+:root {
+  color-scheme: dark;
+}
+
+/* The closed select is ours; only the popup list stays native. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.5rem;
+}
+
 /* ── Focus ring ── */
-button:focus-visible {
+button:focus-visible,
+select:focus-visible {
   outline: 2px solid rgba(124, 58, 237, 0.5);
   outline-offset: 2px;
 }
 input:focus-visible {
+  outline: none;
+}
+/* A select keeps the platform's blue ring even when it is not focus-visible
+   — bright blue on a purple panel — so clear it and let the rule above
+   supply ours. */
+select:focus {
   outline: none;
 }
 

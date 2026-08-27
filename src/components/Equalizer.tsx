@@ -180,7 +180,10 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
                 setError(String(err));
               }
             }}
-            className="flex-1 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-white/80 outline-none ring-1 ring-white/8"
+            // `min-w-0` so the control follows the row rather than the
+            // widest option label — the preset descriptions are long enough
+            // to push a natively-sized select straight out of the panel.
+            className="min-w-0 flex-1 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-white/80 outline-none ring-1 ring-white/8"
           >
             <option value="">Choose…</option>
             {presets.map((p) => (

@@ -12,6 +12,7 @@ import VideoFilters from "../VideoFilters";
 import SubtitleMenu from "../SubtitleMenu";
 import AudioMenu from "../AudioMenu";
 import Equalizer from "../Equalizer";
+import { audioTrackLabel, type AudioTrack } from "../../lib/tracks";
 import ChapterMenu from "../ChapterMenu";
 import BookmarkMenu from "../BookmarkMenu";
 import { useStrings } from "../../i18n/utils";
@@ -311,7 +312,6 @@ export default function PlayerBar() {
       return;
     }
     const btn = e.currentTarget;
-    type AudioTrack = { id: number; label: string; active: boolean };
     let tracks: AudioTrack[] = [];
     try {
       tracks = await invoke<AudioTrack[]>("audio_list");
@@ -328,7 +328,7 @@ export default function PlayerBar() {
     } else {
       for (const t of tracks) {
         items.push({
-          label: (t.active ? "✓ " : "") + t.label,
+          label: (t.selected ? "✓ " : "") + audioTrackLabel(t),
           separator: false,
           disabled: false,
         });
@@ -413,9 +413,17 @@ export default function PlayerBar() {
                     onOpenEqualizer={() => setShowEqualizer(true)}
                   />
                 )}
-                {showEqualizer && <Equalizer onClose={() => setShowEqualizer(false)} />}
               </AnimatePresence>
             )}
+            {/* Outside the platform branch on purpose. The equaliser is
+                opened from the React menu on macOS and Linux but from the
+                *native* menu item on Windows — and while it lived inside
+                the `!IS_WINDOWS` block, that item set a flag nothing
+                rendered, so the equaliser was unreachable from the window
+                on the platform most people run. */}
+            <AnimatePresence>
+              {showEqualizer && <Equalizer onClose={() => setShowEqualizer(false)} />}
+            </AnimatePresence>
           </div>
 
           {/* Subtitles — same platform branch. */}

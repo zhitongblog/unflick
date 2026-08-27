@@ -4,14 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useStrings } from "../i18n/utils";
 import { formatDelay } from "../lib/format";
-
-interface AudioTrack {
-  id: number;
-  title: string | null;
-  lang: string | null;
-  codec: string | null;
-  selected: boolean;
-}
+import { audioTrackLabel, type AudioTrack } from "../lib/tracks";
 
 export default function AudioMenu({
   onClose,
@@ -77,7 +70,7 @@ export default function AudioMenu({
       )}
 
       {!isLoading && tracks.map((track) => {
-        const label = track.title || (track.lang ? `Track ${track.id} (${track.lang})` : `Track ${track.id}`);
+        const label = audioTrackLabel(track);
         return (
           <button
             key={track.id}

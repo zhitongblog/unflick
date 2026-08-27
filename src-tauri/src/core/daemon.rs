@@ -21,6 +21,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::audio::AudioSettings;
+use super::events::{topic, EventSink};
 use super::nowplaying;
 use super::opensubtitles;
 use super::player::{self as player, Player};
@@ -73,6 +74,21 @@ pub struct ControlContext {
     /// than reporting a mode change nothing performed. PiP shipped as a
     /// button with no headless equivalent; this is the seam that closes it.
     pub window: Option<Arc<dyn WindowHost>>,
+    /// Where to say that a list the window is showing has changed.
+    ///
+    /// `None` in the headless daemon. See `core::events` for why the status
+    /// poll is not enough.
+    pub events: Option<Arc<dyn EventSink>>,
+}
+
+impl ControlContext {
+    /// Tell the window one of its lists is stale. A no-op when there is no
+    /// window, which is every headless invocation.
+    fn notify(&self, topic: &str) {
+        if let Some(sink) = &self.events {
+            sink.notify(topic);
+        }
+    }
 }
 
 /// Bind the control port and serve connections forever. Blocks the calling
@@ -128,8 +144,9 @@ pub fn start_daemon() -> i32 {
         db,
         embedded: false,
         incognito: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        // No GUI here, so no window to reshape.
+        // No GUI here, so no window to reshape and nobody to notify.
         window: None,
+        events: None,
     });
 
     if let Err(e) = serve_control(ctx) {
@@ -497,6 +514,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 return CommandResult::err("file path required");
             }
             playlist.add(file);
+            ctx.notify(topic::PLAYLIST);
             let entries = playlist.list();
             CommandResult::ok_with_data(
                 format!("added {}", file),
@@ -507,6 +525,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             let index = args["index"].as_u64().unwrap_or(0) as usize;
             match playlist.remove(index) {
                 Ok(()) => {
+                    ctx.notify(topic::PLAYLIST);
                     let entries = playlist.list();
                     CommandResult::ok_with_data("removed", serde_json::to_value(&entries).unwrap())
                 }
@@ -520,6 +539,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         "playlist_next" => {
             match playlist.next() {
                 Some(path) => {
+                    ctx.notify(topic::PLAYLIST);
                     match player.play(&path, None, None, None) {
                         Ok(_) => CommandResult::ok(format!("playing next: {}", path)),
                         Err(e) => CommandResult::err(e.to_string()),
@@ -531,6 +551,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         "playlist_prev" => {
             match playlist.prev() {
                 Some(path) => {
+                    ctx.notify(topic::PLAYLIST);
                     match player.play(&path, None, None, None) {
                         Ok(_) => CommandResult::ok(format!("playing previous: {}", path)),
                         Err(e) => CommandResult::err(e.to_string()),
@@ -541,12 +562,14 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         }
         "playlist_clear" => {
             playlist.clear();
+            ctx.notify(topic::PLAYLIST);
             CommandResult::ok("playlist cleared")
         }
         "playlist_play" => {
             let index = args["index"].as_u64().unwrap_or(0) as usize;
             match playlist.set_current(index) {
                 Ok(path) => {
+                    ctx.notify(topic::PLAYLIST);
                     match player.play(&path, None, None, None) {
                         Ok(_) => CommandResult::ok(format!("playing index {}: {}", index, path)),
                         Err(e) => CommandResult::err(e.to_string()),
@@ -1107,7 +1130,10 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         "playlist_repeat" => {
             if let Some(mode) = args.get("mode").and_then(|v| v.as_str()) {
                 match RepeatMode::parse(mode) {
-                    Some(m) => playlist.set_repeat_mode(m),
+                    Some(m) => {
+                        playlist.set_repeat_mode(m);
+                        ctx.notify(topic::PLAYLIST);
+                    }
                     None => {
                         return CommandResult::err(format!(
                             "unknown repeat mode: {} (expected off | one | all)",
@@ -1125,6 +1151,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         "playlist_shuffle" => {
             if let Some(enabled) = args.get("enabled").and_then(|v| v.as_bool()) {
                 playlist.set_shuffle(enabled);
+                ctx.notify(topic::PLAYLIST);
             }
             let enabled = playlist.shuffle_enabled();
             CommandResult::ok_with_data(
@@ -1441,10 +1468,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .filter(|s| !s.is_empty());
 
             match db.add_bookmark(&path, position, name) {
-                Ok(b) => CommandResult::ok_with_data(
-                    format!("bookmark {} at {}", b.id, format_timestamp(b.position)),
-                    json!(b),
-                ),
+                Ok(b) => {
+                    ctx.notify(topic::BOOKMARKS);
+                    CommandResult::ok_with_data(
+                        format!("bookmark {} at {}", b.id, format_timestamp(b.position)),
+                        json!(b),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -1508,10 +1538,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
             match db.rename_bookmark(id, name) {
-                Ok(b) => CommandResult::ok_with_data(
-                    format!("bookmark {} is now {}", b.id, describe_bookmark(&b)),
-                    json!(b),
-                ),
+                Ok(b) => {
+                    ctx.notify(topic::BOOKMARKS);
+                    CommandResult::ok_with_data(
+                        format!("bookmark {} is now {}", b.id, describe_bookmark(&b)),
+                        json!(b),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -1520,10 +1553,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 return CommandResult::err("id is required");
             };
             match db.remove_bookmark(id) {
-                Ok(true) => CommandResult::ok_with_data(
-                    format!("removed bookmark {}", id),
-                    json!({ "removed": id }),
-                ),
+                Ok(true) => {
+                    ctx.notify(topic::BOOKMARKS);
+                    CommandResult::ok_with_data(
+                        format!("removed bookmark {}", id),
+                        json!({ "removed": id }),
+                    )
+                }
                 Ok(false) => CommandResult::err(format!("no bookmark with id {}", id)),
                 Err(e) => CommandResult::err(e.to_string()),
             }
@@ -1534,10 +1570,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 Err(e) => return e,
             };
             match db.clear_bookmarks(path.as_deref()) {
-                Ok(n) => CommandResult::ok_with_data(
-                    format!("cleared {} bookmark(s)", n),
-                    json!({ "cleared": n }),
-                ),
+                Ok(n) => {
+                    ctx.notify(topic::BOOKMARKS);
+                    CommandResult::ok_with_data(
+                        format!("cleared {} bookmark(s)", n),
+                        json!({ "cleared": n }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }

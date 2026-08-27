@@ -12,6 +12,7 @@ pub mod whisper;
 pub mod yt_dlp;
 pub mod audio;
 pub mod http;
+pub mod events;
 pub mod nowplaying;
 pub mod source;
 pub mod sponsorblock;
