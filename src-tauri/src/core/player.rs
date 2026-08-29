@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Result};
 
 use super::audio::{self, AudioSettings};
+use super::disc;
 use super::source;
 use super::sponsorblock::Segment;
 use super::types::{
@@ -171,6 +172,22 @@ impl Player {
             if source::is_unc_path(path) { "yes" } else { "auto" },
         );
 
+        // A disc is not a file. `D:ilm.iso` handed to mpv as a path gets
+        // an ISO9660 image demuxed as if it were a container; what mpv wants
+        // is `dvd://` plus a device pointing at the image. Deciding it here
+        // rather than in the daemon means the window's drag-and-drop, which
+        // reaches `player_play` directly, gets it too.
+        let target = match disc::detect(path) {
+            Some(d) => {
+                if !d.device.is_empty() {
+                    self.mpv
+                        .set_property_string(d.kind.device_property(), &d.device)?;
+                }
+                d.url
+            }
+            None => path.to_string(),
+        };
+
         // Nothing else in unflick reads mpv's event queue — auto-advance
         // polls `eof-reached` instead — so whatever the last file left in
         // there is still sitting there. Clear it first, or the end-of-file
@@ -178,8 +195,10 @@ impl Player {
         while self.mpv.wait_event(0.0).0 != MPV_EVENT_NONE {}
 
         // Load the file
-        self.mpv.command(&["loadfile", path])?;
+        self.mpv.command(&["loadfile", &target])?;
 
+        // Report against what the caller asked for, not what mpv was told:
+        // "could not open dvd://" names nothing the user can act on.
         let outcome = self.await_load(path)?;
 
         // `pause` is a global mpv property, not per-file, and `keep-open=yes`

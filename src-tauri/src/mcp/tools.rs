@@ -27,6 +27,25 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
     }
 
     let (cmd, daemon_args) = match name {
+        "cast" => {
+            let mut a = json!({"action": args["action"].as_str().unwrap_or("status")});
+            for key in ["renderer", "file"] {
+                if let Some(v) = args.get(key).and_then(|v| v.as_str()) {
+                    a[key] = json!(v);
+                }
+            }
+            if let Some(v) = args.get("seconds").and_then(|v| v.as_f64()) {
+                a["seconds"] = json!(v);
+            }
+            ("cast", a)
+        }
+        "disc_list" => {
+            let mut a = json!({});
+            if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
+                a["path"] = json!(p);
+            }
+            ("disc_list", a)
+        }
         "session" => (
             "session",
             json!({"action": args["action"].as_str().unwrap_or("show")}),
@@ -310,6 +329,45 @@ fn tools_window() -> Value {
                     "apply": {
                         "type": "boolean",
                         "description": "Delete what was found. Omit to report only."
+                    }
+                }
+            }
+        },
+        {
+            "name": "cast",
+            "description": "Send what is playing to a television on the network over DLNA. \"list\" finds renderers; \"to\" starts a cast (naming a renderer, or omitting it when there is only one) and pauses playback here so it is not heard twice; \"stop\", \"pause\", \"resume\", \"seek\" and \"status\" drive it once it is running. Only local files can be cast — the television fetches them from this machine.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "to", "stop", "status", "pause", "resume", "seek"],
+                        "description": "Defaults to status."
+                    },
+                    "renderer": {
+                        "type": "string",
+                        "description": "Which renderer, by name or part of it. Omit when there is only one."
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "A file to cast instead of what is playing."
+                    },
+                    "seconds": {
+                        "type": "number",
+                        "description": "For seek, where to go. For list and to, how long to wait for renderers to answer (default 3)."
+                    }
+                }
+            }
+        },
+        {
+            "name": "disc_list",
+            "description": "Optical drives on this machine and whether each holds a DVD or Blu-ray, plus whether this build can play them at all. Play one with `play` and the drive path (\"D:\\\\\"), a disc image (\"film.iso\"), or a folder holding VIDEO_TS / BDMV; a specific title is mpv's own syntax, \"dvd://3\".",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ask about one path instead of listing drives — reports what it is without opening it."
                     }
                 }
             }

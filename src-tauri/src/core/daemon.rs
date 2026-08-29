@@ -14,7 +14,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -85,6 +85,18 @@ fn connect_control() -> std::io::Result<TcpStream> {
 /// Everything a control-server connection needs. Shared across connection
 /// threads; the GUI builds one around its own render Player so external
 /// commands drive the on-screen window instead of a second, invisible mpv.
+/// A cast in progress.
+pub struct CastSession {
+    pub renderer: super::dlna::Renderer,
+    /// Dropping this stops serving, so it is kept for exactly as long as
+    /// the television is watching.
+    pub server: super::mediaserver::MediaServer,
+    /// The local path, for reporting what is being cast.
+    pub file: String,
+    /// What the renderer was given.
+    pub url: String,
+}
+
 pub struct ControlContext {
     pub player: Arc<Player>,
     pub playlist: Arc<Playlist>,
@@ -107,6 +119,11 @@ pub struct ControlContext {
     /// than reporting a mode change nothing performed. PiP shipped as a
     /// button with no headless equivalent; this is the seam that closes it.
     pub window: Option<Arc<dyn WindowHost>>,
+    /// The television being cast to, if any, and the HTTP server feeding
+    /// it. Held here because a cast outlives the command that started it:
+    /// the renderer keeps fetching bytes until someone stops it, and the
+    /// server has to still be there when it does.
+    pub cast: Arc<Mutex<Option<CastSession>>>,
     /// Where to say that a list the window is showing has changed.
     ///
     /// `None` in the headless daemon. See `core::events` for why the status
@@ -176,6 +193,7 @@ pub fn start_daemon() -> i32 {
         playlist: Arc::new(Playlist::new()),
         db,
         embedded: false,
+        cast: Arc::new(Mutex::new(None)),
         incognito: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         // No GUI here, so no window to reshape and nobody to notify.
         window: None,
@@ -197,6 +215,151 @@ pub fn start_daemon() -> i32 {
     }
 
     0
+}
+
+/// Start casting: find the renderer, serve the file, hand it over.
+///
+/// Re-discovers rather than remembering what `cast list` found. Discovery
+/// costs a few seconds and a remembered renderer is a renderer that has
+/// since been unplugged, moved to a new address, or replaced by the one the
+/// neighbours bought — the freshness is worth more than the latency.
+fn cast_to(ctx: &ControlContext, args: &Value) -> CommandResult {
+    use super::{dlna, mediaserver::MediaServer};
+
+    // What to send. Defaults to what is on screen, because "cast this" is
+    // the request; naming a file is the exception.
+    let file = match args.get("file").and_then(|v| v.as_str()) {
+        Some(f) => f.to_string(),
+        None => match ctx.player.status().file {
+            Some(f) => f,
+            None => return CommandResult::err("nothing is playing — pass a file"),
+        },
+    };
+    let path = std::path::PathBuf::from(&file);
+    if !path.is_file() {
+        // A stream is already a URL the television could fetch, but not
+        // necessarily one it can reach or decode, and pretending otherwise
+        // would fail on the television rather than here.
+        return CommandResult::err(format!(
+            "{} is not a local file — casting serves a file from this machine",
+            file
+        ));
+    }
+
+    let secs = args.get("seconds").and_then(|v| v.as_f64()).unwrap_or(3.0);
+    let renderers = match dlna::discover(std::time::Duration::from_secs_f64(secs.clamp(1.0, 15.0)))
+    {
+        Ok(r) => r,
+        Err(e) => return CommandResult::err(format!("discovery failed: {}", e)),
+    };
+    if renderers.is_empty() {
+        return CommandResult::err("no DLNA renderers answered");
+    }
+
+    let wanted = args.get("renderer").and_then(|v| v.as_str());
+    let renderer = match pick_renderer(&renderers, wanted) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+
+    let Some(peer) = renderer.ip() else {
+        return CommandResult::err(format!("{} has no usable address", renderer.name));
+    };
+
+    let server = match MediaServer::start(path.clone()) {
+        Ok(s) => s,
+        Err(e) => return CommandResult::err(format!("could not serve the file: {}", e)),
+    };
+    let url = match server.url_for(peer) {
+        Ok(u) => u,
+        Err(e) => return CommandResult::err(format!("no route to {}: {}", renderer.name, e)),
+    };
+
+    let title = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unflick".into());
+    if let Err(e) = dlna::set_uri(
+        &renderer,
+        &url,
+        &title,
+        super::mediaserver::upnp_class(&path),
+        super::mediaserver::content_type(&path),
+    ) {
+        return CommandResult::err(e.to_string());
+    }
+    if let Err(e) = dlna::play(&renderer) {
+        return CommandResult::err(e.to_string());
+    }
+
+    // Two copies of the same film, half a second apart, is worse than
+    // either alone. The local player keeps the file loaded so that
+    // `cast stop` leaves something to come back to.
+    let _ = ctx.player.pause();
+
+    let name = renderer.name.clone();
+    *ctx.cast.lock().unwrap() = Some(CastSession {
+        renderer,
+        server,
+        file: file.clone(),
+        url: url.clone(),
+    });
+    CommandResult::ok_with_data(
+        format!("casting {} to {}", title, name),
+        json!({ "renderer": name, "file": file, "url": url }),
+    )
+}
+
+/// Choose which renderer was meant.
+fn pick_renderer(
+    renderers: &[super::dlna::Renderer],
+    wanted: Option<&str>,
+) -> Result<super::dlna::Renderer, CommandResult> {
+    let names = || {
+        renderers
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let Some(wanted) = wanted else {
+        // No name and one television is not ambiguous. No name and three
+        // is, and picking one for the user would put a film on the wrong
+        // screen in someone else's room.
+        return match renderers.len() {
+            1 => Ok(renderers[0].clone()),
+            _ => Err(CommandResult::err(format!(
+                "several renderers — name one of: {}",
+                names()
+            ))),
+        };
+    };
+
+    if let Some(exact) = renderers.iter().find(|r| r.id == wanted) {
+        return Ok(exact.clone());
+    }
+    let matches: Vec<&super::dlna::Renderer> = renderers
+        .iter()
+        .filter(|r| r.name.to_lowercase().contains(&wanted.to_lowercase()))
+        .collect();
+    match matches.len() {
+        1 => Ok(matches[0].clone()),
+        0 => Err(CommandResult::err(format!(
+            "no renderer matching {:?} — found: {}",
+            wanted,
+            names()
+        ))),
+        _ => Err(CommandResult::err(format!(
+            "{:?} matches more than one: {}",
+            wanted,
+            matches
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
 }
 
 /// Watch for end-of-file and advance the playlist.
@@ -431,6 +594,159 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 }
                 Err(e) => CommandResult::err(e.to_string()),
             }
+        }
+        // Sending what is playing to a television.
+        "cast" => {
+            let action = args["action"].as_str().unwrap_or("status");
+            match action {
+                "list" => {
+                    let secs = args.get("seconds").and_then(|v| v.as_f64()).unwrap_or(3.0);
+                    match super::dlna::discover(std::time::Duration::from_secs_f64(
+                        secs.clamp(1.0, 15.0),
+                    )) {
+                        Ok(rs) => {
+                            let message = match rs.len() {
+                                0 => "no DLNA renderers answered".to_string(),
+                                1 => format!("1 renderer: {}", rs[0].name),
+                                n => format!("{} renderers", n),
+                            };
+                            CommandResult::ok_with_data(
+                                message,
+                                serde_json::to_value(&rs).unwrap_or(json!([])),
+                            )
+                        }
+                        Err(e) => CommandResult::err(format!("discovery failed: {}", e)),
+                    }
+                }
+                "to" => cast_to(ctx, args),
+                "stop" => {
+                    let mut guard = ctx.cast.lock().unwrap();
+                    match guard.take() {
+                        None => CommandResult::err("not casting"),
+                        Some(session) => {
+                            // Tell the renderer first: dropping the server
+                            // out from under a television that is still
+                            // fetching leaves it showing an error.
+                            let stopped = super::dlna::stop(&session.renderer);
+                            session.server.stop();
+                            match stopped {
+                                Ok(()) => CommandResult::ok(format!(
+                                    "stopped casting to {}",
+                                    session.renderer.name
+                                )),
+                                Err(e) => CommandResult::err(e.to_string()),
+                            }
+                        }
+                    }
+                }
+                "status" => {
+                    let guard = ctx.cast.lock().unwrap();
+                    match guard.as_ref() {
+                        None => CommandResult::ok_with_data("not casting", json!(null)),
+                        Some(session) => match super::dlna::position(&session.renderer) {
+                            Ok(p) => CommandResult::ok_with_data(
+                                format!(
+                                    "{} on {} — {}",
+                                    session.file, session.renderer.name, p.state
+                                ),
+                                json!({
+                                    "renderer": session.renderer,
+                                    "file": session.file,
+                                    "url": session.url,
+                                    "position": p.position,
+                                    "duration": p.duration,
+                                    "state": p.state,
+                                }),
+                            ),
+                            Err(e) => CommandResult::err(e.to_string()),
+                        },
+                    }
+                }
+                "pause" | "resume" | "seek" => {
+                    let guard = ctx.cast.lock().unwrap();
+                    let Some(session) = guard.as_ref() else {
+                        return CommandResult::err("not casting");
+                    };
+                    let result = match action {
+                        "pause" => super::dlna::pause(&session.renderer),
+                        "resume" => super::dlna::play(&session.renderer),
+                        _ => {
+                            let to = args.get("seconds").and_then(|v| v.as_f64());
+                            match to {
+                                Some(s) => super::dlna::seek(&session.renderer, s),
+                                None => return CommandResult::err("seek needs seconds"),
+                            }
+                        }
+                    };
+                    match result {
+                        Ok(()) => CommandResult::ok(format!("{} on {}", action, session.renderer.name)),
+                        Err(e) => CommandResult::err(e.to_string()),
+                    }
+                }
+                other => CommandResult::err(format!(
+                    "unknown cast action {:?} — expected list, to, stop, status, pause, resume or seek",
+                    other
+                )),
+            }
+        }
+        // Optical drives, and what is in them — or, given a path, what
+        // unflick would make of it.
+        "disc_list" => {
+            // Naming what would happen to a path is not a convenience: it
+            // is the only way anything outside this process can see the
+            // routing decision, which is otherwise buried between `play`
+            // and mpv. An agent asking "can you play this" gets an answer
+            // without loading it, and so does a test.
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                return match crate::core::disc::detect(path) {
+                    Some(d) => CommandResult::ok_with_data(
+                        format!(
+                            "{} — opens as {}",
+                            match d.kind {
+                                crate::core::disc::DiscKind::Dvd => "DVD",
+                                crate::core::disc::DiscKind::BluRay => "Blu-ray",
+                            },
+                            d.url
+                        ),
+                        serde_json::to_value(&d).unwrap_or(json!(null)),
+                    ),
+                    None => CommandResult::ok_with_data(
+                        format!("{} is not a video disc", path),
+                        json!(null),
+                    ),
+                };
+            }
+
+            let protocols = player.supported_protocols();
+            let has = |p: &str| protocols.iter().any(|x| x == p);
+            // Reported rather than assumed: a libmpv built without
+            // libdvdnav / libbluray plays none of this, and saying so beats
+            // a drive listing that leads to an error on every entry.
+            let supports_dvd = has("dvd") || has("dvdnav");
+            let supports_bluray = has("bd") || has("bluray");
+
+            let drives: Vec<Value> = crate::core::disc::drives()
+                .into_iter()
+                .map(|path| {
+                    let p = path.to_string_lossy().into_owned();
+                    let kind = crate::core::disc::detect(&p).map(|d| d.kind);
+                    json!({ "path": p, "disc": kind })
+                })
+                .collect();
+
+            let loaded = drives.iter().filter(|d| !d["disc"].is_null()).count();
+            let message = match (drives.len(), loaded) {
+                (0, _) => "no optical drives found".to_string(),
+                (n, 0) => format!("{} drive(s), none with a video disc in", n),
+                (n, l) => format!("{} drive(s), {} with a video disc in", n, l),
+            };
+            CommandResult::ok_with_data(
+                message,
+                json!({
+                    "drives": drives,
+                    "supports": { "dvd": supports_dvd, "bluray": supports_bluray },
+                }),
+            )
         }
         // What was being watched, and getting back to it.
         "session" => {
@@ -2099,4 +2415,65 @@ fn default_subtitle_output_dir() -> String {
         .join("unflick")
         .to_string_lossy()
         .into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::dlna::renderer_at;
+
+    fn tvs(names: &[&str]) -> Vec<crate::core::dlna::Renderer> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| renderer_at(n, &format!("http://192.168.1.{}:8200/ctl", 10 + i)))
+            .collect()
+    }
+
+    #[test]
+    fn one_renderer_and_no_name_is_not_ambiguous() {
+        let rs = tvs(&["Living Room TV"]);
+        assert_eq!(pick_renderer(&rs, None).unwrap().name, "Living Room TV");
+    }
+
+    #[test]
+    fn several_renderers_and_no_name_refuses_and_lists_them() {
+        // Guessing here puts someone's film on a screen in another room.
+        let rs = tvs(&["Living Room TV", "Bedroom TV"]);
+        let err = pick_renderer(&rs, None).unwrap_err();
+        assert!(!err.success, "{}", err.message);
+        assert!(err.message.contains("Living Room TV"), "{}", err.message);
+        assert!(err.message.contains("Bedroom TV"), "{}", err.message);
+    }
+
+    #[test]
+    fn part_of_a_name_is_enough_when_it_is_unambiguous() {
+        let rs = tvs(&["Living Room TV", "Kitchen Speaker"]);
+        assert_eq!(pick_renderer(&rs, Some("living")).unwrap().name, "Living Room TV");
+        assert_eq!(pick_renderer(&rs, Some("KITCHEN")).unwrap().name, "Kitchen Speaker");
+    }
+
+    #[test]
+    fn a_name_matching_two_renderers_is_refused_rather_than_guessed() {
+        let rs = tvs(&["Samsung TV", "Samsung Soundbar"]);
+        let err = pick_renderer(&rs, Some("samsung")).unwrap_err();
+        assert!(err.message.contains("more than one"), "{}", err.message);
+        assert!(err.message.contains("Samsung Soundbar"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_id_beats_a_name_so_a_script_can_be_exact() {
+        // Two televisions can share a name; their UDNs cannot.
+        let rs = tvs(&["TV", "TV"]);
+        let wanted = rs[1].id.clone();
+        assert_eq!(pick_renderer(&rs, Some(&wanted)).unwrap().id, wanted);
+    }
+
+    #[test]
+    fn a_name_that_matches_nothing_says_what_was_found() {
+        let rs = tvs(&["Living Room TV"]);
+        let err = pick_renderer(&rs, Some("garden")).unwrap_err();
+        assert!(err.message.contains("garden"), "{}", err.message);
+        assert!(err.message.contains("Living Room TV"), "{}", err.message);
+    }
 }

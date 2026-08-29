@@ -15,6 +15,37 @@ pub struct Cli {
     pub mcp: bool,
 }
 
+/// `unflick cast` with no action reports what is being cast.
+#[derive(Subcommand, Debug, Clone)]
+pub enum CastAction {
+    /// Find DLNA renderers on the network
+    List {
+        /// How long to listen for answers. Replies are spread out on
+        /// purpose, so a short wait finds only the quickest television.
+        #[arg(long, default_value = "3")]
+        seconds: f64,
+    },
+    /// Send what is playing (or a named file) to a renderer
+    To {
+        /// Which renderer — its name, or part of it. Omit when there is
+        /// only one.
+        renderer: Option<String>,
+        /// A file to cast instead of what is playing
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long, default_value = "3")]
+        seconds: f64,
+    },
+    /// Stop casting
+    Stop,
+    /// Where the cast has got to
+    Status,
+    Pause,
+    Resume,
+    /// Seek the cast, in seconds
+    Seek { seconds: f64 },
+}
+
 /// `unflick session` with no action reports; the others act.
 #[derive(Subcommand, Debug, Clone)]
 pub enum SessionAction {
@@ -163,6 +194,20 @@ pub enum Commands {
     Mouse {
         #[command(subcommand)]
         action: MouseAction,
+    },
+    /// Send what is playing to a TV on the network (DLNA)
+    Cast {
+        #[command(subcommand)]
+        action: Option<CastAction>,
+    },
+    /// Optical drives, and whether there is a video disc in them
+    ///
+    /// Play one by path: `unflick play D:\` or `unflick play film.iso`.
+    /// A specific title is mpv's own syntax — `unflick play dvd://3`.
+    Disc {
+        /// A path to ask about instead of listing drives — an image, a
+        /// folder, or a drive. Reports what it is without opening it.
+        path: Option<String>,
     },
     /// What was being watched, and getting back to it
     Session {
@@ -1137,6 +1182,36 @@ pub fn run_cli(cli: Cli) -> i32 {
                     send("keybind_reset", args)
                 }
             }
+        }
+        Some(Commands::Cast { action }) => {
+            ensure_daemon();
+            let args = match action {
+                None | Some(CastAction::Status) => json!({"action": "status"}),
+                Some(CastAction::List { seconds }) => {
+                    json!({"action": "list", "seconds": seconds})
+                }
+                Some(CastAction::To { renderer, file, seconds }) => {
+                    let mut a = json!({"action": "to", "seconds": seconds});
+                    if let Some(r) = renderer { a["renderer"] = json!(r); }
+                    if let Some(f) = file { a["file"] = json!(f); }
+                    a
+                }
+                Some(CastAction::Stop) => json!({"action": "stop"}),
+                Some(CastAction::Pause) => json!({"action": "pause"}),
+                Some(CastAction::Resume) => json!({"action": "resume"}),
+                Some(CastAction::Seek { seconds }) => {
+                    json!({"action": "seek", "seconds": seconds})
+                }
+            };
+            send("cast", args)
+        }
+        Some(Commands::Disc { path }) => {
+            ensure_daemon();
+            let mut args = json!({});
+            if let Some(p) = path {
+                args["path"] = json!(p);
+            }
+            send("disc_list", args)
         }
         Some(Commands::Session { action }) => {
             let verb = match action {

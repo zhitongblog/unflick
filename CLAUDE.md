@@ -231,6 +231,18 @@ unflick bookmark clear [--file <path>] [--all]
 unflick cleanup [--apply]               # files an older install left behind
 unflick startup                         # last launch's timeline, phase by phase
 
+# Discs — DVD / Blu-ray, from a drive, an image, or a folder
+unflick disc                            # drives, and what is in them
+unflick disc <path>                     # what unflick makes of a path
+unflick play <film.iso>                 # also D:\ or a folder with VIDEO_TS
+unflick play dvd://3                    # a specific title; dvdnav:// for menus
+
+# Casting to a TV on the network (DLNA)
+unflick cast list [--seconds <n>]
+unflick cast to [<renderer>] [--file <path>]
+unflick cast pause | resume | stop | status
+unflick cast seek <seconds>
+
 # Session — what was being watched, and getting back to it
 unflick session                         # report it (the default)
 unflick session restore                 # reopen it, where it got to
@@ -318,6 +330,8 @@ unflick --mcp                   # Start MCP server (stdio)
 | `cleanup` | Find (and optionally remove) files an older install stranded | `unflick cleanup` |
 | `startup` | The last launch's timeline, phase by phase in ms | `unflick startup` |
 | `session` | What was last watched and how far in; `restore` reopens it | `unflick session` |
+| `disc_list` | Optical drives and what is in them; with `path`, what a path is | `unflick disc` |
+| `cast` | Send what is playing to a DLNA television, and drive it there | `unflick cast` |
 
 ### Understanding tools
 

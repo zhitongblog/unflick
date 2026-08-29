@@ -565,6 +565,7 @@ fn spawn_embedded_control_server(
             playlist,
             db,
             embedded: true,
+            cast: Arc::new(std::sync::Mutex::new(None)),
             incognito,
             window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
             events: Some(window_host as Arc<dyn core::events::EventSink>),
