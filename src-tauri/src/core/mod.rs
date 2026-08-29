@@ -1,6 +1,7 @@
 pub mod player;
 pub mod playlist;
 pub mod render_loop;
+pub mod session;
 pub mod types;
 pub mod boot;
 pub mod cleanup;

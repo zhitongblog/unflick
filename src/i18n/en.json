@@ -263,6 +263,10 @@
     "title": "Recently played",
     "clear": "Clear"
   },
+  "resume": {
+    "title": "Pick up where you left off",
+    "dismiss": "Dismiss"
+  },
   "bookmarks": {
     "title": "Bookmarks",
     "add": "Bookmark this moment",

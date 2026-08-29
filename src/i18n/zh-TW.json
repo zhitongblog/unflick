@@ -263,6 +263,10 @@
     "title": "最近播放",
     "clear": "清除"
   },
+  "resume": {
+    "title": "繼續觀看",
+    "dismiss": "不再提示"
+  },
   "bookmarks": {
     "title": "書籤",
     "add": "在此處加入書籤",

@@ -263,6 +263,10 @@
     "title": "最近播放",
     "clear": "清除"
   },
+  "resume": {
+    "title": "继续观看",
+    "dismiss": "不再提示"
+  },
   "bookmarks": {
     "title": "书签",
     "add": "在此处添加书签",

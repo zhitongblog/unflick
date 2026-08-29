@@ -263,6 +263,10 @@
     "title": "최근 재생",
     "clear": "지우기"
   },
+  "resume": {
+    "title": "이어서 보기",
+    "dismiss": "닫기"
+  },
   "bookmarks": {
     "title": "북마크",
     "add": "이 지점을 북마크",

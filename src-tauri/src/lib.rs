@@ -378,6 +378,8 @@ pub fn run() {
             // Playback position / history
             commands::save_position,
             commands::get_position,
+            commands::session_get,
+            commands::session_clear,
             commands::clear_position,
             commands::record_play,
             // AI subtitle generation
@@ -567,6 +569,15 @@ fn spawn_embedded_control_server(
             window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
             events: Some(window_host as Arc<dyn core::events::EventSink>),
         });
+
+        // Keep the resume point true as playback moves. Started before the
+        // handover for the same reason the open is: it matters to the
+        // window whether or not this process ends up owning the port.
+        core::session::spawn_autosave(
+            Arc::clone(&ctx.player),
+            Arc::clone(&ctx.db),
+            Arc::clone(&ctx.incognito),
+        );
 
         // Open the file the shell handed us, before anything else this
         // thread does. It used to wait for the WebView to boot and React to

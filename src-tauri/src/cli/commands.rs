@@ -15,6 +15,17 @@ pub struct Cli {
     pub mcp: bool,
 }
 
+/// `unflick session` with no action reports; the others act.
+#[derive(Subcommand, Debug, Clone)]
+pub enum SessionAction {
+    /// Report what would be resumed (the default)
+    Show,
+    /// Reopen it, at the point it got to
+    Restore,
+    /// Forget it
+    Clear,
+}
+
 #[derive(Subcommand)]
 pub enum Commands {
     /// Start the background daemon (holds the player instance)
@@ -152,6 +163,11 @@ pub enum Commands {
     Mouse {
         #[command(subcommand)]
         action: MouseAction,
+    },
+    /// What was being watched, and getting back to it
+    Session {
+        #[command(subcommand)]
+        action: Option<SessionAction>,
     },
     /// The last launch's startup timeline, phase by phase
     Startup,
@@ -1121,6 +1137,19 @@ pub fn run_cli(cli: Cli) -> i32 {
                     send("keybind_reset", args)
                 }
             }
+        }
+        Some(Commands::Session { action }) => {
+            let verb = match action {
+                None | Some(SessionAction::Show) => "show",
+                Some(SessionAction::Restore) => "restore",
+                Some(SessionAction::Clear) => "clear",
+            };
+            // `restore` starts playing, so it needs a player. `show` and
+            // `clear` only touch the database — but they go through the
+            // daemon anyway, because the running player is what is keeping
+            // that row current, and reading around it would race with it.
+            ensure_daemon();
+            send("session", json!({"action": verb}))
         }
         Some(Commands::Startup) => {
             // No `ensure_daemon()`, same reasoning as `cleanup`: this reads

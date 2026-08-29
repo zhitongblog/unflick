@@ -263,6 +263,10 @@
     "title": "Zuletzt gespielt",
     "clear": "Löschen"
   },
+  "resume": {
+    "title": "Weiterschauen",
+    "dismiss": "Ausblenden"
+  },
   "bookmarks": {
     "title": "Lesezeichen",
     "add": "Diese Stelle merken",

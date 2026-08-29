@@ -182,6 +182,15 @@ pub fn start_daemon() -> i32 {
         events: None,
     });
 
+    // Spawned here rather than inside `serve_control` because the GUI needs
+    // it even in the case where it loses the port and never serves — the
+    // window is still the thing the user is watching.
+    super::session::spawn_autosave(
+        Arc::clone(&ctx.player),
+        Arc::clone(&ctx.db),
+        Arc::clone(&ctx.incognito),
+    );
+
     if let Err(e) = serve_control(ctx) {
         eprintln!("failed to bind {}: {}", control_addr(), e);
         return 1;
@@ -423,6 +432,54 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
+        // What was being watched, and getting back to it.
+        "session" => {
+            let action = args["action"].as_str().unwrap_or("show");
+            match action {
+                "show" => match db.get_session() {
+                    Ok(Some(s)) => CommandResult::ok_with_data(
+                        format!("{} at {}", s.path, format_timestamp(s.position)),
+                        serde_json::to_value(&s).unwrap_or(json!(null)),
+                    ),
+                    Ok(None) => CommandResult::ok_with_data(
+                        "no session to resume".to_string(),
+                        json!(null),
+                    ),
+                    Err(e) => CommandResult::err(e.to_string()),
+                },
+                "clear" => match db.clear_session() {
+                    Ok(()) => CommandResult::ok("session cleared"),
+                    Err(e) => CommandResult::err(e.to_string()),
+                },
+                "restore" => {
+                    let session = match db.get_session() {
+                        Ok(Some(s)) => s,
+                        Ok(None) => return CommandResult::err("no session to resume"),
+                        Err(e) => return CommandResult::err(e.to_string()),
+                    };
+                    // A file can be deleted, renamed, or live on a share
+                    // that is not mounted this time. Saying which is far
+                    // more use than mpv's "could not open".
+                    if source::scheme_of(&session.path).is_none()
+                        && !std::path::Path::new(&session.path).exists()
+                    {
+                        return CommandResult::err(format!(
+                            "{} is no longer there — run `session clear` to forget it",
+                            session.path
+                        ));
+                    }
+                    // Straight through `play`, so the resume point, the
+                    // history entry and the protocol check all apply. The
+                    // seek comes from `playback_position`, which the same
+                    // autosave keeps in step with the session row.
+                    dispatch_command(ctx, "play", &json!({ "file": session.path }))
+                }
+                other => CommandResult::err(format!(
+                    "unknown session action {:?} — expected show, restore or clear",
+                    other
+                )),
+            }
+        }
         "pause" => match player.pause() {
             Ok(()) => CommandResult::ok("paused"),
             Err(e) => CommandResult::err(e.to_string()),
@@ -436,6 +493,10 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             if let Some(ref file) = status.file {
                 let _ = db.remember_position(file, status.position, status.duration);
             }
+            // Stopping is the user saying they are done for now. The resume
+            // point stays — reopening the file still lands where they were —
+            // but there is no longer a session to be offered on next launch.
+            let _ = db.clear_session();
             match player.stop() {
                 Ok(()) => CommandResult::ok("stopped"),
                 Err(e) => CommandResult::err(e.to_string()),

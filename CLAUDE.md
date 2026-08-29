@@ -231,6 +231,11 @@ unflick bookmark clear [--file <path>] [--all]
 unflick cleanup [--apply]               # files an older install left behind
 unflick startup                         # last launch's timeline, phase by phase
 
+# Session — what was being watched, and getting back to it
+unflick session                         # report it (the default)
+unflick session restore                 # reopen it, where it got to
+unflick session clear                   # forget it
+
 # Window and what's playing
 unflick window mode [normal|pip|music]  # omit to read; needs the GUI running
 unflick nowplaying [--cover]            # title / artist / album / has_video
@@ -312,6 +317,7 @@ unflick --mcp                   # Start MCP server (stdio)
 | `now_playing` | Title, artist, album, and whether there is picture | `unflick nowplaying` |
 | `cleanup` | Find (and optionally remove) files an older install stranded | `unflick cleanup` |
 | `startup` | The last launch's timeline, phase by phase in ms | `unflick startup` |
+| `session` | What was last watched and how far in; `restore` reopens it | `unflick session` |
 
 ### Understanding tools
 

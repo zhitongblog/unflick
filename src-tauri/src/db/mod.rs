@@ -57,6 +57,16 @@ pub fn data_dir() -> PathBuf {
     path
 }
 
+/// What was playing when unflick last saw the player.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Session {
+    pub path: String,
+    pub position: f64,
+    /// 0 when unknown — live streams, or a file still loading.
+    pub duration: f64,
+    pub updated_at: String,
+}
+
 /// Below this many seconds in, there's nothing worth resuming to.
 const MIN_RESUME_SECS: f64 = 1.0;
 
@@ -170,6 +180,17 @@ impl Database {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             CREATE INDEX IF NOT EXISTS idx_bookmark_path ON bookmark(path);
+
+            -- What was on screen when we last looked. One row, because
+            -- there is one player; the CHECK is what keeps it that way
+            -- rather than a convention nobody enforces.
+            CREATE TABLE IF NOT EXISTS session (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                path TEXT NOT NULL,
+                position REAL NOT NULL,
+                duration REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         ",
         )?;
         Ok(())
@@ -331,6 +352,49 @@ impl Database {
     pub fn clear_position(&self, path: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM playback_position WHERE path = ?1", params![path])?;
+        Ok(())
+    }
+
+    // ─── Session ──────────────────────────────────────────────────────────
+
+    /// Remember what is on screen, so a later launch can offer it back.
+    ///
+    /// Separate from `playback_position` on purpose. That table answers
+    /// "if this file is opened again, where does it start" — one row per
+    /// file, and a row survives forever. This answers "what was the user
+    /// watching", which is one thing at a time and stops being true the
+    /// moment they stop watching it.
+    pub fn set_session(&self, path: &str, position: f64, duration: f64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO session (id, path, position, duration) VALUES (1, ?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET
+                 path=?1, position=?2, duration=?3, updated_at=datetime('now')",
+            params![path, position, duration],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_session(&self) -> Result<Option<Session>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT path, position, duration, updated_at FROM session WHERE id = 1")?;
+        let row = stmt
+            .query_row([], |row| {
+                Ok(Session {
+                    path: row.get(0)?,
+                    position: row.get(1)?,
+                    duration: row.get(2)?,
+                    updated_at: row.get(3)?,
+                })
+            })
+            .ok();
+        Ok(row)
+    }
+
+    pub fn clear_session(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM session WHERE id = 1", [])?;
         Ok(())
     }
 

@@ -263,6 +263,10 @@
     "title": "Reproducidos recientemente",
     "clear": "Borrar"
   },
+  "resume": {
+    "title": "Continuar viendo",
+    "dismiss": "Descartar"
+  },
   "bookmarks": {
     "title": "Marcadores",
     "add": "Marcar este momento",

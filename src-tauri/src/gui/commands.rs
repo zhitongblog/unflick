@@ -1035,6 +1035,33 @@ pub fn save_position(path: String, position: f64, gui_player: State<'_, GuiPlaye
     Ok(json!({"saved": true}))
 }
 
+/// What the user was last watching, or null.
+///
+/// The window offers this on the drop zone. It is deliberately a read: the
+/// frontend plays it through the ordinary `play`, which applies the resume
+/// point, so a click here and a click in the recent list take the same
+/// path and cannot land in different places.
+#[command]
+pub fn session_get(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    match db_lock.as_ref() {
+        Some(db) => match db.get_session().map_err(|e| e.to_string())? {
+            Some(s) => Ok(serde_json::to_value(&s).unwrap_or(json!(null))),
+            None => Ok(json!(null)),
+        },
+        None => Ok(json!(null)),
+    }
+}
+
+#[command]
+pub fn session_clear(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    if let Some(db) = db_lock.as_ref() {
+        db.clear_session().map_err(|e| e.to_string())?;
+    }
+    Ok(json!({"cleared": true}))
+}
+
 #[command]
 pub fn get_position(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
     let db_lock = gui_player.db.lock().unwrap();

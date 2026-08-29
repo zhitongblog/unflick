@@ -263,6 +263,10 @@
     "title": "Lus récemment",
     "clear": "Effacer"
   },
+  "resume": {
+    "title": "Reprendre la lecture",
+    "dismiss": "Masquer"
+  },
   "bookmarks": {
     "title": "Signets",
     "add": "Marquer ce moment",

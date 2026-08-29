@@ -14,6 +14,7 @@ import UrlDialog from "./components/UrlDialog";
 import OnlineSubtitles from "./components/OnlineSubtitles";
 import { FIND_SUBTITLES_EVENT } from "./lib/subtitleSearch";
 import RecentFiles from "./components/RecentFiles";
+import ResumeCard from "./components/ResumeCard";
 import SettingsPanel from "./components/Settings/SettingsPanel";
 import { usePlayerStore, type BackendStatus } from "./stores/playerStore";
 import { useKeybindStore } from "./stores/keybindStore";
@@ -1445,6 +1446,7 @@ useEffect(() => {
                 {t.dropZone.openFile}
               </button>
 
+              <ResumeCard />
               <RecentFiles />
             </div>
           </div>

@@ -27,6 +27,10 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
     }
 
     let (cmd, daemon_args) = match name {
+        "session" => (
+            "session",
+            json!({"action": args["action"].as_str().unwrap_or("show")}),
+        ),
         "play" => ("play", args.clone()),
         "pause" => ("pause", json!({})),
         "resume" => ("resume", json!({})),
@@ -306,6 +310,20 @@ fn tools_window() -> Value {
                     "apply": {
                         "type": "boolean",
                         "description": "Delete what was found. Omit to report only."
+                    }
+                }
+            }
+        },
+        {
+            "name": "session",
+            "description": "What the user was last watching and how far in — and, with action \"restore\", reopen it there. unflick writes this down every few seconds while playing, so it survives a closed window or a crash. Use it when someone asks to get back to what they were watching without naming the file. \"clear\" forgets it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["show", "restore", "clear"],
+                        "description": "Defaults to show, which only reports."
                     }
                 }
             }
