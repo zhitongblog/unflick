@@ -44,6 +44,11 @@ rfd = "0.15"
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader"] }
 which = "7"
 ureq = "2"
+# Enumerating this machine's own addresses, for SSDP. The standard library
+# has no way to list interfaces, and sending a multicast search from
+# 0.0.0.0 lets the routing table pick one — which on any machine with a VM
+# bridge, a container network or a VPN is reliably the wrong one.
+if-addrs = "0.13"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"

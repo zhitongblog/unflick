@@ -80,7 +80,39 @@ pub fn discover(timeout: Duration) -> Result<Vec<Renderer>> {
     Ok(out)
 }
 
+/// Every IPv4 address this machine has, apart from loopback.
+///
+/// One search has to go out of each of them — see `search`.
+pub fn local_ipv4s() -> Vec<std::net::Ipv4Addr> {
+    let mut out: Vec<std::net::Ipv4Addr> = if_addrs::get_if_addrs()
+        .map(|ifaces| {
+            ifaces
+                .into_iter()
+                .filter(|i| !i.is_loopback())
+                .filter_map(|i| match i.ip() {
+                    IpAddr::V4(v4) => Some(v4),
+                    IpAddr::V6(_) => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// The SSDP half: returns the description URLs that answered.
+///
+/// One socket per interface, and this is the whole reason discovery works
+/// on a real machine. A socket bound to `0.0.0.0` leaves the choice of
+/// outgoing interface to the routing table, and on a machine with a VM
+/// bridge, a container network or a VPN — most developer machines and
+/// plenty of ordinary ones — the multicast route picks one of those instead
+/// of the network the television is on. Measured before it was written this
+/// way: bound to `0.0.0.0`, zero answers; bound to the Wi-Fi address, the
+/// television replied every time. The symptom was a player reporting no
+/// televisions anywhere, which reads as "casting is broken" rather than
+/// "asked down the wrong wire".
 fn search(timeout: Duration) -> Result<Vec<String>> {
     // MX must be under the timeout or the last replies arrive after we
     // have stopped listening.
@@ -93,29 +125,59 @@ fn search(timeout: Duration) -> Result<Vec<String>> {
          ST: {RENDERER_TYPE}\r\n\r\n"
     );
 
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    socket.set_read_timeout(Some(Duration::from_millis(400)))?;
-    // Multicast to a link-local group: the default TTL of 1 is correct and
-    // deliberate — a television two routers away is not castable anyway.
-    socket.send_to(request.as_bytes(), SSDP_ADDR)?;
+    let interfaces = local_ipv4s();
+    if interfaces.is_empty() {
+        bail!("this machine has no network address to search from");
+    }
 
-    let deadline = Instant::now() + timeout;
-    let mut locations = Vec::new();
-    let mut buf = [0u8; 4096];
-    while Instant::now() < deadline {
-        match socket.recv_from(&mut buf) {
-            Ok((n, _)) => {
-                let text = String::from_utf8_lossy(&buf[..n]);
-                if let Some(loc) = header(&text, "LOCATION") {
-                    if !locations.contains(&loc) {
-                        locations.push(loc);
+    // All at once rather than one after another: asking four interfaces in
+    // turn would take four times as long, and the waiting is the entire
+    // cost of discovery.
+    let found = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let mut threads = Vec::new();
+    for ip in interfaces {
+        let request = request.clone();
+        let found = std::sync::Arc::clone(&found);
+        threads.push(std::thread::spawn(move || {
+            let Ok(socket) = UdpSocket::bind((ip, 0)) else {
+                return;
+            };
+            if socket.set_read_timeout(Some(Duration::from_millis(400))).is_err() {
+                return;
+            }
+            // Multicast to a link-local group: the default TTL of 1 is
+            // correct and deliberate — a television two routers away is not
+            // castable anyway.
+            if socket.send_to(request.as_bytes(), SSDP_ADDR).is_err() {
+                // An interface that cannot send multicast — a VPN tunnel,
+                // usually — is not an error. It is just not the one.
+                return;
+            }
+
+            let deadline = Instant::now() + timeout;
+            let mut buf = [0u8; 4096];
+            while Instant::now() < deadline {
+                match socket.recv_from(&mut buf) {
+                    Ok((n, _)) => {
+                        let text = String::from_utf8_lossy(&buf[..n]);
+                        if let Some(loc) = header(&text, "LOCATION") {
+                            let mut all = found.lock().unwrap();
+                            if !all.contains(&loc) {
+                                all.push(loc);
+                            }
+                        }
                     }
+                    // A read timeout is the normal quiet between replies.
+                    Err(_) => continue,
                 }
             }
-            // A read timeout is the normal quiet between replies.
-            Err(_) => continue,
-        }
+        }));
     }
+    for t in threads {
+        let _ = t.join();
+    }
+
+    let locations = found.lock().unwrap().clone();
     Ok(locations)
 }
 
@@ -474,6 +536,58 @@ mod tests {
         // A live stream has no duration and says so.
         assert_eq!(seconds("NOT_IMPLEMENTED"), 0.0);
         assert_eq!(seconds(""), 0.0);
+    }
+
+    /// Trimmed from a real Xiaomi box's `description.xml`, kept because its
+    /// control URL is the awkward shape: relative, not rooted at `/`, and
+    /// carrying colons in the path.
+    const XIAOMI: &str = r#"<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0"><device>
+<deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+<friendlyName>客厅的小米盒子</friendlyName>
+<manufacturer>Xiaomi</manufacturer>
+<modelName>Xiaomi MediaRenderer</modelName>
+<UDN>uuid:F7CA5454-3F48-4390-8009-443e4ce6411c</UDN>
+<serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><controlURL>_urn:schemas-upnp-org:service:AVTransport_control</controlURL></service>
+<service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType><controlURL>_urn:schemas-upnp-org:service:ConnectionManager_control</controlURL></service>
+<service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType><controlURL>_urn:schemas-upnp-org:service:RenderingControl_control</controlURL></service>
+</serviceList></device></root>"#;
+
+    #[test]
+    fn a_real_renderer_from_the_shop_parses() {
+        // Everything about this one is a thing that could have been assumed
+        // and would have been wrong: the name is not ASCII, the control URL
+        // is relative *without* a leading slash, and it has colons in the
+        // path — so a resolver that split on ':' or assumed an absolute
+        // path would build a URL the box never answers.
+        assert_eq!(tag(XIAOMI, "friendlyName").as_deref(), Some("客厅的小米盒子"));
+
+        let control = control_url_for(XIAOMI, AVTRANSPORT).expect("AVTransport");
+        assert_eq!(control, "_urn:schemas-upnp-org:service:AVTransport_control");
+
+        assert_eq!(
+            resolve("http://192.168.5.12:49152/description.xml", &control),
+            "http://192.168.5.12:49152/_urn:schemas-upnp-org:service:AVTransport_control"
+        );
+    }
+
+    #[test]
+    fn the_interfaces_to_search_from_exclude_loopback() {
+        // Whatever this machine happens to have, two things must hold: a
+        // search is never sent down loopback (nothing answers, and it would
+        // mask a real interface being missing), and no interface is asked
+        // twice. The count itself is a property of the machine, not of the
+        // code, so it is not asserted.
+        let ips = local_ipv4s();
+        assert!(
+            ips.iter().all(|ip| !ip.is_loopback()),
+            "loopback should not be searched: {ips:?}"
+        );
+        let mut sorted = ips.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ips.len(), "duplicate interfaces: {ips:?}");
     }
 
     #[test]
