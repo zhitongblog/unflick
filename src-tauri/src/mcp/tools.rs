@@ -20,6 +20,12 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         return handle_cleanup(args);
     }
 
+    // `startup` reads a log file. Same reasoning: launching a player to ask
+    // how long the last launch took would overwrite the answer.
+    if name == "startup" {
+        return handle_startup();
+    }
+
     let (cmd, daemon_args) = match name {
         "play" => ("play", args.clone()),
         "pause" => ("pause", json!({})),
@@ -182,6 +188,34 @@ fn cleanup_result(summary: String, report: &crate::core::cleanup::Report, is_err
     )
 }
 
+fn handle_startup() -> Value {
+    use crate::core::boot;
+
+    let path = boot::log_path();
+    let Ok(body) = std::fs::read_to_string(&path) else {
+        return tool_result(
+            true,
+            json!([{"type": "text", "text": format!("no startup log at {}", path.display())}]),
+        );
+    };
+    let phases = boot::parse_last_launch(&body);
+    let summary = match phases.last() {
+        None => format!("no startup marks in {}", path.display()),
+        Some(last) => format!(
+            "last launch: {} phases, reaching \"{}\" at {} ms",
+            phases.len(),
+            last.label,
+            last.at_ms
+        ),
+    };
+    let detail = serde_json::to_string_pretty(&phases).unwrap_or_default();
+    tool_result(
+        false,
+        json!([{"type": "text", "text": format!("{}
+{}", summary, detail)}]),
+    )
+}
+
 fn handle_describe_frame(args: &Value) -> Value {
     // Never forward `output` — writing files is the CLI's job. An agent
     // asking to see a frame wants the pixels, not a path on someone's disk.
@@ -275,6 +309,11 @@ fn tools_window() -> Value {
                     }
                 }
             }
+        },
+        {
+            "name": "startup",
+            "description": "The last launch's startup timeline, phase by phase, in milliseconds from process start — process init, video pipeline, window shown, the launch file opening, React mounting, the control port. Use it to say where a slow start went rather than that it was slow.",
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "now_playing",

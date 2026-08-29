@@ -63,6 +63,7 @@ function App() {
     setSpeed,
     addBookmark,
     nowPlaying,
+    adoptStartupFile,
   } = usePlayerStore();
   // Subtitles are now rendered by mpv natively (ASS/SSA/SRT/PGS), not via
   // <track> in HTML. The store still owns the list for the menu UI.
@@ -744,6 +745,11 @@ function App() {
 
   // Initialize mpv player on mount and load persisted settings
   useEffect(() => {
+    // First thing React can say for itself. Everything before this — the
+    // WebView, the bundle, the first render — is invisible to Rust, so
+    // without this mark the startup log has one unattributed gap where
+    // most of the time actually goes.
+    invoke("boot_mark", { label: "react mounted" }).catch(() => {});
     invoke("player_init").catch(console.error);
 
     // Load the binding table before anything can be typed at the window.
@@ -769,9 +775,22 @@ function App() {
     // If Explorer launched us via a file association, the backend stashed
     // the path on startup. Pull it out and start playback. Single-shot:
     // a second invocation returns null so refreshes don't replay.
-    invoke<string | null>("consume_pending_file")
-      .then((path) => {
-        if (path) play(path);
+    // The backend already opened whatever the shell handed us — this asks
+    // what happened, it does not start anything. Opening it here a second
+    // time would reload a file that is already on screen.
+    invoke<{ path: string; error: string | null } | null>("consume_pending_file")
+      .then((opened) => {
+        if (!opened) return;
+        if (opened.error) {
+          usePlayerStore.setState({ openError: opened.error, state: "stopped" });
+          window.dispatchEvent(
+            new CustomEvent("unflick:toast", {
+              detail: { kind: "error", message: opened.error },
+            }),
+          );
+          return;
+        }
+        void adoptStartupFile(opened.path);
       })
       .catch(console.error);
 

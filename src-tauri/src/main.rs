@@ -7,6 +7,7 @@
 use clap::Parser;
 
 use unflick_lib::cli::{run_cli, Cli};
+use unflick_lib::core::boot;
 use unflick_lib::mcp::run_mcp_server;
 
 /// Env var the GUI reads on startup to auto-play a file. Set when Windows
@@ -16,6 +17,10 @@ use unflick_lib::mcp::run_mcp_server;
 const PENDING_FILE_ENV: &str = "UNFLICK_OPEN_FILE";
 
 fn main() {
+    // t=0 for the startup timeline. First statement in the program, so the
+    // numbers in the log mean what they say.
+    boot::start();
+
     // Linux: force GTK to the X11 backend so our LinuxVideoSurface
     // (which uses XCreateSimpleWindow + GLX) gets a Xlib window
     // handle from Tauri instead of Wayland. Tauri's webkit2gtk-4.1
@@ -87,6 +92,12 @@ fn main() {
         let arg = &raw_args[1];
         if !arg.starts_with('-') && std::path::Path::new(arg).is_file() {
             std::env::set_var(PENDING_FILE_ENV, arg);
+            // The same log the plain-GUI path gets. This branch had been
+            // going without one, which meant the single most common launch
+            // — double-clicking a video — was the one that left no trace
+            // when it went wrong.
+            init_file_log();
+            boot::mark("main: opening a file from the shell");
             unflick_lib::run();
             return;
         }
@@ -118,6 +129,7 @@ fn main() {
     #[cfg(target_os = "windows")]
     unsafe { winapi_attach_console(); }
     init_file_log();
+    boot::mark("main: gui mode");
     unflick_lib::run();
 }
 
@@ -126,7 +138,7 @@ fn main() {
 /// console (Explorer / file-association launches). Failures are silent —
 /// running without logs is fine.
 fn init_file_log() {
-    let path = std::env::temp_dir().join("unflick.log");
+    let path = boot::log_path();
     if let Ok(f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

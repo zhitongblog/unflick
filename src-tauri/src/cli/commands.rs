@@ -153,6 +153,8 @@ pub enum Commands {
         #[command(subcommand)]
         action: MouseAction,
     },
+    /// The last launch's startup timeline, phase by phase
+    Startup,
     /// Find (and optionally remove) files an older unflick left behind
     Cleanup {
         /// Actually delete them. Without this the command only reports.
@@ -1120,6 +1122,33 @@ pub fn run_cli(cli: Cli) -> i32 {
                 }
             }
         }
+        Some(Commands::Startup) => {
+            // No `ensure_daemon()`, same reasoning as `cleanup`: this reads
+            // a log file. Starting a player to ask how long the last player
+            // took to start would measure the wrong launch.
+            let path = crate::core::boot::log_path();
+            match std::fs::read_to_string(&path) {
+                Err(e) => CommandResult::err(format!("{}: {}", path.display(), e)),
+                Ok(body) => {
+                    let phases = crate::core::boot::parse_last_launch(&body);
+                    let total = phases.last().map(|p| p.at_ms).unwrap_or(0);
+                    let message = match phases.last() {
+                        None => format!("no startup marks in {}", path.display()),
+                        Some(last) => {
+                            format!("last launch reached \"{}\" at {} ms", last.label, total)
+                        }
+                    };
+                    CommandResult::ok_with_data(
+                        message,
+                        json!({
+                            "total_ms": total,
+                            "phases": phases,
+                            "log": path.to_string_lossy(),
+                        }),
+                    )
+                }
+            }
+        }
         Some(Commands::Cleanup { apply }) => {
             // No `ensure_daemon()`: this reads the filesystem, and starting
             // a player to ask about disk space would be absurd. It also has
@@ -1458,25 +1487,66 @@ fn handle_sponsor(action: SponsorAction) -> CommandResult {
 }
 
 /// Start daemon in background if not already running.
+/// How long to give a freshly spawned daemon to open its port.
+///
+/// It has to create an mpv instance before it listens, so "ready" is not
+/// instant. The old budget was two seconds, which was under the real cost
+/// on a cold start — and every probe inside the wait was itself blocking
+/// for two seconds on a refused connection, so the loop gave up after one
+/// or two actual attempts and reported "daemon not running. Start it with:
+/// unflick daemon" for a daemon that was still starting.
+const DAEMON_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 fn ensure_daemon() {
     if daemon::is_daemon_running() {
         return;
     }
 
-    // Spawn daemon as a detached child process
-    let exe = std::env::current_exe().unwrap();
-    let _ = std::process::Command::new(exe)
+    // Spawn the daemon as a detached child process.
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("unflick: cannot locate own executable to start a daemon: {e}");
+            return;
+        }
+    };
+    let spawned = std::process::Command::new(exe)
         .arg("daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
+    let mut child = match spawned {
+        Ok(c) => c,
+        Err(e) => {
+            // Discarding this was how a daemon that never started became a
+            // message telling the user to start it by hand.
+            eprintln!("unflick: could not start the daemon: {e}");
+            return;
+        }
+    };
 
-    // Wait for daemon to be ready
-    for _ in 0..20 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    // Wait for it to be ready. Poll on a deadline rather than a fixed
+    // number of attempts: how long a probe takes varies by two orders of
+    // magnitude between "refused immediately" and "refused after the
+    // OS finishes retrying", and a count of attempts silently becomes a
+    // different timeout on each machine.
+    let deadline = std::time::Instant::now() + DAEMON_READY_TIMEOUT;
+    while std::time::Instant::now() < deadline {
         if daemon::is_daemon_running() {
             return;
         }
+        // A daemon that died is never going to answer, and saying so beats
+        // spending the rest of the budget on a process that no longer exists.
+        if let Ok(Some(status)) = child.try_wait() {
+            eprintln!("unflick: the daemon exited during startup ({status})");
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
+    eprintln!(
+        "unflick: the daemon did not open {} within {:?}",
+        daemon::control_addr(),
+        DAEMON_READY_TIMEOUT
+    );
 }

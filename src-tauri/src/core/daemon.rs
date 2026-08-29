@@ -42,11 +42,44 @@ const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:19542";
 /// before spawning the daemon.
 pub const CONTROL_ADDR_ENV: &str = "UNFLICK_CONTROL_ADDR";
 
-fn control_addr() -> String {
+pub fn control_addr() -> String {
     std::env::var(CONTROL_ADDR_ENV)
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string())
+}
+
+/// How long to wait for the control port to answer.
+///
+/// The server is on loopback in another process on the same machine: it
+/// accepts within a millisecond or it is not there. The timeout only has to
+/// beat the operating system's own idea of how long to keep trying, and on
+/// Windows that turned out to be two seconds per refused connection —
+/// measured, not assumed: the GUI's startup timeline showed 2.0s between
+/// "database open" and "port claimed" with nothing at all listening. That
+/// cost was paid by every cold CLI command and delayed the window's own
+/// control server by the same two seconds, during which `unflick pause`
+/// found nobody home and spawned an invisible headless player instead —
+/// exactly what hosting the server in the GUI was meant to prevent.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Connect to the control port, giving up quickly when nobody answers.
+///
+/// `TcpStream::connect` takes a string and hides however many addresses it
+/// tries and for however long. `connect_timeout` needs a resolved
+/// `SocketAddr`, so resolve first — and fail closed if the address does not
+/// resolve at all, rather than reporting "no daemon" for what is really a
+/// misconfigured `UNFLICK_CONTROL_ADDR`.
+fn connect_control() -> std::io::Result<TcpStream> {
+    use std::net::ToSocketAddrs;
+    let addr = control_addr();
+    let resolved = addr.to_socket_addrs()?.next().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} does not resolve to an address", addr),
+        )
+    })?;
+    TcpStream::connect_timeout(&resolved, CONNECT_TIMEOUT)
 }
 
 /// Everything a control-server connection needs. Shared across connection
@@ -236,6 +269,17 @@ fn handle_client(stream: TcpStream, ctx: Arc<ControlContext>) {
         let json = serde_json::to_string(&result).unwrap();
         let _ = writeln!(writer, "{}", json);
     }
+}
+
+/// Run one control command against a context, without a socket in between.
+///
+/// The GUI uses this to open the file the shell handed it at launch. That
+/// open has to do everything `unflick play` does — save the outgoing file's
+/// position, refuse a protocol mpv lacks, apply the resume point, record
+/// history — and the way to be sure it does is to be the same code, not a
+/// second copy of it that drifts.
+pub fn dispatch(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandResult {
+    dispatch_command(ctx, cmd, args)
 }
 
 fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandResult {
@@ -1717,7 +1761,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
 
 /// Send a command to the running daemon. Returns the response.
 pub fn send_to_daemon(cmd: &str, args: Value) -> Result<CommandResult, String> {
-    let mut stream = TcpStream::connect(control_addr())
+    let mut stream = connect_control()
         .map_err(|_| "daemon not running. Start it with: unflick daemon".to_string())?;
 
     let request = json!({ "command": cmd, "args": args });
@@ -1732,7 +1776,7 @@ pub fn send_to_daemon(cmd: &str, args: Value) -> Result<CommandResult, String> {
 
 /// Check if daemon is already running.
 pub fn is_daemon_running() -> bool {
-    TcpStream::connect(control_addr()).is_ok()
+    connect_control().is_ok()
 }
 
 /// Ask whoever holds the control port to step aside, then wait for it to

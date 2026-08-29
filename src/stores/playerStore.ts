@@ -118,6 +118,7 @@ interface PlayerState {
    * the URL dialog) bypass the saved `preferredQuality` for a single
    * extraction; pass `null` / undefined to honour the saved setting.
    */
+  adoptStartupFile: (file: string) => Promise<void>;
   play: (
     file: string,
     qualityOverride?: string | null,
@@ -218,6 +219,43 @@ interface MpvSubTrack {
   lang: string | null;
   external_file: string | null;
   selected: boolean;
+}
+
+/// Attach the sidecar subtitles sitting next to a video, skipping the ones
+/// mpv already picked up on its own.
+///
+/// mpv's `sub-auto` loads `movie.srt` when it opens `movie.mp4`, and we then
+/// loaded the same file again — the menu showed the track twice, once
+/// selected and once not, for every video with a matching subtitle. The
+/// lookup still earns its place: it finds the names mpv's rule misses.
+async function attachSidecars(
+  file: string,
+  refresh: () => Promise<void>,
+  current: () => SubtitleTrack[],
+) {
+  let found: { subtitles: { path: string; lang: string | null; ext: string }[] };
+  try {
+    found = await invoke("find_sidecar_subtitles", { videoPath: file });
+  } catch {
+    return; // no sidecars, or the lookup failed — neither stops playback
+  }
+  if (found.subtitles.length === 0) return;
+
+  await refresh();
+  const already = new Set(
+    current()
+      .map((t) => t.external?.toLowerCase())
+      .filter((p): p is string => !!p),
+  );
+  for (const sub of found.subtitles) {
+    if (already.has(sub.path.toLowerCase())) continue;
+    try {
+      await invoke("subtitle_load", { path: sub.path });
+    } catch {
+      /* skip unsupported formats — mpv reports + we move on */
+    }
+  }
+  await refresh();
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -370,6 +408,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ subtitles: [] });
   },
 
+  // The backend opened this one during startup, before the WebView
+  // existed. Everything `play` does to *start* a file has already happened
+  // — resume point, history, mpv load. What is left is the part that lives
+  // on this side: reflect it in the UI and pull in sidecar subtitles.
+  adoptStartupFile: async (file: string) => {
+    set({ state: "playing", file, openError: null, extractError: null });
+    await attachSidecars(file, get().refreshSubtitles, () => get().subtitles);
+  },
+
   play: async (
     file: string,
     qualityOverride?: string | null,
@@ -475,20 +522,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     // Sidecar subtitle auto-load (movie.srt, movie.en.srt next to local video).
     if (!isUrl(file)) {
-      invoke<{ subtitles: { path: string; lang: string | null; ext: string }[] }>(
-        "find_sidecar_subtitles",
-        { videoPath: file },
-      )
-        .then(async (r) => {
-          for (const sub of r.subtitles) {
-            try {
-              await get().loadSubtitle(sub.path);
-            } catch {
-              /* skip unsupported formats — mpv reports + we move on */
-            }
-          }
-        })
-        .catch(() => {});
+      void attachSidecars(file, get().refreshSubtitles, () => get().subtitles);
     }
   },
 

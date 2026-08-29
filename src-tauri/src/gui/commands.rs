@@ -4,7 +4,7 @@ use tauri::{command, State, AppHandle, Emitter, Manager};
 use serde_json::{json, Value};
 
 use crate::core::library;
-use super::state::{GuiPlayer, PendingFile};
+use super::state::{GuiPlayer, PendingFile, StartupOpen};
 
 /// GUI playback uses HTMLVideoElement (rendered in WebView2), not mpv.
 /// mpv stays available for CLI/MCP usage. This command is a no-op kept for
@@ -14,12 +14,26 @@ pub async fn player_init(_app: AppHandle, _gui_player: State<'_, GuiPlayer>) -> 
     Ok(json!({"status": "ready"}))
 }
 
-/// Take and clear the file Explorer asked us to open at launch.
-/// Returns `null` when there's nothing pending. Single-shot: a second call
-/// returns `null` so refreshes don't re-trigger playback.
+/// Let the WebView write onto the same startup timeline Rust writes to.
+///
+/// Most of a cold start is spent in places Rust cannot see: creating the
+/// WebView, parsing the bundle, mounting React. Without a mark from the
+/// other side of the IPC boundary those phases are one unattributed gap.
 #[command]
-pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<String> {
-    pending.0.lock().ok().and_then(|mut g| g.take())
+pub fn boot_mark(label: String) {
+    crate::core::boot::mark(&format!("ui: {label}"));
+}
+
+/// Take and clear the record of the file Explorer asked us to open.
+///
+/// By the time the frontend can ask, the backend has already opened it —
+/// see `PendingFile`. So this reports rather than instructs: the caller
+/// adopts the file that is playing, or shows `error` if it would not open.
+/// Returns `null` when the launch had no file. Single-shot, so a refresh
+/// does not replay anything.
+#[command]
+pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<StartupOpen> {
+    pending.take_outcome()
 }
 
 /// Move + resize the embedded video surface in physical pixels relative to
@@ -658,7 +672,7 @@ pub fn player_play(
     eprintln!("[unflick] player_play file={file:?} seek={seek:?}");
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
-    eprintln!("[unflick] player_play loadfile dispatched");
+    crate::core::boot::mark("play: mpv reports the file loaded");
     Ok(json!({"message": format!("playing {}", file)}))
 }
 

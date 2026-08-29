@@ -11,13 +11,14 @@ use std::sync::Arc;
 use core::i18n::{menu_strings, read_locale_from_settings};
 use core::player::Player;
 use core::render_loop::RenderLoop;
-use gui::{commands, state::{GuiPlayer, PendingFile}};
+use gui::{commands, state::{GuiPlayer, PendingFile, StartupOpen}};
 use video::VideoSurface;
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    core::boot::mark("run: handing off to tauri");
     tauri::Builder::default()
         // single-instance MUST come first so a second-launch is short-
         // circuited before any other plugin spends time on initialization.
@@ -48,6 +49,7 @@ pub fn run() {
         .manage(GuiPlayer::new())
         .manage(PendingFile::from_env())
         .setup(|app| {
+            core::boot::mark("setup: entered");
             let handle = app.handle();
 
             // Pull the user's saved locale once, here at startup. Tauri's
@@ -109,6 +111,7 @@ pub fn run() {
 
             let menu = Menu::with_items(handle, &[&file_menu, &playback_menu, &view_menu, &help_menu])?;
             app.set_menu(menu)?;
+            core::boot::mark("setup: menus built");
 
             // ── v0.8 video pipeline bring-up ───────────────────────────────
             // Build the embedded video surface beneath the WebView, spin up
@@ -132,9 +135,9 @@ pub fn run() {
             //     paints its dark background underneath while mpv warms.
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
-                eprintln!("[unflick] bringing up video pipeline...");
+                core::boot::mark("pipeline: starting");
                 match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
-                    Ok(()) => eprintln!("[unflick] video pipeline ready"),
+                    Ok(()) => core::boot::mark("pipeline: ready"),
                     Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
                 }
             }
@@ -191,6 +194,7 @@ pub fn run() {
                 if let Err(e) = window.show() {
                     eprintln!("[unflick] window.show() failed: {e}");
                 }
+                core::boot::mark("window: shown");
             }
 
             // Linux pipeline bring-up runs *after* show() so the GTK
@@ -269,7 +273,7 @@ pub fn run() {
             // but against *this* window's player. Without it, `unflick pause`
             // and MCP `pause` would spawn (or talk to) a separate vo=null mpv
             // the user can't see, while the video on screen kept playing.
-            spawn_embedded_control_server(app.state::<GuiPlayer>(), window_host);
+            spawn_embedded_control_server(app.handle().clone(), app.state::<GuiPlayer>(), window_host);
 
             // Timeline previews accumulate on disk as people watch things.
             // Trim once per launch, off the startup path — it walks the
@@ -298,6 +302,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::player_init,
             commands::consume_pending_file,
+            commands::boot_mark,
             commands::open_default_apps_settings,
             commands::video_surface_set_geometry,
             commands::video_surface_set_visible,
@@ -528,6 +533,7 @@ pub fn run() {
 /// fails, we log and carry on — the window stays fully usable, it just
 /// isn't the one answering CLI commands.
 fn spawn_embedded_control_server(
+    app: tauri::AppHandle,
     state: tauri::State<'_, GuiPlayer>,
     window_host: Arc<gui::window::TauriWindowHost>,
 ) {
@@ -549,12 +555,9 @@ fn spawn_embedded_control_server(
             return;
         }
     };
+    core::boot::mark("control: database open");
 
     std::thread::spawn(move || {
-        if !core::daemon::request_port_handover() {
-            eprintln!("[unflick] control server: port busy, CLI/MCP will use the existing host");
-            return;
-        }
         let ctx = Arc::new(core::daemon::ControlContext {
             player,
             playlist,
@@ -564,9 +567,56 @@ fn spawn_embedded_control_server(
             window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
             events: Some(window_host as Arc<dyn core::events::EventSink>),
         });
+
+        // Open the file the shell handed us, before anything else this
+        // thread does. It used to wait for the WebView to boot and React to
+        // mount and call back — a third of the way to the first frame spent
+        // on a decision already made in `main`. mpv exists by now; the
+        // picture does not need the UI's permission to start.
+        open_launch_file(&app, &ctx);
+
+        // Only now go after the port. A headless daemon holding it can take
+        // a moment to stand down, and the user is watching the window, not
+        // the socket.
+        if !core::daemon::request_port_handover() {
+            eprintln!("[unflick] control server: port busy, CLI/MCP will use the existing host");
+            return;
+        }
+        core::boot::mark("control: port claimed");
         if let Err(e) = core::daemon::serve_control(ctx) {
             eprintln!("[unflick] control server: bind failed: {e}");
         }
+    });
+}
+
+/// Play the file named on the command line, through the same `play` the CLI
+/// and MCP use, and leave the verdict where the frontend can find it.
+fn open_launch_file(app: &tauri::AppHandle, ctx: &core::daemon::ControlContext) {
+    let pending = app.state::<PendingFile>();
+    let Some(path) = pending.take_path() else {
+        return;
+    };
+
+    // mpv is created by now, but the render thread builds its context a
+    // moment later, and a `loadfile` issued before that ends the file
+    // instead of playing it — which is exactly what this path did on its
+    // first outing: "could not open <file>" twelve milliseconds in, for a
+    // file that plays perfectly a third of a second later.
+    if let Some(rl) = app.state::<GuiPlayer>().render_loop.get() {
+        if !rl.wait_ready(std::time::Duration::from_secs(5)) {
+            eprintln!("[unflick] launch file: render context not ready, opening anyway");
+        }
+    }
+    core::boot::mark("open: starting the launch file");
+    let result = core::daemon::dispatch(ctx, "play", &serde_json::json!({ "file": path }));
+    if result.success {
+        core::boot::mark("open: launch file playing");
+    } else {
+        core::boot::mark(&format!("open: launch file failed — {}", result.message));
+    }
+    pending.set_outcome(StartupOpen {
+        path,
+        error: (!result.success).then_some(result.message),
     });
 }
 

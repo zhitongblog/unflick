@@ -45,6 +45,11 @@ struct RenderSignal {
 }
 
 struct RenderState {
+    /// Set true once the mpv render context exists and its update callback
+    /// is wired. Until then mpv has a `vo=libmpv` with nothing behind it,
+    /// and `loadfile` ends the file instead of playing it — so anything
+    /// wanting to open something has to wait for this first.
+    ready: bool,
     /// Set true by mpv update_callback when a new frame is ready.
     frame_ready: bool,
     /// Set true by main thread on geometry changes — forces a redraw even
@@ -90,6 +95,7 @@ impl RenderLoop {
     pub fn start(player: Arc<Player>, surface: Arc<dyn VideoSurface>) -> Result<Self> {
         let signal = Arc::new(RenderSignal {
             state: Mutex::new(RenderState {
+                ready: false,
                 frame_ready: false,
                 redraw: false,
                 shutdown: false,
@@ -134,6 +140,9 @@ impl RenderLoop {
     pub fn start_passive(player: Arc<Player>, surface: Arc<dyn VideoSurface>) -> Self {
         let signal = Arc::new(RenderSignal {
             state: Mutex::new(RenderState {
+                // No render thread here: mpv draws into the X11 child
+                // window itself, so there is nothing to become ready.
+                ready: true,
                 frame_ready: false,
                 redraw: false,
                 shutdown: false,
@@ -152,6 +161,25 @@ impl RenderLoop {
     /// Resize / move the underlying native widget. Safe from any thread.
     /// Caches the rect so the backend can replay it on owner-window moves
     /// (which don't fire the frontend's ResizeObserver).
+    /// Block until mpv can be given a file, or until `timeout` elapses.
+    ///
+    /// Returns whether it became ready. A false is worth acting on but not
+    /// worth refusing to play over — the caller tries anyway and lets mpv
+    /// give the real answer.
+    pub fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+        let Ok(state) = self.signal.state.lock() else {
+            return false;
+        };
+        match self
+            .signal
+            .cv
+            .wait_timeout_while(state, timeout, |s| !s.ready && !s.shutdown)
+        {
+            Ok((s, _)) => s.ready,
+            Err(_) => false,
+        }
+    }
+
     pub fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
         self.surface.set_geometry(x, y, w, h)?;
         if let Ok(mut g) = self.last_geometry.lock() {
@@ -256,6 +284,13 @@ fn run_render_thread(
     let cb: MpvRenderUpdateFn = update_callback_trampoline;
     ctx.set_update_callback(cb, signal_ptr);
     eprintln!("[unflick-render] update callback wired, entering loop");
+
+    // mpv can be handed a file from here on. Whoever is waiting to open the
+    // one named on the command line is released by this.
+    if let Ok(mut st) = signal.state.lock() {
+        st.ready = true;
+    }
+    signal.cv.notify_all();
 
     let mut frames_rendered: u64 = 0;
     loop {
