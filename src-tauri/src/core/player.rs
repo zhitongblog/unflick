@@ -179,6 +179,8 @@ impl Player {
         // reaches `player_play` directly, gets it too.
         let target = match disc::detect(path) {
             Some(d) => {
+                // Before libdvdnav gets anywhere near the disc.
+                disc::ensure_console();
                 if !d.device.is_empty() {
                     self.mpv
                         .set_property_string(d.kind.device_property(), &d.device)?;

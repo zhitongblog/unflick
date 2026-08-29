@@ -92,6 +92,10 @@ fn main() {
         let arg = &raw_args[1];
         if !arg.starts_with('-') && std::path::Path::new(arg).is_file() {
             std::env::set_var(PENDING_FILE_ENV, arg);
+            // Same as the plain-GUI path: if there is a terminal to talk
+            // to, talk to it.
+            #[cfg(target_os = "windows")]
+            unsafe { winapi_attach_console(); }
             // The same log the plain-GUI path gets. This branch had been
             // going without one, which meant the single most common launch
             // — double-clicking a video — was the one that left no trace

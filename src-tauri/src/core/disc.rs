@@ -285,6 +285,65 @@ fn marker_in_iso_directory(
     found
 }
 
+/// Make sure this process has a console before libdvdnav opens a disc.
+///
+/// Opening a disc kills a console-less process. Not figuratively: the
+/// process fast-fails, 0xC0000409 inside `ucrtbase`, with mpv's own log
+/// stopping mid-sentence at "Opening dvd://". Reproduced every time by
+/// double-clicking a `.iso`, which is a GUI-subsystem launch from Explorer
+/// with no console anywhere.
+///
+/// What was ruled out, in this order, each by measurement: it is not the
+/// timing (a delay changes nothing, and an open triggered from outside a
+/// third of a second later is already safe); not the thread (running it on
+/// a fresh one changes nothing); not the standard handles (pointing all
+/// three, Win32 *and* C runtime, at the null device changes nothing). What
+/// fixes it is the process having a console at all — attaching to the
+/// parent's if there is one, and otherwise allocating one and hiding it.
+///
+/// So the console is allocated here rather than at startup, because a
+/// window flashing on every launch is not a price ordinary playback should
+/// pay for a case it never hits. Once per process; a disc that is opened a
+/// second time finds it already there.
+#[cfg(target_os = "windows")]
+pub fn ensure_console() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetConsoleWindow() -> *mut std::ffi::c_void;
+            fn AttachConsole(process_id: u32) -> i32;
+            fn AllocConsole() -> i32;
+        }
+        #[link(name = "user32")]
+        extern "system" {
+            fn ShowWindow(hwnd: *mut std::ffi::c_void, cmd: i32) -> i32;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+        const SW_HIDE: i32 = 0;
+
+        if !GetConsoleWindow().is_null() {
+            return;
+        }
+        if AttachConsole(ATTACH_PARENT_PROCESS) != 0 {
+            return;
+        }
+        if AllocConsole() != 0 {
+            // Hidden immediately: the console is there for whatever inside
+            // libdvdnav wants one, not for anybody to look at.
+            let w = GetConsoleWindow();
+            if !w.is_null() {
+                ShowWindow(w, SW_HIDE);
+            }
+        }
+    });
+}
+
+/// Nothing to do anywhere else — this is a Windows console quirk.
+#[cfg(not(target_os = "windows"))]
+pub fn ensure_console() {}
+
 /// Every optical drive on the machine, as paths that `detect` accepts.
 ///
 /// Used by `unflick disc list` so someone can find out what is in the

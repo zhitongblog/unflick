@@ -73,6 +73,7 @@ means driving whatever the user is actually watching:
 | `UNFLICK_CONFIG_DIR` | settings.json location — keybindings, mouse bindings, subtitle styling |
 | `UNFLICK_LEGACY_DIR` | Where `cleanup` looks for a stale install. Tests point it at a fake one — the real rule (never delete the live caches that share that folder) cannot be exercised against a real machine |
 | `UNFLICK_LOG` | Where the startup log is written and where `startup` reads it from. Tests hand it a log they wrote themselves rather than depending on whichever launch happened last |
+| `UNFLICK_MPV_LOG` | Point it at a path for libmpv's own verbose log. Off by default — it is what to reach for when a file will not play and our side can only say "could not open" |
 
 Fixture media is generated once with the bundled ffmpeg into
 `src-tauri/target/test-fixtures/` and reused. `cargo clean` disposes of it.

@@ -16,6 +16,14 @@ pub struct MpvHandle {
 unsafe impl Send for MpvHandle {}
 unsafe impl Sync for MpvHandle {}
 
+/// Point this at a path to get mpv's own verbose log written there.
+///
+/// The only way to see what libmpv was doing when something failed: our
+/// side sees "could not open", mpv's log says which demuxer gave up and
+/// why. Off unless asked for — verbose logging costs real time on every
+/// load, so this is a diagnostic rather than a feature.
+pub const MPV_LOG_ENV: &str = "UNFLICK_MPV_LOG";
+
 impl MpvHandle {
     /// Create and initialize a new mpv instance.
     /// `vo` controls video output: "null" for headless, "gpu" for GUI.
@@ -48,6 +56,16 @@ impl MpvHandle {
         // the file at duration with pause=true; resume() detects the
         // EOF position and rewinds to 0 before unpausing.
         handle.set_option("keep-open", "yes")?;
+
+        // Both of these have to come before initialize, and the msg-level
+        // after the one above so it wins.
+        if let Some(path) = std::env::var_os(MPV_LOG_ENV) {
+            let path = path.to_string_lossy().into_owned();
+            if !path.is_empty() {
+                let _ = handle.set_option("msg-level", "all=v");
+                let _ = handle.set_option("log-file", &path);
+            }
+        }
 
         let err = unsafe { (handle.api.initialize)(handle.ctx) };
         if err < 0 {
@@ -142,6 +160,16 @@ impl MpvHandle {
         handle.set_option("keepaspect", "yes")?;
         handle.set_option("volume-max", "200")?;
         handle.set_option("keep-open", "yes")?;
+
+        // Both of these have to come before initialize, and the msg-level
+        // after the one above so it wins.
+        if let Some(path) = std::env::var_os(MPV_LOG_ENV) {
+            let path = path.to_string_lossy().into_owned();
+            if !path.is_empty() {
+                let _ = handle.set_option("msg-level", "all=v");
+                let _ = handle.set_option("log-file", &path);
+            }
+        }
 
         let err = unsafe { (handle.api.initialize)(handle.ctx) };
         if err < 0 {
