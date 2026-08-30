@@ -1268,6 +1268,17 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             } else {
                 file.to_string()
             };
+            // ffmpeg reads files, and a disc is not one. Handed `E:\` or a
+            // `.iso` it reports "No such file or directory", which is both
+            // true and useless — the user did not mistype a path, they
+            // asked for something this cannot do.
+            if crate::core::disc::detect(&input).is_some() {
+                return CommandResult::err(format!(
+                    "cannot cut a clip from a disc ({}) — copy the title to a file first",
+                    input
+                ));
+            }
+
             let start = args["start"].as_f64().unwrap_or(0.0);
             let end = args["end"].as_f64().unwrap_or(0.0);
             let output = args.get("output").and_then(|v| v.as_str()).unwrap_or("");

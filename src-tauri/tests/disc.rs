@@ -169,3 +169,55 @@ fn listing_says_whether_this_build_can_play_discs_at_all() {
     assert_eq!(supports["dvd"], true, "the bundled libmpv should play DVDs");
     assert_eq!(supports["bluray"], true, "the bundled libmpv should play Blu-rays");
 }
+
+// ─── What a disc cannot do ────────────────────────────────────────────────
+//
+// Both of these go through ffmpeg, which reads files. Handed a disc it says
+// "No such file or directory" — true, and useless, because the user did not
+// mistype a path. Found by pointing the player at a mounted DVD and trying
+// everything on it.
+
+/// A folder that looks like a mounted disc, for the paths that must refuse.
+fn video_ts_folder(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("VIDEO_TS")).unwrap();
+    dir
+}
+
+#[test]
+fn a_clip_cannot_be_cut_from_a_disc_and_says_why() {
+    let dir = video_ts_folder("unflick-it-clip-disc");
+    let d = Daemon::start();
+
+    let reply = d.send(
+        "clip",
+        json!({
+            "file": dir.to_string_lossy(),
+            "start": 1.0,
+            "end": 3.0,
+            "output": std::env::temp_dir().join("unflick-it-clip.mp4").to_string_lossy(),
+        }),
+    );
+    reply.expect_err_containing("disc");
+    assert!(
+        !reply.message().contains("ffmpeg version"),
+        "the raw ffmpeg banner is not an explanation: {}",
+        reply.message()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn thumbnail_previews_are_refused_for_a_disc() {
+    // Refused once, rather than spawning an ffmpeg that cannot succeed
+    // every time the pointer crosses the progress bar.
+    let dir = video_ts_folder("unflick-it-thumb-disc");
+    let err = match unflick_lib::core::thumbnail::thumbnail_at(&dir.to_string_lossy(), 5.0, 60.0, 160) {
+        Err(e) => e,
+        Ok(_) => panic!("a disc has no thumbnails to give"),
+    };
+    assert!(err.to_string().contains("disc"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

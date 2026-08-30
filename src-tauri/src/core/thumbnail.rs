@@ -67,6 +67,13 @@ pub fn thumbnail_at(video: &str, seconds: f64, duration: f64, width: u32) -> Res
     if video.starts_with("http://") || video.starts_with("https://") {
         bail!("thumbnail previews are only available for local files");
     }
+    // A disc is not a file ffmpeg can open — `-i E:\` gets "No such file
+    // or directory". Refusing here rather than per hover keeps the player
+    // from spawning an ffmpeg that cannot succeed every time the pointer
+    // crosses the progress bar.
+    if super::disc::detect(video).is_some() {
+        bail!("thumbnail previews are not available for discs");
+    }
     let path = Path::new(video);
     if !path.exists() {
         bail!("file not found: {}", video);
