@@ -538,16 +538,17 @@ mod tests {
         assert_eq!(seconds(""), 0.0);
     }
 
-    /// Trimmed from a real Xiaomi box's `description.xml`, kept because its
-    /// control URL is the awkward shape: relative, not rooted at `/`, and
-    /// carrying colons in the path.
-    const XIAOMI: &str = r#"<?xml version="1.0"?>
+    /// The shape a real television answered with, kept because its control
+    /// URL is the awkward one: relative, not rooted at `/`, and carrying
+    /// colons in the path. The name, uuid and address are stand-ins — what
+    /// is guarded here is the shape, not whose living room it was in.
+    const REAL_RENDERER: &str = r#"<?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0"><device>
 <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
-<friendlyName>客厅的小米盒子</friendlyName>
+<friendlyName>客厅的电视盒子</friendlyName>
 <manufacturer>Xiaomi</manufacturer>
 <modelName>Xiaomi MediaRenderer</modelName>
-<UDN>uuid:F7CA5454-3F48-4390-8009-443e4ce6411c</UDN>
+<UDN>uuid:00000000-0000-0000-0000-000000000000</UDN>
 <serviceList>
 <service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><controlURL>_urn:schemas-upnp-org:service:AVTransport_control</controlURL></service>
 <service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType><controlURL>_urn:schemas-upnp-org:service:ConnectionManager_control</controlURL></service>
@@ -561,14 +562,14 @@ mod tests {
         // is relative *without* a leading slash, and it has colons in the
         // path — so a resolver that split on ':' or assumed an absolute
         // path would build a URL the box never answers.
-        assert_eq!(tag(XIAOMI, "friendlyName").as_deref(), Some("客厅的小米盒子"));
+        assert_eq!(tag(REAL_RENDERER, "friendlyName").as_deref(), Some("客厅的电视盒子"));
 
-        let control = control_url_for(XIAOMI, AVTRANSPORT).expect("AVTransport");
+        let control = control_url_for(REAL_RENDERER, AVTRANSPORT).expect("AVTransport");
         assert_eq!(control, "_urn:schemas-upnp-org:service:AVTransport_control");
 
         assert_eq!(
-            resolve("http://192.168.5.12:49152/description.xml", &control),
-            "http://192.168.5.12:49152/_urn:schemas-upnp-org:service:AVTransport_control"
+            resolve("http://192.0.2.12:49152/description.xml", &control),
+            "http://192.0.2.12:49152/_urn:schemas-upnp-org:service:AVTransport_control"
         );
     }
 
