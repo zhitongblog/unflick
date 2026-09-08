@@ -246,14 +246,26 @@ fn yt_dlp_user_path() -> Option<std::path::PathBuf> {
 /// Locate the bundled ffmpeg executable, falling back to PATH.
 fn find_ffmpeg(app: &AppHandle) -> Option<std::path::PathBuf> {
     if let Ok(resource_dir) = app.path().resource_dir() {
+        // Only Windows can run the `.exe`. A dev tree that once built for
+        // Windows leaves one behind (ffmpeg/ffmpeg.exe next to the binary), and
+        // picking it up here fails every call with "cannot execute binary
+        // file" instead of falling through to the system copy.
+        let names: &[&str] = if cfg!(target_os = "windows") {
+            &["ffmpeg.exe", "ffmpeg"]
+        } else {
+            &["ffmpeg"]
+        };
         for sub in ["ffmpeg", ""] {
-            for name in ["ffmpeg.exe", "ffmpeg"] {
+            for name in names {
                 let p = if sub.is_empty() {
                     resource_dir.join(name)
                 } else {
                     resource_dir.join(sub).join(name)
                 };
-                if p.exists() {
+                // `exists()` is also true for the *directory* the loop just
+                // looked inside, and handing a directory to Command::new
+                // fails with "permission denied" rather than falling through.
+                if p.is_file() {
                     return Some(p);
                 }
             }
@@ -437,20 +449,32 @@ fn whisper_safe_paths(
 fn find_yt_dlp(app: &AppHandle) -> Option<std::path::PathBuf> {
     // 1. User-data updated copy
     if let Some(p) = yt_dlp_user_path() {
-        if p.exists() {
+        if p.is_file() {
             return Some(p);
         }
     }
     // 2. Bundled inside the app
     if let Ok(resource_dir) = app.path().resource_dir() {
+        // Only Windows can run the `.exe`. A dev tree that once built for
+        // Windows leaves one behind (yt-dlp/yt-dlp.exe next to the binary), and
+        // picking it up here fails every call with "cannot execute binary
+        // file" instead of falling through to the system copy.
+        let names: &[&str] = if cfg!(target_os = "windows") {
+            &["yt-dlp.exe", "yt-dlp"]
+        } else {
+            &["yt-dlp"]
+        };
         for sub in ["yt-dlp", ""] {
-            for name in ["yt-dlp.exe", "yt-dlp"] {
+            for name in names {
                 let p = if sub.is_empty() {
                     resource_dir.join(name)
                 } else {
                     resource_dir.join(sub).join(name)
                 };
-                if p.exists() {
+                // `exists()` is also true for the *directory* the loop just
+                // looked inside, and handing a directory to Command::new
+                // fails with "permission denied" rather than falling through.
+                if p.is_file() {
                     return Some(p);
                 }
             }

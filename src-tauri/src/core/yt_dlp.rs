@@ -134,20 +134,32 @@ fn yt_dlp_user_path() -> Option<PathBuf> {
 /// `~/AppData/Local/unflick/bin/yt-dlp.exe` once auto-update has run.
 pub fn find_yt_dlp() -> Option<PathBuf> {
     if let Some(p) = yt_dlp_user_path() {
-        if p.exists() {
+        if p.is_file() {
             return Some(p);
         }
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            // Only Windows can run the `.exe`. A dev tree that once built for
+            // Windows leaves one behind (yt-dlp/yt-dlp.exe next to the binary), and
+            // picking it up here fails every call with "cannot execute binary
+            // file" instead of falling through to the system copy.
+            let names: &[&str] = if cfg!(target_os = "windows") {
+                &["yt-dlp.exe", "yt-dlp"]
+            } else {
+                &["yt-dlp"]
+            };
             for sub in ["yt-dlp", ""] {
-                for name in ["yt-dlp.exe", "yt-dlp"] {
+                for name in names {
                     let p = if sub.is_empty() {
                         dir.join(name)
                     } else {
                         dir.join(sub).join(name)
                     };
-                    if p.exists() {
+                    // `exists()` is also true for the *directory* the loop just
+                    // looked inside, and handing a directory to Command::new
+                    // fails with "permission denied" rather than falling through.
+                    if p.is_file() {
                         return Some(p);
                     }
                 }
