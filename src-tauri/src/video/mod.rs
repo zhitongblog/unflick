@@ -45,6 +45,24 @@ pub trait VideoSurface: Send + Sync {
     /// the WebView covers the whole window with a modal dialog.
     fn set_visible(&self, visible: bool);
 
+    /// Cut rectangles out of the surface so WebView chrome drawn *under*
+    /// it can show through. Rects are in the same logical, window-client
+    /// coordinate space as [`set_geometry`]; an empty slice restores the
+    /// whole surface.
+    ///
+    /// This is what makes fullscreen fullscreen on Windows, where the
+    /// surface is a top-level popup above the WebView: the control bar
+    /// has to punch a hole rather than push the video out of the way,
+    /// because shrinking the surface makes mpv re-letterbox and the
+    /// picture visibly jumps every time the mouse moves. Cutting a hole
+    /// leaves the surface — and so mpv's viewport — exactly where it was.
+    ///
+    /// Default: no-op. macOS and Linux host the surface *below* the
+    /// WebView, so chrome drawn over the video is already visible.
+    fn set_exclusions(&self, _rects: &[(i32, i32, i32, i32)]) -> Result<()> {
+        Ok(())
+    }
+
     /// Pin / unpin the surface above all other windows. Mirrors the main
     /// window's always-on-top toggle so the video stays attached.
     /// Default: no-op (platform stub).

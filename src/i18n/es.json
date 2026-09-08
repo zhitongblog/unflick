@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "Descargar subtítulos automáticamente para URL de streaming",
-      "languages": "Idiomas (separados por comas, p. ej. en,zh-CN)"
+      "autoDownload": "Descargar subtítulos automáticamente",
+      "autoDownloadHint": "Las URL de streaming las gestiona yt-dlp. Los archivos locales se buscan en OpenSubtitles, y solo si no tienen subtítulos propios.",
+      "autoDownloadNeedsKey": "Los archivos locales necesitan una clave de API de OpenSubtitles — configúrala en «Subtítulos en línea» más arriba. Las URL de streaming funcionan sin ella.",
+      "languages": "Idiomas (separados por comas, p. ej. en,zh-CN)",
+      "languagesHint": "Pulsa Guardar para aplicar."
     }
   },
   "hotkeys": {

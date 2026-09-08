@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "ストリーミング URL の字幕を自動ダウンロード",
-      "languages": "言語（カンマ区切り、例: en,zh-CN）"
+      "autoDownload": "字幕を自動ダウンロード",
+      "autoDownloadHint": "ストリーミング URL は yt-dlp が処理します。ローカルファイルは字幕を持たない場合のみ OpenSubtitles で検索します。",
+      "autoDownloadNeedsKey": "ローカルファイルには OpenSubtitles の API キーが必要です — 上の「オンライン字幕」で設定してください。ストリーミング URL はキーなしで動作します。",
+      "languages": "言語（カンマ区切り、例: en,zh-CN）",
+      "languagesHint": "「保存」を押すと反映されます。"
     }
   },
   "hotkeys": {

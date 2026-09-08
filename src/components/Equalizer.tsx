@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import Toggle from "./ui/Toggle";
 
 type AudioState = {
   enabled: boolean;
@@ -116,20 +117,12 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
         <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
           Equalizer
         </p>
-        <button
-          type="button"
-          onClick={() => apply({ enabled: !state.enabled })}
-          className={`relative h-5 w-9 rounded-full transition-colors ${
-            state.enabled ? "bg-brand-purple" : "bg-white/10"
-          }`}
+        <Toggle
+          checked={state.enabled}
+          onChange={(next) => apply({ enabled: next })}
+          label="Equalizer"
           title={state.enabled ? "Bypass" : "Enable"}
-        >
-          <span
-            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-              state.enabled ? "translate-x-[18px]" : "translate-x-0.5"
-            }`}
-          />
-        </button>
+        />
       </div>
 
       {/* Sliders. Vertical, because that is the shape of an equaliser curve

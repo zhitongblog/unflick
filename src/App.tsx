@@ -141,6 +141,9 @@ function App() {
   const t = useStrings();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRegionRef = useRef<HTMLDivElement | null>(null);
+  // The player bar while it floats over a fullscreen video. Measured so
+  // Rust can cut a matching hole in the mpv surface on Windows.
+  const fsBarRef = useRef<HTMLDivElement | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track fullscreen state so we can hide chrome (TitleBar / PlayerBar)
@@ -300,6 +303,43 @@ function App() {
       window.removeEventListener("resize", sync);
     };
   }, []);
+
+  // Fullscreen chrome floats over the video rather than pushing it aside,
+  // so the bar's rect has to be cut out of the mpv surface for it to be
+  // seen at all. On Windows the surface is a top-level popup *above* the
+  // WebView; on macOS and Linux it sits below one, and the call is a
+  // no-op there. Sending [] on the way out restores the full surface.
+  useEffect(() => {
+    const send = (rects: number[][]) => {
+      invoke("video_surface_set_exclusions", { rects }).catch(() => {});
+    };
+    const el = fsBarRef.current;
+    if (!isFullscreen || !el) {
+      send([]);
+      return;
+    }
+    const sync = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) {
+        send([]);
+        return;
+      }
+      send([[
+        Math.round(r.left),
+        Math.round(r.top),
+        Math.round(r.width),
+        Math.round(r.height),
+      ]]);
+    };
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener("resize", sync);
+    sync();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [isFullscreen, controlsVisible, windowMode]);
 
   // Show the video popup only when (a) a file is loaded, and (b) no
   // panel/dialog/menu is open. The popup is a top-level Win32 window,
@@ -513,25 +553,30 @@ function App() {
     }, 1000);
   }, []);
 
+  // When the chrome stays up no matter what the mouse does: with nothing
+  // loaded there is no picture to get out of the way of, and a paused
+  // window is a window. A paused *fullscreen* is not — a held frame is
+  // still the picture, and leaving a bar parked on top of it is exactly
+  // what makes fullscreen feel like a maximised window.
+  const pinControls = state === "stopped" || (state === "paused" && !isFullscreen);
+
   const handleMouseMove = useCallback(() => {
-    if (state === "playing") {
+    if (!pinControls) {
       showControls();
     }
-  }, [state, showControls]);
+  }, [pinControls, showControls]);
 
-  // When state changes: if not playing, always show controls and cancel timer
   useEffect(() => {
-    if (state !== "playing") {
+    if (pinControls) {
       if (hideTimer.current) clearTimeout(hideTimer.current);
       setControlsVisible(true);
     } else {
-      // Just started playing — start the hide timer
       showControls();
     }
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, [state, showControls]);
+  }, [pinControls, showControls]);
 
   // Volume before the last mute, so a second press restores it instead of
   // jumping to a default.
@@ -1134,18 +1179,16 @@ useEffect(() => {
 
   return (
     <div
-      className={`flex h-full flex-col ${state === "playing" && !controlsVisible ? "cursor-none" : ""}`}
+      className={`relative flex h-full flex-col ${!pinControls && !controlsVisible ? "cursor-none" : ""}`}
       style={{ backgroundColor: state === "stopped" ? "var(--bg-primary, #030712)" : "transparent" }}
       onMouseMove={handleMouseMove}
     >
-      {/* Custom title bar. Hidden in fullscreen so the video really
-          fills the screen. We use conditional rendering (not opacity)
-          so the bar is removed from the layout — that makes the
-          flex-1 video region expand into the chrome's old space, which
-          fires our ResizeObserver and grows the mpv popup to match.
-          Opacity:0 would leave a transparent gap and let the OS
-          desktop bleed through under the popup. */}
-      {(!isFullscreen || controlsVisible) && <TitleBar />}
+      {/* Custom title bar — windowed only. It carries minimise /
+          maximise / close, and window buttons sitting on top of a
+          fullscreen video are the clearest possible sign that this is
+          not really fullscreen. The player bar keeps the file name and
+          a way back out; Esc and F work too. */}
+      {!isFullscreen && <TitleBar />}
 
       {/* Update available banner */}
       <AnimatePresence>
@@ -1536,11 +1579,21 @@ useEffect(() => {
         {showPlaylist && <PlaylistPanel />}
       </AnimatePresence>
 
-      {/* Player bar — visible at all times outside fullscreen. In
-          fullscreen we follow the same visibility rule as the title
-          bar so the video fills the screen until the user moves the
-          mouse. */}
-      {(!isFullscreen || controlsVisible) && windowMode !== "music" && <PlayerBar />}
+      {/* Player bar. In a window it is part of the column and takes its
+          own height off the video region. In fullscreen it floats: the
+          video region keeps the whole screen, so mpv never re-letterboxes
+          and the picture does not jump every time the mouse wakes the
+          controls. */}
+      {windowMode !== "music" &&
+        (isFullscreen ? (
+          controlsVisible && (
+            <div ref={fsBarRef} className="absolute inset-x-0 bottom-0 z-30">
+              <PlayerBar />
+            </div>
+          )
+        ) : (
+          <PlayerBar />
+        ))}
     </div>
   );
 }

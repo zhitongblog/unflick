@@ -56,6 +56,26 @@ pub fn video_surface_set_geometry(
     Ok(())
 }
 
+/// Cut rectangles out of the video surface so WebView chrome drawn
+/// underneath it shows through, in the same logical client coordinates
+/// `video_surface_set_geometry` uses. The frontend sends the rects of the
+/// bars it floats over the video in fullscreen, and an empty list on the
+/// way out.
+///
+/// Why not just shrink the surface: mpv letterboxes into the surface, so
+/// resizing it re-centres the picture. Doing that every time the control
+/// bar auto-shows would make the video jump on every mouse move.
+#[command]
+pub fn video_surface_set_exclusions(
+    rects: Vec<(i32, i32, i32, i32)>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<(), String> {
+    if let Some(rl) = gui_player.render_loop.get() {
+        rl.set_exclusions(&rects).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Show or hide the video surface popup. The frontend toggles this on
 /// playback state changes — popup only renders something useful while
 /// a file is loaded, and hiding it during the idle state lets the
@@ -673,6 +693,12 @@ pub fn player_play(
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
     crate::core::boot::mark("play: mpv reports the file loaded");
+    // Local files only — a URL played from the window arrives here as the
+    // *resolved* stream, and its hooks are armed separately with the page
+    // URL by `arm_post_play_hooks`. The call returns immediately.
+    if let Some(player_arc) = gui_player.render_player.get() {
+        crate::core::auto_subs::after_play_file_hooks(player_arc.clone(), file.clone());
+    }
     Ok(json!({"message": format!("playing {}", file)}))
 }
 

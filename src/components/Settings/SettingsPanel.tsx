@@ -8,6 +8,7 @@ import {
 } from "../../stores/settingsStore";
 import { LOCALES, LOCALE_NAMES } from "../../i18n/config";
 import { useStrings } from "../../i18n/utils";
+import Toggle, { ToggleTrack } from "../ui/Toggle";
 import KeybindSettings from "./KeybindSettings";
 import MouseSettings from "./MouseSettings";
 
@@ -639,19 +640,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-white/20">
                       Use system proxy
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setDraftProxy(draftProxy === "system" ? "" : "system")}
-                      className={`relative h-5 w-9 rounded-full transition-colors ${
-                        draftProxy === "system" ? "bg-brand-purple" : "bg-white/10"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                          draftProxy === "system" ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
-                      />
-                    </button>
+                    <Toggle
+                      checked={draftProxy === "system"}
+                      onChange={(next) => setDraftProxy(next ? "system" : "")}
+                      label="Use system proxy"
+                    />
                   </div>
                   {draftProxy === "system" && systemProxy && (
                     <p className="text-[10px] leading-relaxed text-emerald-300/80">
@@ -796,23 +789,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <span className="text-[11px] text-white/55">
                     {t.settings.sponsorblock.enabled}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !sponsorblockEnabled;
+                  <Toggle
+                    checked={sponsorblockEnabled}
+                    onChange={(next) => {
                       setSponsorblockEnabled(next);
                       void saveSettings();
                     }}
-                    className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
-                      sponsorblockEnabled ? "bg-brand-purple" : "bg-white/10"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                        sponsorblockEnabled ? "translate-x-[18px]" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
+                    label={t.settings.sponsorblock.enabled}
+                  />
                 </div>
                 {sponsorblockEnabled && (
                   <div className="border-t border-white/6 pt-3">
@@ -871,7 +855,10 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
             </div>
 
-            {/* Auto-download subtitles (P2 — yt-dlp --write-sub on URL play) */}
+            {/* Auto-download subtitles. Two engines behind one switch:
+                yt-dlp --write-sub for streaming URLs, OpenSubtitles for
+                files on disk. The second needs a key, so say so here
+                rather than leaving the setting quietly inert. */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
                 {t.settings.subtitles.autoDownload}
@@ -881,26 +868,25 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <span className="text-[11px] text-white/55">
                     {t.settings.subtitles.autoDownload}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !autoDownloadSubtitles;
+                  <Toggle
+                    checked={autoDownloadSubtitles}
+                    onChange={(next) => {
                       setAutoDownloadSubtitles(next);
                       void saveSettings();
                     }}
-                    className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
-                      autoDownloadSubtitles ? "bg-brand-purple" : "bg-white/10"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                        autoDownloadSubtitles ? "translate-x-[18px]" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
+                    label={t.settings.subtitles.autoDownload}
+                  />
                 </div>
                 {autoDownloadSubtitles && (
                   <div className="border-t border-white/6 pt-3">
+                    <p className="mb-3 text-[10px] leading-relaxed text-white/30">
+                      {t.settings.subtitles.autoDownloadHint}
+                    </p>
+                    {!osConfigured && (
+                      <p className="mb-3 text-[10px] leading-relaxed text-amber-300/80">
+                        {t.settings.subtitles.autoDownloadNeedsKey}
+                      </p>
+                    )}
                     <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
                       {t.settings.subtitles.languages}
                     </label>
@@ -912,7 +898,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       className={inputClass}
                     />
                     <p className="mt-1.5 text-[10px] text-white/25">
-                      Hit Save to apply.
+                      {t.settings.subtitles.languagesHint}
                     </p>
                   </div>
                 )}
@@ -975,17 +961,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     {t.settings.alwaysOnTopHint}
                   </span>
                 </div>
-                <span
-                  className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
-                    alwaysOnTop ? "bg-brand-purple/70" : "bg-white/10"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
-                      alwaysOnTop ? "left-[18px]" : "left-0.5"
-                    }`}
-                  />
-                </span>
+                <ToggleTrack checked={alwaysOnTop} />
               </button>
             </div>
 
@@ -1012,17 +988,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     {t.music.autoHint}
                   </span>
                 </div>
-                <span
-                  className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
-                    musicModeAuto ? "bg-brand-purple/70" : "bg-white/10"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
-                      musicModeAuto ? "left-[18px]" : "left-0.5"
-                    }`}
-                  />
-                </span>
+                <ToggleTrack checked={musicModeAuto} />
               </button>
             </div>
           </div>

@@ -305,6 +305,7 @@ pub fn run() {
             commands::boot_mark,
             commands::open_default_apps_settings,
             commands::video_surface_set_geometry,
+            commands::video_surface_set_exclusions,
             commands::video_surface_set_visible,
             commands::video_surface_set_alpha,
             #[cfg(target_os = "windows")]

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import Toggle from "./ui/Toggle";
 import { usePlayerStore } from "../stores/playerStore";
 
 function formatTime(seconds: number): string {
@@ -118,14 +119,7 @@ export default function ClipDialog({ onClose }: { onClose: () => void }) {
 
           {/* GIF toggle */}
           <div className="mb-4 flex items-center gap-2">
-            <button
-              role="switch"
-              aria-checked={asGif}
-              onClick={() => setAsGif((v) => !v)}
-              className={`relative h-5 w-9 rounded-full transition-colors ${asGif ? "bg-brand-purple" : "bg-white/10"}`}
-            >
-              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${asGif ? "translate-x-4" : "translate-x-0.5"}`} />
-            </button>
+            <Toggle checked={asGif} onChange={setAsGif} label="Save as GIF" />
             <span className="text-[11px] text-white/35">Save as GIF</span>
           </div>
 

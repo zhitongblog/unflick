@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "為串流媒體網址自動下載字幕",
-      "languages": "語言（逗號分隔，例如 en,zh-CN）"
+      "autoDownload": "自動下載字幕",
+      "autoDownloadHint": "串流媒體網址由 yt-dlp 處理；本機檔案透過 OpenSubtitles 查詢，且僅在檔案本身沒有字幕時進行。",
+      "autoDownloadNeedsKey": "本機檔案需要 OpenSubtitles API 金鑰 —— 請在上方「線上字幕」中填寫。串流媒體網址不需要金鑰。",
+      "languages": "語言（逗號分隔，例如 en,zh-CN）",
+      "languagesHint": "點擊「儲存」後生效。"
     }
   },
   "hotkeys": {

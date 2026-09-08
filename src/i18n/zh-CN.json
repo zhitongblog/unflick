@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "为流媒体地址自动下载字幕",
-      "languages": "语言（逗号分隔，例如 en,zh-CN）"
+      "autoDownload": "自动下载字幕",
+      "autoDownloadHint": "流媒体地址由 yt-dlp 处理；本地文件通过 OpenSubtitles 查找，且仅在文件本身没有字幕时进行。",
+      "autoDownloadNeedsKey": "本地文件需要 OpenSubtitles API 密钥 —— 请在上方“在线字幕”中填写。流媒体地址无需密钥。",
+      "languages": "语言（逗号分隔，例如 en,zh-CN）",
+      "languagesHint": "点击“保存”后生效。"
     }
   },
   "hotkeys": {

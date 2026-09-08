@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "스트리밍 URL 자막 자동 다운로드",
-      "languages": "언어 (쉼표로 구분, 예: en,zh-CN)"
+      "autoDownload": "자막 자동 다운로드",
+      "autoDownloadHint": "스트리밍 URL은 yt-dlp가 처리합니다. 로컬 파일은 자체 자막이 없을 때만 OpenSubtitles에서 찾습니다.",
+      "autoDownloadNeedsKey": "로컬 파일에는 OpenSubtitles API 키가 필요합니다 — 위의 온라인 자막에서 설정하세요. 스트리밍 URL은 키 없이도 동작합니다.",
+      "languages": "언어 (쉼표로 구분, 예: en,zh-CN)",
+      "languagesHint": "저장을 눌러야 적용됩니다."
     }
   },
   "hotkeys": {

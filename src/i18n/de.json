@@ -208,8 +208,11 @@
       }
     },
     "subtitles": {
-      "autoDownload": "Untertitel für Streaming-URLs automatisch herunterladen",
-      "languages": "Sprachen (komma-getrennt, z. B. en,zh-CN)"
+      "autoDownload": "Untertitel automatisch herunterladen",
+      "autoDownloadHint": "Streaming-URLs übernimmt yt-dlp. Lokale Dateien werden auf OpenSubtitles gesucht, und nur dann, wenn sie selbst keine Untertitel haben.",
+      "autoDownloadNeedsKey": "Für lokale Dateien wird ein OpenSubtitles-API-Schlüssel benötigt — oben unter „Online-Untertitel“ eintragen. Streaming-URLs funktionieren auch ohne.",
+      "languages": "Sprachen (komma-getrennt, z. B. en,zh-CN)",
+      "languagesHint": "Zum Übernehmen auf Speichern klicken."
     }
   },
   "hotkeys": {

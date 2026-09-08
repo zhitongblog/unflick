@@ -24,7 +24,9 @@ use raw_window_handle::{
 };
 use windows_sys::core::PCWSTR;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+use windows_sys::Win32::Graphics::Gdi::{
+    ClientToScreen, CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -38,6 +40,31 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use super::VideoSurface;
 
 const VIDEO_CLASS_NAME: &str = "UnflickVideoSurface";
+
+/// One exclusion rect, from the logical window-client coordinates the
+/// frontend measures in to the popup's own physical pixels.
+///
+/// `origin` is where the popup starts in that same logical space, so the
+/// subtraction is what turns "84 px up from the bottom of the window" into
+/// "84 px up from the bottom of the surface" — the two only coincide in
+/// fullscreen. Returns left/top/right/bottom, which is what CreateRectRgn
+/// takes.
+fn exclusion_to_local(
+    rect: (i32, i32, i32, i32),
+    origin: (i32, i32),
+    scale: f64,
+) -> (i32, i32, i32, i32) {
+    let (x, y, w, h) = rect;
+    let (ox, oy) = origin;
+    let left = ((x - ox) as f64 * scale).round() as i32;
+    let top = ((y - oy) as f64 * scale).round() as i32;
+    (
+        left,
+        top,
+        left + (w as f64 * scale).round() as i32,
+        top + (h as f64 * scale).round() as i32,
+    )
+}
 
 fn wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
@@ -132,6 +159,14 @@ pub struct WindowsVideoSurface {
     /// look the user reported.
     cur_w: std::sync::atomic::AtomicI32,
     cur_h: std::sync::atomic::AtomicI32,
+    /// Last rect handed to `set_geometry`, in logical window-client px.
+    /// `set_exclusions` needs it to translate the chrome rects it is
+    /// given (same space) into popup-local coordinates, and every
+    /// geometry change has to re-cut the region because a window region
+    /// is expressed in window coordinates and does not follow a resize.
+    geom: Mutex<Option<(i32, i32, i32, i32)>>,
+    /// Rects to cut out, in logical window-client px. Empty = no region.
+    exclusions: Mutex<Vec<(i32, i32, i32, i32)>>,
     // glutin objects. Order in the struct matters for drop: the context and
     // surface must drop before the display. Rust drops fields top-to-bottom,
     // so list them context → surface → display.
@@ -257,10 +292,74 @@ impl WindowsVideoSurface {
             owner_hwnd,
             cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
             cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
+            geom: Mutex::new(None),
+            exclusions: Mutex::new(Vec::new()),
             display,
             surface,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
         })
+    }
+
+    /// Re-cut the popup's window region from the current geometry and the
+    /// current exclusion list. Called after either of them changes.
+    ///
+    /// A window region is in *window* coordinates, so it survives a move
+    /// but not a resize — every `set_geometry` has to redo this or the
+    /// hole ends up in the wrong place.
+    fn apply_region(&self) {
+        let exclusions = match self.exclusions.lock() {
+            Ok(e) => e.clone(),
+            Err(_) => return,
+        };
+        if exclusions.is_empty() {
+            // NULL region = the whole window is visible again. Passing
+            // `true` repaints, which matters because the strip we were
+            // hiding still holds the frame from before the cut.
+            unsafe { SetWindowRgn(self.hwnd, ptr::null_mut(), 1) };
+            return;
+        }
+        let Some((gx, gy, _, _)) = (match self.geom.lock() {
+            Ok(g) => *g,
+            Err(_) => return,
+        }) else {
+            // No geometry yet — nothing sensible to cut against. The next
+            // set_geometry will call back in here.
+            return;
+        };
+        use std::sync::atomic::Ordering;
+        let (w, h) = (self.cur_w.load(Ordering::Relaxed), self.cur_h.load(Ordering::Relaxed));
+        let scale = self.dpi_scale();
+
+        unsafe {
+            let region = CreateRectRgn(0, 0, w, h);
+            if region.is_null() {
+                return;
+            }
+            for rect in exclusions {
+                let (left, top, right, bottom) = exclusion_to_local(rect, (gx, gy), scale);
+                let cut = CreateRectRgn(left, top, right, bottom);
+                if cut.is_null() {
+                    continue;
+                }
+                CombineRgn(region, region, cut, RGN_DIFF);
+                DeleteObject(cut as _);
+            }
+            // Ownership of `region` passes to the window on success; on
+            // failure it is ours to free.
+            if SetWindowRgn(self.hwnd, region, 1) == 0 {
+                DeleteObject(region as _);
+            }
+        }
+    }
+
+    /// Scale factor for the monitor the owner window is currently on.
+    fn dpi_scale(&self) -> f64 {
+        let dpi = unsafe { GetDpiForWindow(self.owner_hwnd) };
+        if dpi == 0 {
+            1.0
+        } else {
+            dpi as f64 / 96.0
+        }
     }
 }
 
@@ -326,8 +425,7 @@ impl VideoSurface for WindowsVideoSurface {
         // move re-layouts the WebView, which fires ResizeObserver, which
         // calls back into here with fresh logical coords — so we always
         // scale by the *current* monitor's DPI.
-        let dpi = unsafe { GetDpiForWindow(self.owner_hwnd) };
-        let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+        let scale = self.dpi_scale();
         let scaled_x = (x as f64 * scale).round() as i32;
         let scaled_y = (y as f64 * scale).round() as i32;
         let scaled_w = ((w as f64 * scale).round() as i32).max(1);
@@ -378,6 +476,14 @@ impl VideoSurface for WindowsVideoSurface {
         self.cur_h
             .store(scaled_h, std::sync::atomic::Ordering::Relaxed);
 
+        // A window region is expressed in window coordinates, so it has to
+        // be re-cut against the new size — otherwise a resize leaves the
+        // hole where the old bottom edge used to be.
+        if let Ok(mut g) = self.geom.lock() {
+            *g = Some((x, y, w, h));
+        }
+        self.apply_region();
+
         // Resize the GL backing surface to match the HWND. Without this,
         // mpv keeps rendering into the original FBO size while the popup
         // is whatever size we last asked Win32 for, so SwapBuffers
@@ -397,6 +503,21 @@ impl VideoSurface for WindowsVideoSurface {
         unsafe {
             ShowWindow(self.hwnd, if visible { SW_SHOW } else { SW_HIDE });
         }
+    }
+
+    fn set_exclusions(&self, rects: &[(i32, i32, i32, i32)]) -> Result<()> {
+        {
+            let mut guard = self
+                .exclusions
+                .lock()
+                .map_err(|_| anyhow!("video surface mutex poisoned"))?;
+            if guard.as_slice() == rects {
+                return Ok(());
+            }
+            *guard = rects.to_vec();
+        }
+        self.apply_region();
+        Ok(())
     }
 
     fn set_always_on_top(&self, enabled: bool) {
@@ -448,5 +569,46 @@ impl VideoSurface for WindowsVideoSurface {
             }
             None => Err(anyhow!("context already released")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exclusion_to_local;
+
+    #[test]
+    fn fullscreen_bar_cuts_the_bottom_strip() {
+        // 2560x1440 screen, an 84 px player bar floating at the bottom.
+        // The surface starts at the top-left of the client area, so the
+        // hole lands exactly on the bottom 84 rows.
+        assert_eq!(
+            exclusion_to_local((0, 1356, 2560, 84), (0, 0), 1.0),
+            (0, 1356, 2560, 1440)
+        );
+    }
+
+    #[test]
+    fn a_surface_that_starts_below_the_chrome_is_offset_by_it() {
+        // Windowed: the surface begins under a 36 px title bar, so a bar
+        // at y=595 in the window is at y=559 in the surface.
+        assert_eq!(
+            exclusion_to_local((0, 595, 1024, 84), (0, 36), 1.0),
+            (0, 559, 1024, 643)
+        );
+    }
+
+    #[test]
+    fn scales_to_physical_pixels() {
+        // 125% is the common Windows default. Everything — offset and
+        // size — has to scale, or the hole is 80% of the bar and a strip
+        // of video sits on top of the controls.
+        assert_eq!(
+            exclusion_to_local((0, 1000, 1600, 80), (0, 0), 1.25),
+            (0, 1250, 2000, 1350)
+        );
+        assert_eq!(
+            exclusion_to_local((0, 1000, 1600, 80), (0, 40), 1.25),
+            (0, 1200, 2000, 1300)
+        );
     }
 }

@@ -571,6 +571,14 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                             yt_dlp_path,
                             settings,
                         );
+                    } else {
+                        // A file on disk has no yt-dlp channel to pull
+                        // subtitles from, so the same setting means an
+                        // OpenSubtitles lookup here. Also returns at once.
+                        crate::core::auto_subs::after_play_file_hooks(
+                            Arc::clone(player),
+                            file.to_string(),
+                        );
                     }
                     // History is written here rather than being left to
                     // each caller: a play is a play whether it came from

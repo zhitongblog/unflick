@@ -216,6 +216,18 @@ impl RenderLoop {
         self.surface.set_visible(visible);
     }
 
+    /// Punch holes in the surface where WebView chrome needs to show
+    /// through — see `VideoSurface::set_exclusions`. The frontend sends
+    /// the rects of the bars it floats over the video in fullscreen.
+    pub fn set_exclusions(&self, rects: &[(i32, i32, i32, i32)]) -> Result<()> {
+        self.surface.set_exclusions(rects)?;
+        if let Ok(mut state) = self.signal.state.lock() {
+            state.redraw = true;
+            self.signal.cv.notify_all();
+        }
+        Ok(())
+    }
+
     /// Pin or unpin the video surface above all other windows. Required
     /// to track the main window's always-on-top setting — Win32's owner
     /// relationship handles z-order *within* a normal app stack but
