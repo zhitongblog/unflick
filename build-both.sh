@@ -45,16 +45,21 @@ STANDARD_RESOURCES='[
   "yt-dlp/yt-dlp.exe",'"$LEGAL_RESOURCES"'
 ]'
 
+# The whisper half of the AI edition is listed by reading the directory, not
+# by naming files. whisper.cpp used to ship one `ggml-cpu.dll`; it now splits
+# the CPU backend into one DLL per microarchitecture and picks at runtime, so
+# a hardcoded list silently stops shipping backends the moment upstream adds
+# one — and the edition's whole point stops working on those machines.
+WHISPER_RESOURCES="$(node -e "
+  const fs = require('fs');
+  const files = fs.readdirSync('src-tauri/whisper').sort();
+  process.stdout.write(files.map(f => '\n  \"whisper/' + f + '\",').join(''));
+")"
+
 AI_RESOURCES='[
   "mpv-dev/libmpv-2.dll",
   "ffmpeg/ffmpeg.exe",
-  "yt-dlp/yt-dlp.exe",
-  "whisper/whisper-cli.exe",
-  "whisper/whisper.dll",
-  "whisper/ggml.dll",
-  "whisper/ggml-base.dll",
-  "whisper/ggml-cpu.dll",
-  "whisper/ggml-tiny.bin",'"$LEGAL_RESOURCES"'
+  "yt-dlp/yt-dlp.exe",'"$WHISPER_RESOURCES$LEGAL_RESOURCES"'
 ]'
 
 LEGAL_ONLY_RESOURCES='['"$LEGAL_RESOURCES"'

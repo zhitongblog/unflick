@@ -13,3 +13,6 @@ src-tauri/yt-dlp/
 # Test artifacts
 unflick-screenshot-*.png
 .claude/
+
+# Local credentials for scripts/build-mac.sh — never commit.
+.env.local

@@ -1,0 +1,161 @@
+name: Release
+
+# Push a tag and the installers build themselves:
+#
+#   ./scripts/release.sh 0.13.0
+#
+# Windows (standard + AI editions) and Linux (deb / rpm / AppImage) are built
+# here and attached to a *draft* release, so the artifacts can be looked at
+# before anyone can download them. macOS is not in this matrix on purpose:
+# the .dmg has to be signed with a Developer ID and notarized by Apple, which
+# needs credentials that live on the maintainer's machine — build it with
+# ./scripts/build-mac.sh and the same script uploads it to this draft.
+#
+# workflow_dispatch builds the same artifacts and stops there, which is how
+# you test a change to this file without spending a version number on it.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows installers (standard + AI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # libmpv / ffmpeg / yt-dlp / whisper are not in the repository — they
+      # are ~450 MB of third-party build output. Fetch them the same way a
+      # maintainer's machine would.
+      - name: Fetch bundled Windows binaries
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/fetch-windows-deps.sh
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build both editions
+        shell: bash
+        run: ./build-both.sh
+
+      # An installer that builds but ships without libmpv is a broken install
+      # that nobody notices until a user opens a file. Check the payload.
+      - name: Verify the installers carry what they promise
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          NSIS="src-tauri/target/release/bundle/nsis"
+          for edition in "unflick_${VERSION}_x64-setup-standard.exe" "unflick-ai_${VERSION}_x64-setup.exe"; do
+            echo "==> $edition"
+            listing="$(7z l "$NSIS/$edition")"
+            for must in libmpv-2.dll ffmpeg.exe yt-dlp.exe LICENSE; do
+              echo "$listing" | grep -q -- "$must" || { echo "MISSING $must in $edition" >&2; exit 1; }
+            done
+            case "$edition" in
+              unflick-ai_*)
+                for must in whisper-cli.exe ggml-tiny.bin; do
+                  echo "$listing" | grep -q -- "$must" || { echo "MISSING $must in $edition" >&2; exit 1; }
+                done
+                ;;
+            esac
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/unflick_*-setup-standard.exe
+            src-tauri/target/release/bundle/nsis/unflick-ai_*-setup.exe
+            src-tauri/target/release/bundle/msi/unflick_*-standard.msi
+            src-tauri/target/release/bundle/msi/unflick-ai_*.msi
+          if-no-files-found: error
+
+  linux:
+    name: Linux packages (deb / rpm / AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22.04 rather than the newest image on purpose: a .deb built against a
+      # newer glibc refuses to install on the distro the user actually runs.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libmpv-dev \
+            patchelf rpm fuse libfuse2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # No --bundles list: tauri.conf.json ships only the legal resources on
+      # this platform, and "all" on Linux means exactly deb, rpm and AppImage.
+      - name: Build
+        run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  draft:
+    name: Draft release
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Draft, not published: the macOS .dmg is still missing at this point,
+      # and a release that is half a platform short is worse than no release.
+      - name: Create or update the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "unflick $TAG" \
+              --notes "Draft — notes to be written. macOS .dmg is uploaded separately by scripts/build-mac.sh."
+          fi
+          find artifacts -type f -print0 | xargs -0 gh release upload "$TAG" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'

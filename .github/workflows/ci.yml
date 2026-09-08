@@ -5,7 +5,7 @@ name: CI
 # fact — every push builds and tests on all three.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
