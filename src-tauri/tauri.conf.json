@@ -1,6 +1,6 @@
 {
   "productName": "unflick",
-  "version": "0.10.0",
+  "version": "0.13.0",
   "identifier": "com.unflick.app",
   "build": {
     "frontendDist": "../dist",
