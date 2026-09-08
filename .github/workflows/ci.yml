@@ -46,8 +46,22 @@ jobs:
       - uses: actions/checkout@v4
 
       # The integration tests drive a real libmpv and build their fixture
-      # media with ffmpeg. On Windows both are vendored in the repo; the
-      # other two get them from the system package manager.
+      # media with ffmpeg. macOS and Linux take both from the system package
+      # manager; Windows has no such package, so the same binaries the
+      # installers bundle are downloaded instead.
+      - name: Install mpv + ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./scripts/fetch-windows-deps.sh --no-whisper
+          # The tests spawn the built `unflick.exe`, which looks for these
+          # beside itself — src-tauri/ alone would leave every test failing
+          # to load libmpv.
+          mkdir -p src-tauri/target/debug
+          cp -r src-tauri/mpv-dev src-tauri/ffmpeg src-tauri/yt-dlp src-tauri/target/debug/
+
       - name: Install mpv + ffmpeg (Linux)
         if: runner.os == 'Linux'
         run: |

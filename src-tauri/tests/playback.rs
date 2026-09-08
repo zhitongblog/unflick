@@ -271,24 +271,46 @@ fn switching_files_while_playing_still_reports_success() {
     assert_eq!(reply.data()["loaded"], true);
 }
 
-/// `smb://` is what people type for a share. Neither our bundled mpv nor a
-/// stock ffmpeg speaks it, and the useful answer is "mount it first" — which
-/// nobody guesses from mpv's own silence.
+/// `smb://` is what people type for a share. Our bundled mpv has no such
+/// protocol, and the useful answer is "mount it first" — which nobody guesses
+/// from mpv's own silence.
+///
+/// Whether a given build speaks smb is a property of the libmpv it loaded:
+/// the bundled Windows one does not, a distro's is often built against an
+/// ffmpeg that does. Both are correct behaviour and the test accepts either —
+/// what it will not accept is the share URL disappearing into mpv and coming
+/// back as nothing the user can act on.
 #[test]
 fn share_urls_are_refused_with_a_way_forward() {
     let d = Daemon::start();
 
-    let reply = d.send("play", json!({ "file": "smb://server/share/film.mkv" }));
-    reply.expect_err_containing("smb");
-    assert!(
-        reply.message().contains("not supported"),
-        "the message has to say what to do instead, got: {}",
-        reply.message()
-    );
+    for (url, kind) in [
+        ("smb://server/share/film.mkv", "SMB"),
+        ("nfs://server/export/film.mkv", "NFS"),
+    ] {
+        let reply = d.send("play", json!({ "file": url }));
+        let message = reply.message().to_string();
+        assert!(!reply.success(), "{} must not report success", url);
 
-    // Same for the other share protocols people reach for.
-    d.send("play", json!({ "file": "nfs://server/export/film.mkv" }))
-        .expect_err_containing("not supported");
+        if message.contains("not supported") {
+            assert!(message.contains(kind), "{} refused as something else: {}", url, message);
+            // The advice is platform-specific, so match the verb rather than
+            // the sentence: mount, or the GUI that does the mounting.
+            let says_how = message.contains("mount")
+                || message.contains("Explorer")
+                || message.contains("Finder");
+            assert!(says_how, "a refusal has to say what to do instead, got: {}", message);
+        } else {
+            // This build does speak the protocol, so the attempt reached mpv
+            // and failed on the server that is not there — which is the right
+            // error for a host nobody can reach.
+            assert!(
+                message.contains("could not open"),
+                "either refuse with advice or report mpv's own failure, got: {}",
+                message
+            );
+        }
+    }
 }
 
 /// Windows drive letters must not be mistaken for URL schemes on the way in.
