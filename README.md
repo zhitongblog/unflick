@@ -37,7 +37,7 @@ unflick exposes the same playback engine through three surfaces:
 
 - **GUI** — modern player window with libmpv-quality playback, keyboard shortcuts, drag-and-drop, picture-in-picture, true fullscreen, chapters, bookmarks, A-B loop, frame stepping, subtitle timing and styling.
 - **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate.
-- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 87 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
+- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 94 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
 
 All three drive **the same player**. When the window is open it hosts the control port, so `unflick pause` from a terminal — or an agent calling `pause` over MCP — pauses the video on screen rather than some invisible second instance. With no window running, the CLI and MCP fall back to a headless daemon and everything still works.
 
@@ -85,10 +85,13 @@ git clone https://github.com/zhitongblog/unflick.git
 cd unflick
 pnpm install
 pnpm tauri build
-# Windows: bash build-both.sh   builds both Standard and AI editions
+# Windows: ./scripts/fetch-windows-deps.sh   fetches libmpv / ffmpeg / yt-dlp / whisper
+#          bash build-both.sh                builds both Standard and AI editions
 ```
 
-Requires Rust stable + Node 18+ + the Tauri 2 platform prerequisites (WebView2 on Windows, WKWebView on macOS, webkit2gtk-4.1 on Linux).
+Requires Rust stable + Node 22 + pnpm 10 + the Tauri 2 platform prerequisites (WebView2 on Windows, WKWebView on macOS, webkit2gtk-4.1 on Linux). macOS and Linux load the system libmpv, so `brew install mpv` / `apt install libmpv-dev` first.
+
+Releases are cut with `./scripts/release.sh <version>` — see [scripts/README.md](scripts/README.md) for how the three platforms are built and why macOS is the one that is not built in CI.
 
 ## Acknowledgments
 
