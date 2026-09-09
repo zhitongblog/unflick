@@ -39,6 +39,15 @@ unflick exposes the same playback engine through three surfaces:
 - **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate.
 - **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 94 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
 
+Claude Code users can install the skills and the MCP server in one step:
+
+```
+/plugin marketplace add zhitongblog/unflick
+/plugin install unflick
+```
+
+That brings seven skills (play, navigate by what was said, clip/GIF, subtitles, library, screenshot, SponsorBlock) plus the MCP server — see [`marketplace/`](marketplace/).
+
 All three drive **the same player**. When the window is open it hosts the control port, so `unflick pause` from a terminal — or an agent calling `pause` over MCP — pauses the video on screen rather than some invisible second instance. With no window running, the CLI and MCP fall back to a headless daemon and everything still works.
 
 ### What an agent can do that a wrapper can't

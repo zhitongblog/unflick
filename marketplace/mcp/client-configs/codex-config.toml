@@ -1,0 +1,11 @@
+# OpenAI Codex CLI — add to ~/.codex/config.toml
+# Codex launches MCP servers over stdio.
+
+[mcp_servers.unflick]
+command = "unflick"
+args = ["--mcp"]
+
+# If `unflick` is not on PATH, use the npm wrapper instead:
+# [mcp_servers.unflick]
+# command = "npx"
+# args = ["-y", "unflick-mcp"]

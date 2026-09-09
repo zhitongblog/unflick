@@ -1,0 +1,10 @@
+{
+  "// note": "VS Code (GitHub Copilot / agent mode). Put this in .vscode/mcp.json (workspace) or your user settings under the same `servers` key.",
+  "servers": {
+    "unflick": {
+      "type": "stdio",
+      "command": "unflick",
+      "args": ["--mcp"]
+    }
+  }
+}

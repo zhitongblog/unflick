@@ -1,0 +1,32 @@
+{
+  "name": "unflick-mcp",
+  "version": "0.13.1",
+  "description": "MCP server launcher for the unflick video player. Locates the installed unflick binary and runs `unflick --mcp` over stdio.",
+  "type": "module",
+  "bin": {
+    "unflick-mcp": "bin/unflick-mcp.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "unflick",
+    "video",
+    "player",
+    "mpv"
+  ],
+  "homepage": "https://unflick.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhitongblog/unflick.git",
+    "directory": "marketplace/mcp/npm-wrapper"
+  },
+  "license": "MIT",
+  "author": "xiangdong li",
+  "engines": {
+    "node": ">=18"
+  }
+}

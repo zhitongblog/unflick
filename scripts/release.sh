@@ -79,6 +79,30 @@ node -e "
 # every later 'version = ' belongs to a dependency.
 perl -i -pe 'if (!$done && s/^version = "[^"]+"/version = "'"$VERSION"'"/) { $done = 1 }' src-tauri/Cargo.toml
 
+# The marketplace manifests carry the version as well, and every registry
+# listing reads it from there. Bumping them by hand is what left them claiming
+# 0.9.2 while the app was on 0.13.
+node -e "
+  const fs = require('fs');
+  const set = (f, path) => {
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    path(j);
+    fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+  };
+  set('marketplace/mcp/npm-wrapper/package.json', j => { j.version = '$VERSION'; });
+  set('marketplace/mcp/manifest.json',            j => { j.version = '$VERSION'; });
+  set('marketplace/.claude-plugin/plugin.json',   j => { j.version = '$VERSION'; });
+  set('marketplace/mcp/server.json',              j => {
+    j.version = '$VERSION';
+    for (const p of j.packages ?? []) p.version = '$VERSION';
+  });
+  set('.claude-plugin/marketplace.json',          j => {
+    j.metadata.version = '$VERSION';
+    for (const p of j.plugins ?? []) p.version = '$VERSION';
+  });
+"
+perl -i -pe 's/^- Version: .+$/- Version: '"$VERSION"'/' marketplace/README.md
+
 # Cargo.lock carries the version too, and a stale lock makes the first CI
 # build re-resolve and fail the --frozen check.
 (cd src-tauri && cargo metadata --format-version 1 >/dev/null)
@@ -93,7 +117,10 @@ if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ] || [ "$CONF" != "$VERS
   exit 1
 fi
 
-git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
+  .claude-plugin/marketplace.json marketplace/.claude-plugin/plugin.json \
+  marketplace/mcp/manifest.json marketplace/mcp/server.json \
+  marketplace/mcp/npm-wrapper/package.json marketplace/README.md
 git commit -m "chore: bump version to $VERSION"
 git tag "v$VERSION"
 

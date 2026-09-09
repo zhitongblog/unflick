@@ -1,0 +1,29 @@
+{
+  "name": "unflick",
+  "version": "0.13.1",
+  "description": "Drive the unflick video player from Claude — play (files, discs, streaming URLs), seek to what was said, clip/GIF, subtitles (local whisper, translate, search online), bookmarks, equalizer, casting, media library, screenshot. Bundles seven skills and the unflick MCP server.",
+  "author": {
+    "name": "xiangdong li",
+    "url": "https://github.com/zhitongblog"
+  },
+  "homepage": "https://unflick.app",
+  "repository": "https://github.com/zhitongblog/unflick",
+  "license": "MIT",
+  "keywords": [
+    "video",
+    "player",
+    "mpv",
+    "subtitles",
+    "whisper",
+    "youtube",
+    "mcp"
+  ],
+  "mcpServers": {
+    "unflick": {
+      "command": "unflick",
+      "args": [
+        "--mcp"
+      ]
+    }
+  }
+}

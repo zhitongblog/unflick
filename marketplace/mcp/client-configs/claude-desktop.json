@@ -1,0 +1,9 @@
+{
+  "// note": "Merge into claude_desktop_config.json. macOS: ~/Library/Application Support/Claude/  Windows: %APPDATA%\\Claude\\  — restart Claude Desktop after editing.",
+  "mcpServers": {
+    "unflick": {
+      "command": "unflick",
+      "args": ["--mcp"]
+    }
+  }
+}

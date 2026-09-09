@@ -1,0 +1,35 @@
+{
+  "name": "unflick",
+  "owner": {
+    "name": "xiangdong li",
+    "url": "https://github.com/zhitongblog"
+  },
+  "metadata": {
+    "description": "unflick — a free, ad-free video player for humans and AI. Skills + MCP server.",
+    "version": "0.13.1"
+  },
+  "plugins": [
+    {
+      "name": "unflick",
+      "source": "./marketplace",
+      "description": "Drive the unflick video player from Claude: play local files, discs and 30+ streaming-site URLs, seek to a line of dialogue, clip/GIF, generate & translate subtitles locally, bookmark, equalize, cast to a TV, manage a media library, screenshot. Bundles seven skills and the unflick MCP server (94 tools).",
+      "version": "0.13.1",
+      "author": {
+        "name": "xiangdong li"
+      },
+      "homepage": "https://unflick.app",
+      "license": "MIT",
+      "keywords": [
+        "video",
+        "player",
+        "mpv",
+        "subtitles",
+        "whisper",
+        "youtube",
+        "mcp",
+        "dlna",
+        "transcript"
+      ]
+    }
+  ]
+}
