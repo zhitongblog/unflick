@@ -7,16 +7,5 @@
     "url": "https://github.com/zhitongblog/unflick",
     "source": "github"
   },
-  "websiteUrl": "https://unflick.app",
-  "packages": [
-    {
-      "registryType": "npm",
-      "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "unflick-mcp",
-      "version": "0.13.1",
-      "transport": {
-        "type": "stdio"
-      }
-    }
-  ]
+  "website_url": "https://unflick.app"
 }

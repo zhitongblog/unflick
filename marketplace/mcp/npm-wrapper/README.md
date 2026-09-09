@@ -1,3 +1,6 @@
+> **Not published to npm yet.** Until it is, point your MCP client at the
+> binary directly: `"command": "unflick", "args": ["--mcp"]`.
+
 # unflick-mcp
 
 MCP server launcher for the [unflick](https://unflick.app) video player.

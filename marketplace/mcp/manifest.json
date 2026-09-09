@@ -37,14 +37,7 @@
     "command": "unflick",
     "args": [
       "--mcp"
-    ],
-    "npx": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "unflick-mcp"
-      ]
-    }
+    ]
   },
   "capabilities": {
     "tools": 94,

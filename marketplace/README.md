@@ -50,16 +50,23 @@ marketplace/
 ## The distribution model (how an MCP binary reaches every marketplace)
 
 unflick ships as a native binary (installed via the installer or `curl … | bash`),
-not as an npm/pypi package. Most marketplaces, however, expect an `npx`/`pip`
-runnable identifier. We bridge that with a **thin npm wrapper** (`mcp/npm-wrapper/`):
+not as an npm/pypi package. Every config here therefore launches the binary:
+
+```
+"command": "unflick", "args": ["--mcp"]
+```
+
+Some marketplaces prefer an `npx`/`pip` runnable identifier, which a **thin npm
+wrapper** (`mcp/npm-wrapper/`) provides — it finds the installed binary and execs
+`unflick --mcp`, so the heavy native artifact stays out of npm. It is written,
+packaged and tested, but **not published yet** (`SUBMISSION.md` §1), so nothing
+in this kit depends on it: `npx -y unflick-mcp` will not work until it is.
 
 ```
 npx -y unflick-mcp   →   finds the installed `unflick` binary   →   exec `unflick --mcp`
 ```
 
-The wrapper is what registries reference; the heavy native binary stays out of npm.
-This is the standard pattern for native-binary MCP servers and is the part other
-apps will most want to copy.
+That wrapper is the part other apps with a native binary will most want to copy.
 
 ```
 AI agent  ──stdio──>  npx unflick-mcp  ──spawn──>  unflick --mcp  ──>  unflick daemon
@@ -77,7 +84,8 @@ AI agent  ──stdio──>  npx unflick-mcp  ──spawn──>  unflick --mcp
 }
 ```
 
-If `unflick` is not on PATH, use the wrapper instead: `"command": "npx", "args": ["-y", "unflick-mcp"]`.
+The installers put `unflick` on PATH. Once the wrapper is published, `"command":
+"npx", "args": ["-y", "unflick-mcp"]` becomes an alternative that does not need it.
 
 ## For other app authors
 

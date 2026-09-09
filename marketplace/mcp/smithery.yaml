@@ -1,9 +1,13 @@
 # Smithery configuration for the unflick MCP server.
 # https://smithery.ai/docs/build/project-config
 #
-# unflick is a native binary. Smithery launches it over stdio through the
-# `unflick-mcp` npm wrapper, which locates the installed `unflick` binary and
-# execs `unflick --mcp`. Users must have unflick installed (https://unflick.app).
+# unflick is a native binary and this is a local stdio server: Smithery runs it
+# on the user's own machine, so it launches the installed binary directly.
+# Users must have unflick installed (https://unflick.app).
+#
+# Once `unflick-mcp` is published to npm, this can become
+#   command: "npx", args: ["-y", "unflick-mcp"]
+# which drops the PATH requirement.
 
 startCommand:
   type: stdio
@@ -14,10 +18,10 @@ startCommand:
     additionalProperties: false
   commandFunction: |
     (config) => ({
-      command: "npx",
-      args: ["-y", "unflick-mcp"]
+      command: "unflick",
+      args: ["--mcp"]
     })
 
 build:
-  # Pure passthrough wrapper — nothing to compile.
+  # Nothing to compile — the server is the installed binary.
   dockerfile: null

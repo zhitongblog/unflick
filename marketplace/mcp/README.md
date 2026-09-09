@@ -5,7 +5,7 @@
 
 - **Protocol**: Model Context Protocol, `2024-11-05`
 - **Transport**: stdio
-- **Server**: `unflick --mcp` (or `npx -y unflick-mcp`)
+- **Server**: `unflick --mcp` (the npm wrapper, `npx -y unflick-mcp`, is not published yet)
 - **Tools**: 94 · **Resources**: 3 · **Prompts**: 0
 
 The MCP server spawns/attaches to the unflick **daemon** (the same core the GUI

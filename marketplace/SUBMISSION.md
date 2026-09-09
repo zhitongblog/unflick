@@ -5,7 +5,8 @@ marketplace. **The steps that need your account/credentials are flagged
 `🔑 YOU`** — I can't log in or publish as you. Everything else (the manifests,
 wrapper, skills, configs) is already generated in this folder.
 
-Order matters: do **0** and **1** first; the rest reference the npm package.
+Order no longer matters much: step **1** (npm) is optional — the rest reference
+the installed binary, not the npm package.
 
 ---
 
@@ -21,10 +22,32 @@ Order matters: do **0** and **1** first; the rest reference the npm package.
 
 ---
 
-## 1. npm — publish the `unflick-mcp` wrapper  🔑 YOU
+## 1. npm — publish the `unflick-mcp` wrapper  🔑 YOU — *optional, currently blocked*
 
-Every registry below launches the server via `npx -y unflick-mcp`, so publish
-this first.
+Nothing below depends on this any more: every manifest and client config
+launches the installed binary (`unflick --mcp`) instead. Publishing the wrapper
+only adds an `npx` path for users who would rather not have `unflick` on PATH.
+
+**Why it is blocked:** `registry.npmjs.org` is reachable from here, but
+`www.npmjs.com` answers Cloudflare's "Just a moment…" challenge on every exit
+node tried, so neither signup nor token creation completes. Either register from
+a different network, or try the registry-only flow (`npm adduser --auth-type=legacy`).
+
+After publishing, put the package back into `mcp/server.json` — it is valid
+without one, and the registry rejects an entry pointing at a package that does
+not exist:
+
+```json
+"packages": [
+  {
+    "registry_type": "npm",
+    "registry_base_url": "https://registry.npmjs.org",
+    "identifier": "unflick-mcp",
+    "version": "<same as the app>",
+    "transport": { "type": "stdio" }
+  }
+]
+```
 
 ```bash
 cd marketplace/mcp/npm-wrapper

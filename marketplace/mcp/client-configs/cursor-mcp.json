@@ -1,9 +1,11 @@
 {
-  "// note": "Cursor: Settings -> MCP -> Add, or drop this into ~/.cursor/mcp.json (global) or .cursor/mcp.json (project). The npx form needs no PATH setup.",
+  "// note": "Cursor: Settings -> MCP -> Add, or drop this into ~/.cursor/mcp.json (global) or .cursor/mcp.json (project). Needs `unflick` on PATH — the installers put it there.",
   "mcpServers": {
     "unflick": {
-      "command": "npx",
-      "args": ["-y", "unflick-mcp"]
+      "command": "unflick",
+      "args": [
+        "--mcp"
+      ]
     }
   }
 }
