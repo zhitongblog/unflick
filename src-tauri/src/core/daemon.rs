@@ -580,6 +580,12 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                             file.to_string(),
                         );
                     }
+                    // Track C — bilingual subtitles. mpv resets
+                    // `secondary-sid` and drops external subs on every
+                    // load, so a remembered preference has to be put back
+                    // per file or it is a setting that does nothing.
+                    // Covers URLs and files alike; returns at once.
+                    crate::core::bilingual::after_play_hooks(Arc::clone(player));
                     // History is written here rather than being left to
                     // each caller: a play is a play whether it came from
                     // the window, a script, or an agent.
@@ -1562,6 +1568,16 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                     format!("{} = {}", name, value),
                     player.subtitle_style(),
                 ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+
+        // ─── Bilingual subtitles (Track C) ────────────────────────────────
+        // Reading shape matches `subtitle_delay`: no arguments is a pure
+        // read that writes nothing to settings.
+        "subtitle_bilingual" => {
+            match crate::core::bilingual::command(player, &args) {
+                Ok((message, data)) => CommandResult::ok_with_data(message, data),
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }

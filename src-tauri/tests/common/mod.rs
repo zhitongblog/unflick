@@ -48,6 +48,11 @@ pub struct Fixtures {
     /// case music mode exists for — and the one where "has a video track"
     /// is true but "has video" must not be.
     pub audio: PathBuf,
+    /// A Chinese translation of `with_subtitles`, under a *different* stem
+    /// so mpv's `sub-auto=exact` never picks it up on its own. The second
+    /// line of a bilingual pair has to be loaded deliberately, and a test
+    /// that got it for free would prove nothing.
+    pub translation: PathBuf,
 }
 
 pub fn fixtures() -> Fixtures {
@@ -82,7 +87,15 @@ pub fn fixtures() -> Fixtures {
         build_audio_fixture(&dir, &audio);
     }
 
-    Fixtures { with_chapters, with_subtitles, plain, audio }
+    // `translation.zh-CN.srt`, not `subtitled.zh-CN.srt`: mpv's own
+    // sidecar rule would load the latter and the bilingual tests would
+    // never exercise loading a named file.
+    let translation = dir.join("translation.zh-CN.srt");
+    if !translation.exists() {
+        std::fs::write(&translation, TRANSLATION_FIXTURE).expect("write fixture translation");
+    }
+
+    Fixtures { with_chapters, with_subtitles, plain, audio, translation }
 }
 
 /// Tone plus tags plus a cover picture, muxed as an attached picture the way
@@ -161,6 +174,22 @@ That is all for today
 12
 00:00:54,000 --> 00:00:56,500
 Thanks for watching
+";
+
+/// The other half of a bilingual pair: the same cues in Chinese. Only the
+/// first few — nothing here reads past cue 3.
+const TRANSLATION_FIXTURE: &str = "\
+1
+00:00:00,000 --> 00:00:02,500
+欢迎收看本节目
+
+2
+00:00:03,000 --> 00:00:05,500
+今天我们讲三个主题
+
+3
+00:00:06,000 --> 00:00:08,500
+让我们开始吧
 ";
 
 fn build_chapter_fixture(dir: &Path, out: &Path) {

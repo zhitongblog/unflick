@@ -81,7 +81,10 @@
     "stylePosition": "位置",
     "styleColor": "色",
     "styleOutline": "縁取り",
-    "styleBold": "太字"
+    "styleBold": "太字",
+    "bilingual": "二か国語字幕",
+    "bilingualHint": "原語と翻訳を同時に表示",
+    "secondLine": "2行目"
   },
   "audio": {
     "title": "音声トラック",

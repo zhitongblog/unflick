@@ -107,6 +107,8 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "audio_delay" => ("audio_delay", args.clone()),
         "subtitle_style_get" => ("subtitle_style_get", json!({})),
         "subtitle_style_set" => ("subtitle_style_set", args.clone()),
+        // Track C — bilingual subtitles
+        "subtitle_bilingual" => ("subtitle_bilingual", args.clone()),
         "chapter_list" => ("chapter_list", json!({})),
         "chapter_seek" => ("chapter_seek", json!({"index": args["index"]})),
         "chapter_next" => ("chapter_next", json!({})),
@@ -625,7 +627,7 @@ fn tools_core() -> Value {
         },
         {
             "name": "subtitle_select",
-            "description": "Select a subtitle track by ID (0 to disable subtitles)",
+            "description": "Select a subtitle track by ID (0 to disable subtitles). Choosing a single track turns bilingual mode off.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -884,6 +886,20 @@ fn tools_v010() -> Value {
                     "value": { "description": "scale: 0.1-10 · pos: 0-150 (100 = bottom) · color: #RRGGBBAA · border_size: 0-20 · bold: boolean" }
                 },
                 "required": ["name", "value"]
+            }
+        },
+        {
+            // Track C — bilingual subtitles
+            "name": "subtitle_bilingual",
+            "description": "Show two subtitle tracks at once — typically the original plus a translation. Call with no arguments to read the current state. `primary` is the bottom line and the one `subtitle_select` refers to; `secondary` is drawn just above it. Each accepts a track id from subtitle_list or a path to a subtitle file, which is loaded if it is not already. With no tracks named, the original and the translation are picked automatically. Selecting a single track with subtitle_select turns this off.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "enabled": { "type": "boolean", "description": "Turn it on or off. Omit to read; omitting it while naming a track or layout turns it on." },
+                    "primary": { "type": ["string", "integer"], "description": "Bottom line: a track id, or a path to a subtitle file" },
+                    "secondary": { "type": ["string", "integer"], "description": "The line above it: a track id, or a path to a subtitle file" },
+                    "layout": { "type": "string", "enum": ["stacked", "top"], "description": "stacked (just above the first line, the default) or top of the frame" }
+                }
             }
         },
         {

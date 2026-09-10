@@ -446,14 +446,43 @@ impl Player {
         self.mpv.command(&["screenshot-to-file", path, "video"])
     }
 
-    /// Load an external subtitle file
+    /// Load an external subtitle file and select it.
     pub fn subtitle_load(&self, path: &str) -> Result<()> {
-        self.mpv.command(&["sub-add", path])
+        self.subtitle_add(path, true, None, None)
+    }
+
+    /// Load an external subtitle file, optionally leaving the current
+    /// selection alone.
+    ///
+    /// `sub-add <path>` always steals `sid`, which is wrong when the file
+    /// being added is the *second* line of a bilingual pair — it would
+    /// replace the original instead of joining it. mpv's `auto` flag adds
+    /// without selecting (measured: `sid` stayed put).
+    ///
+    /// mpv does not deduplicate: adding the same path twice produces two
+    /// tracks with the same name. Callers that care dedupe first.
+    pub fn subtitle_add(
+        &self,
+        path: &str,
+        select: bool,
+        title: Option<&str>,
+        lang: Option<&str>,
+    ) -> Result<()> {
+        let flag = if select { "select" } else { "auto" };
+        match (title, lang) {
+            // Title and language are what the track list shows and what the
+            // auto-pick scores on, so pass them when the caller derived them
+            // from the filename rather than leaving both blank.
+            (Some(t), Some(l)) => self.mpv.command(&["sub-add", path, flag, t, l]),
+            (Some(t), None) => self.mpv.command(&["sub-add", path, flag, t]),
+            _ => self.mpv.command(&["sub-add", path, flag]),
+        }
     }
 
     /// List all subtitle tracks
     pub fn subtitle_list(&self) -> Vec<SubtitleTrack> {
         let count = self.mpv.get_property_i64("track-list/count").unwrap_or(0);
+        let secondary = self.secondary_subtitle();
         let mut subs = Vec::new();
         for i in 0..count {
             let track_type = self.mpv.get_property_string(&format!("track-list/{}/type", i)).unwrap_or_default();
@@ -465,14 +494,133 @@ impl Player {
             let lang = self.mpv.get_property_string(&format!("track-list/{}/lang", i)).ok();
             let external = self.mpv.get_property_string(&format!("track-list/{}/external-filename", i)).ok();
             let selected = self.mpv.get_property_bool(&format!("track-list/{}/selected", i)).unwrap_or(false);
-            subs.push(SubtitleTrack { id, title, lang, external_file: external, selected });
+            // mpv marks the *second* line selected too — it is being
+            // rendered, after all. Reported as-is, a bilingual pair looks
+            // like two active tracks and "which one is the subtitle track"
+            // stops having an answer. The two flags are made exclusive
+            // here, once, so the menu and the CLI agree.
+            let is_secondary = secondary == Some(id);
+            subs.push(SubtitleTrack {
+                id,
+                title,
+                lang,
+                external_file: external,
+                selected: selected && !is_secondary,
+                secondary: is_secondary,
+            });
         }
         subs
     }
 
     /// Select a subtitle track by ID (0 to disable)
+    ///
+    /// Clearing `secondary-sid` first is not tidiness. Measured against
+    /// libmpv 0.41: with a secondary track set, `sid = no` leaves the
+    /// secondary rendering — "Off" turned nothing off — and asking for the
+    /// id that *is* the secondary is answered with success and ignored.
+    /// Choosing one track means one track, so the second line goes first.
     pub fn subtitle_select(&self, id: i64) -> Result<()> {
-        self.mpv.set_property_i64("sid", id)
+        let _ = self.mpv.set_property_string("secondary-sid", "no");
+        self.mpv.set_property_i64("sid", id)?;
+        if id > 0 && self.mpv.get_property_i64("sid").ok() != Some(id) {
+            bail!(
+                "mpv did not switch to subtitle track {} - run `unflick subtitle list` \
+                 for the ids this file actually has",
+                id
+            );
+        }
+        Ok(())
+    }
+
+    // ─── Bilingual subtitles ──────────────────────────────────────────────
+    //
+    // mpv draws a second track through `secondary-sid`. The property lies
+    // quietly when a write cannot be honoured: setting it to the id already
+    // in `sid`, or to a track that does not exist, both return success and
+    // leave it unchanged. Everything written here is read back.
+    //
+    // The policy — which two tracks, where they sit, when to re-arm — lives
+    // in `core::bilingual`. This is only the mpv mechanics.
+
+    /// The track drawn as the second line, or `None` when there is one line.
+    ///
+    /// Read as a string because mpv answers `no` for "none", and asking for
+    /// an integer in that state is an error rather than a zero.
+    pub fn secondary_subtitle(&self) -> Option<i64> {
+        self.mpv
+            .get_property_string("secondary-sid")
+            .ok()
+            .and_then(|s| s.trim().parse::<i64>().ok())
+            .filter(|id| *id > 0)
+    }
+
+    /// Put `primary` on the bottom line and `secondary` just above it.
+    ///
+    /// The order matters: clearing the secondary first is what lets the two
+    /// swap places. Setting `sid` to the id currently held by
+    /// `secondary-sid` is one of the writes mpv answers with success and
+    /// then ignores.
+    pub fn set_bilingual(&self, primary: i64, secondary: i64) -> Result<()> {
+        if primary == secondary {
+            bail!(
+                "bilingual needs two different tracks - track {} cannot be both lines; \
+                 run `unflick subtitle list` to see what else is loaded",
+                primary
+            );
+        }
+        self.mpv.set_property_string("secondary-sid", "no")?;
+        self.mpv.set_property_i64("sid", primary)?;
+        self.mpv.set_property_i64("secondary-sid", secondary)?;
+
+        if self.mpv.get_property_i64("sid").ok() != Some(primary) {
+            bail!(
+                "mpv would not put subtitle track {} on the first line - \
+                 run `unflick subtitle list` for the ids this file has",
+                primary
+            );
+        }
+        if self.secondary_subtitle() != Some(secondary) {
+            bail!(
+                "mpv would not put subtitle track {} on the second line - \
+                 run `unflick subtitle list` for the ids this file has",
+                secondary
+            );
+        }
+        Ok(())
+    }
+
+    /// Drop the second line, leaving the first one playing.
+    pub fn clear_bilingual(&self) -> Result<()> {
+        self.mpv.set_property_string("secondary-sid", "no")?;
+        if let Some(id) = self.secondary_subtitle() {
+            bail!("mpv is still drawing subtitle track {} as a second line", id);
+        }
+        Ok(())
+    }
+
+    /// Whether this libmpv can position the second line at all.
+    ///
+    /// `secondary-sub-pos` is much newer than `secondary-sid`, and distros
+    /// ship older libmpv than the one this was measured against. Ask, the
+    /// way `supported_protocols` asks, instead of assuming — without it the
+    /// two lines would silently land on the same row.
+    pub fn secondary_pos_supported(&self) -> bool {
+        self.mpv.get_property_f64("secondary-sub-pos").is_ok()
+    }
+
+    pub fn secondary_sub_pos(&self) -> Option<f64> {
+        self.mpv.get_property_f64("secondary-sub-pos").ok()
+    }
+
+    pub fn set_secondary_sub_pos(&self, pos: f64) -> Result<()> {
+        self.mpv
+            .set_property_f64("secondary-sub-pos", pos.clamp(0.0, 150.0))
+    }
+
+    pub fn secondary_sub_delay(&self) -> f64 {
+        self.mpv
+            .get_property_f64("secondary-sub-delay")
+            .unwrap_or(0.0)
     }
 
     /// List all audio tracks
@@ -510,7 +658,13 @@ impl Player {
     }
 
     pub fn set_sub_delay(&self, seconds: f64) -> Result<()> {
-        self.mpv.set_property_f64("sub-delay", seconds)
+        self.mpv.set_property_f64("sub-delay", seconds)?;
+        // The second line is the same dialogue at the same moment. Leaving
+        // it on the old offset would make the two drift apart the first time
+        // anyone pressed `z`, which reads as a bug rather than a feature.
+        // Unconditional: harmless when there is no second line.
+        let _ = self.mpv.set_property_f64("secondary-sub-delay", seconds);
+        Ok(())
     }
 
     pub fn audio_delay(&self) -> f64 {
@@ -744,11 +898,18 @@ impl Player {
         match name {
             "scale" => {
                 let v = value.as_f64().unwrap_or(1.0).clamp(0.1, 10.0);
-                self.mpv.set_property_f64("sub-scale", v)
+                self.mpv.set_property_f64("sub-scale", v)?;
+                // A taller line needs more room above it. Without this the
+                // two lines of a bilingual pair walk into each other the
+                // moment the user makes the subtitles bigger.
+                super::bilingual::follow_style_change(self);
+                Ok(())
             }
             "pos" => {
                 let v = value.as_i64().unwrap_or(100).clamp(0, 150);
-                self.mpv.set_property_i64("sub-pos", v)
+                self.mpv.set_property_i64("sub-pos", v)?;
+                super::bilingual::follow_style_change(self);
+                Ok(())
             }
             "color" => {
                 let v = value.as_str().unwrap_or("#FFFFFFFF");

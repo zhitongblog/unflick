@@ -27,6 +27,8 @@ pub mod thumbnail;
 pub mod transcript;
 pub mod vision;
 pub mod auto_subs;
+// Track C — bilingual subtitles
+pub mod bilingual;
 pub mod url_post_play;
 pub mod window;
 

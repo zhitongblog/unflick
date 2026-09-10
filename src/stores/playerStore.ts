@@ -17,6 +17,9 @@ export interface SubtitleTrack {
   lang: string | null;
   external: string | null;
   active: boolean;
+  /** Drawn as the second line of a bilingual pair. Never true together
+   *  with `active` — one track cannot be both lines. */
+  secondary: boolean;
 }
 
 /** One entry from mpv's chapter list. `time` is the start, in seconds. */
@@ -100,6 +103,9 @@ interface PlayerState {
    */
   openError: string | null;
   subtitles: SubtitleTrack[];
+  /** Whether two subtitle tracks are on screen at once. Derived from the
+   *  track list, so the backend re-arming it on a new file shows up here. */
+  bilingual: boolean;
 
   /** Chapters of the current file. Empty for files without any. */
   chapters: Chapter[];
@@ -135,6 +141,8 @@ interface PlayerState {
   loadSubtitle: (path: string) => Promise<void>;
   selectSubtitle: (id: number | null) => Promise<void>;
   refreshSubtitles: () => Promise<void>;
+  /** Show the original and the translation together, or stop. */
+  setBilingual: (on: boolean) => Promise<void>;
   clearSubtitles: () => Promise<void>;
 
   refreshChapters: () => Promise<void>;
@@ -219,6 +227,7 @@ interface MpvSubTrack {
   lang: string | null;
   external_file: string | null;
   selected: boolean;
+  secondary: boolean;
 }
 
 /// Attach the sidecar subtitles sitting next to a video, skipping the ones
@@ -270,6 +279,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   openError: null,
   nowPlaying: null,
   subtitles: [],
+  bilingual: false,
   chapters: [],
   bookmarks: [],
   abLoop: { a: null, b: null, active: false },
@@ -379,11 +389,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         lang: t.lang,
         external: t.external_file,
         active: t.selected,
+        secondary: t.secondary,
       }));
-      set({ subtitles: mapped });
+      // Whether a second line is on screen is part of the same picture, and
+      // the backend re-arms it by itself on a new file — so the switch has
+      // to be re-read here rather than only when the user flips it.
+      set({ subtitles: mapped, bilingual: mapped.some((t) => t.secondary) });
     } catch (e) {
       console.warn("subtitle_list failed:", e);
     }
+  },
+
+  setBilingual: async (on: boolean) => {
+    try {
+      await invoke("subtitle_bilingual", { enabled: on });
+    } catch (e) {
+      // The common failure is "there is only one track", which is a real
+      // answer and belongs in front of the user, not in the console.
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: { kind: "error", message: String(e) },
+        }),
+      );
+    }
+    await get().refreshSubtitles();
   },
 
   loadSubtitle: async (path: string) => {

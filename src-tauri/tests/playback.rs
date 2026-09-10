@@ -418,6 +418,315 @@ fn subtitle_style_rejects_unknown_property() {
         .expect_err_containing("unknown subtitle style");
 }
 
+// ─── Bilingual subtitles ──────────────────────────────────────────────────
+//
+// Two tracks on screen at once. Most of what is asserted here exists because
+// mpv answers a write it cannot honour with success and then ignores it:
+// setting `secondary-sid` to the id already in `sid`, or to a track that is
+// not there, both look like they worked. Every one of those would have this
+// feature reporting a second line that is not on screen.
+
+fn settings_json(d: &Daemon) -> String {
+    std::fs::read_to_string(d.data_dir().join("settings.json")).unwrap_or_default()
+}
+
+/// Load the translation as a second track and turn bilingual on.
+fn two_tracks(d: &Daemon, translation: &std::path::Path) -> serde_json::Value {
+    d.send("subtitle_load", json!({ "file": translation.to_string_lossy() }))
+        .expect_ok();
+    let reply = d.send("subtitle_bilingual", json!({ "enabled": true }));
+    reply.expect_ok();
+    reply.data()
+}
+
+#[test]
+fn bilingual_reads_as_off_before_anything_is_asked_for() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    let reply = d.send("subtitle_bilingual", json!({}));
+    reply.expect_ok();
+    assert_eq!(reply.data()["enabled"], false);
+    assert_eq!(reply.message(), "bilingual off");
+    // A read is a read. `subtitle delay` set that shape and a bare read that
+    // wrote a preference would turn "what is this doing" into a change.
+    assert!(
+        !settings_json(&d).contains("subtitle_bilingual"),
+        "a read must not write the preference: {}",
+        settings_json(&d)
+    );
+}
+
+#[test]
+fn bilingual_shows_two_tracks_at_once() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    let data = two_tracks(&d, &f.translation);
+    assert_eq!(data["enabled"], true);
+    let primary = data["primary"]["id"].as_i64().unwrap();
+    let secondary = data["secondary"]["id"].as_i64().unwrap();
+    assert_ne!(primary, secondary, "one track cannot be both lines");
+
+    let tracks = d.send("subtitle_list", json!({})).expect_ok().data();
+    let list = tracks.as_array().unwrap();
+    let selected: Vec<i64> = list
+        .iter()
+        .filter(|t| t["selected"] == true)
+        .map(|t| t["id"].as_i64().unwrap())
+        .collect();
+    let seconds: Vec<i64> = list
+        .iter()
+        .filter(|t| t["secondary"] == true)
+        .map(|t| t["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(selected, vec![primary]);
+    assert_eq!(seconds, vec![secondary]);
+}
+
+#[test]
+fn bilingual_loads_a_subtitle_file_named_as_the_second_track() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    let count = |d: &Daemon| {
+        d.send("subtitle_list", json!({})).expect_ok().data().as_array().unwrap().len()
+    };
+    assert_eq!(count(&d), 1, "the fixture starts with its own sidecar only");
+
+    let args = json!({ "enabled": true, "secondary": f.translation.to_string_lossy() });
+    let first = d.send("subtitle_bilingual", args.clone());
+    first.expect_ok();
+    assert_eq!(count(&d), 2);
+    let used = first.data()["secondary"]["id"].as_i64().unwrap();
+
+    // Bare `sub-add` adds the same file twice and the copy is
+    // indistinguishable from the original in the menu.
+    let second = d.send("subtitle_bilingual", args);
+    second.expect_ok();
+    assert_eq!(count(&d), 2, "naming the same file twice must not add a duplicate");
+    assert_eq!(second.data()["secondary"]["id"].as_i64().unwrap(), used);
+}
+
+#[test]
+fn bilingual_refuses_to_use_one_track_for_both_lines() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    d.send("subtitle_load", json!({ "file": f.translation.to_string_lossy() })).expect_ok();
+
+    // mpv answers this write with success and leaves both properties alone.
+    d.send("subtitle_bilingual", json!({ "enabled": true, "primary": 1, "secondary": 1 }))
+        .expect_err_containing("two different tracks");
+}
+
+#[test]
+fn bilingual_refuses_a_track_that_does_not_exist() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    d.send("subtitle_load", json!({ "file": f.translation.to_string_lossy() })).expect_ok();
+
+    // The other silent no-op: `secondary-sid = 99` reports success and stays
+    // at `no`, so without the check this would claim a second line.
+    d.send("subtitle_bilingual", json!({ "enabled": true, "secondary": 99 }))
+        .expect_err_containing("99");
+    assert_eq!(
+        d.send("subtitle_bilingual", json!({})).expect_ok().data()["enabled"],
+        false
+    );
+}
+
+#[test]
+fn bilingual_refuses_when_there_is_nothing_to_pair() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    d.send("subtitle_bilingual", json!({ "enabled": true }))
+        .expect_err_containing("subtitle load");
+}
+
+#[test]
+fn the_two_lines_never_share_a_position() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    two_tracks(&d, &f.translation);
+
+    let gap = |d: &Daemon| {
+        let s = d.send("subtitle_bilingual", json!({})).expect_ok().data();
+        let primary = s["sub_pos"].as_f64().unwrap();
+        let secondary = s["secondary_sub_pos"].as_f64().expect("secondary position");
+        (primary - secondary).abs()
+    };
+    assert!(gap(&d) >= 4.0, "the two lines start on top of each other: {}", gap(&d));
+
+    // Moving the subtitles up must take the second line with them: mpv
+    // collapses both onto one row the moment the positions match.
+    d.send("subtitle_style_set", json!({ "name": "pos", "value": 60 })).expect_ok();
+    assert!(gap(&d) >= 4.0, "the layout did not follow `pos`: {}", gap(&d));
+
+    // A bigger line needs a bigger gap, or the two touch.
+    d.send("subtitle_style_set", json!({ "name": "scale", "value": 1.5 })).expect_ok();
+    assert!(gap(&d) >= 4.0 * 1.5, "the layout did not follow `scale`: {}", gap(&d));
+}
+
+#[test]
+fn subtitle_delay_moves_both_lines_together() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    two_tracks(&d, &f.translation);
+
+    d.send("subtitle_delay", json!({ "seconds": 0.5 })).expect_ok();
+    let state = d.send("subtitle_bilingual", json!({})).expect_ok().data();
+    assert!((state["delay"].as_f64().unwrap() - 0.5).abs() < 1e-6);
+    assert!(
+        (state["secondary_delay"].as_f64().unwrap() - 0.5).abs() < 1e-6,
+        "the translation drifted away from the original: {state}"
+    );
+}
+
+#[test]
+fn choosing_a_single_track_turns_bilingual_off() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    let primary = two_tracks(&d, &f.translation)["primary"]["id"].as_i64().unwrap();
+
+    d.send("subtitle_select", json!({ "id": primary })).expect_ok();
+    assert_eq!(
+        d.send("subtitle_bilingual", json!({})).expect_ok().data()["enabled"],
+        false,
+        "picking one track has to mean one track"
+    );
+}
+
+#[test]
+fn turning_subtitles_off_takes_the_second_line_with_them() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    two_tracks(&d, &f.translation);
+
+    // Measured: with a secondary set, `sid = no` leaves the translation
+    // rendering. "Off" would turn nothing off.
+    d.send("subtitle_select", json!({ "id": 0 })).expect_ok();
+    let tracks = d.send("subtitle_list", json!({})).expect_ok().data();
+    for track in tracks.as_array().unwrap() {
+        assert_eq!(track["selected"], false, "{track}");
+        assert_eq!(track["secondary"], false, "{track}");
+    }
+}
+
+#[test]
+fn turning_bilingual_off_leaves_the_first_line_playing() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    let primary = two_tracks(&d, &f.translation)["primary"]["id"].as_i64().unwrap();
+
+    d.send("subtitle_bilingual", json!({ "enabled": false })).expect_ok();
+    let tracks = d.send("subtitle_list", json!({})).expect_ok().data();
+    let list = tracks.as_array().unwrap();
+    assert_eq!(list.iter().filter(|t| t["selected"] == true).count(), 1);
+    assert_eq!(list.iter().filter(|t| t["secondary"] == true).count(), 0);
+    assert_eq!(
+        list.iter().find(|t| t["selected"] == true).unwrap()["id"].as_i64(),
+        Some(primary)
+    );
+}
+
+#[test]
+fn bilingual_comes_back_on_the_next_file() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+    two_tracks(&d, &f.translation);
+
+    // A file load resets `secondary-sid` and drops external subs. Without
+    // the re-arm hook the persisted preference is a setting that does
+    // nothing from the second file onward.
+    d.play(&f.with_subtitles);
+    d.send("subtitle_load", json!({ "file": f.translation.to_string_lossy() })).expect_ok();
+
+    d.wait_for(
+        |d| d.send("subtitle_bilingual", json!({})).data()["enabled"] == json!(true),
+        "the second line to come back on the next file",
+    );
+}
+
+#[test]
+fn bilingual_survives_a_restart() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    // An unrelated key, to prove the preference is merged in rather than
+    // written over the whole file — the bug that silently deleted every
+    // keybinding the settings panel had never heard of.
+    d.send("settings_set", json!({ "key": "volume_step", "value": 7 })).expect_ok();
+    two_tracks(&d, &f.translation);
+    d.send("subtitle_bilingual", json!({ "layout": "top" })).expect_ok();
+
+    let d = d.restart();
+    let settings: serde_json::Value =
+        serde_json::from_str(&settings_json(&d)).expect("settings.json is valid JSON");
+    assert_eq!(settings["subtitle_bilingual"]["enabled"], true);
+    assert_eq!(settings["subtitle_bilingual"]["layout"], "top");
+    assert_eq!(settings["volume_step"], 7, "merge dropped an unrelated key");
+}
+
+#[test]
+fn mcp_exposes_the_bilingual_tool() {
+    let d = Daemon::start();
+    let replies = mcp_roundtrip(
+        &[json!({ "jsonrpc": "2.0", "id": 41, "method": "tools/list", "params": {} })],
+        &d,
+    );
+    let tools = replies[&41]["result"]["tools"].as_array().unwrap().clone();
+    let tool = tools
+        .iter()
+        .find(|t| t["name"] == "subtitle_bilingual")
+        .expect("subtitle_bilingual is missing from tools/list");
+
+    // It has to be callable bare, because that is how the state is read.
+    assert!(tool["inputSchema"].get("required").is_none());
+    assert_eq!(
+        tool["inputSchema"]["properties"]["layout"]["enum"],
+        json!(["stacked", "top"])
+    );
+}
+
+#[test]
+fn mcp_can_turn_bilingual_on_end_to_end() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    let replies = mcp_roundtrip(
+        &[json!({
+            "jsonrpc": "2.0", "id": 42, "method": "tools/call",
+            "params": {
+                "name": "subtitle_bilingual",
+                "arguments": { "enabled": true, "secondary": f.translation.to_string_lossy() }
+            }
+        })],
+        &d,
+    );
+    let result = &replies[&42]["result"];
+    assert_ne!(result["isError"], true, "{result}");
+
+    // The same player the CLI talks to.
+    let state = d.send("subtitle_bilingual", json!({})).expect_ok().data();
+    assert_eq!(state["enabled"], true);
+    assert!(state["secondary"]["id"].as_i64().is_some(), "{state}");
+}
+
 // ─── Playlist order ───────────────────────────────────────────────────────
 
 #[test]

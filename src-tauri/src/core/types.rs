@@ -50,6 +50,9 @@ pub struct SubtitleTrack {
     pub lang: Option<String>,
     pub external_file: Option<String>,
     pub selected: bool,
+    /// Drawn as the second line of a bilingual pair. Never true at the same
+    /// time as `selected` — mpv refuses to put one track on both lines.
+    pub secondary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

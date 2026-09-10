@@ -81,7 +81,10 @@
     "stylePosition": "위치",
     "styleColor": "색상",
     "styleOutline": "외곽선",
-    "styleBold": "굵게"
+    "styleBold": "굵게",
+    "bilingual": "이중 자막",
+    "bilingualHint": "원문과 번역을 함께 표시",
+    "secondLine": "2행"
   },
   "audio": {
     "title": "오디오 트랙",

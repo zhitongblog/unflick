@@ -590,6 +590,25 @@ pub enum SubtitleAction {
         #[command(subcommand)]
         action: StyleAction,
     },
+    // ─── Track C — bilingual subtitles ────────────────────────────────
+    /// Show two subtitle tracks at once — the original and a translation
+    ///
+    /// With no argument, reports which two tracks are on screen, where the
+    /// second line sits, and whether the two are in sync.
+    Bilingual {
+        /// on | off. Omit to read the current state.
+        state: Option<String>,
+        /// The bottom line: a track id from `subtitle list`, or a subtitle
+        /// file, which is loaded if it isn't already
+        #[arg(long)]
+        primary: Option<String>,
+        /// The line drawn above it: a track id, or a subtitle file
+        #[arg(long)]
+        secondary: Option<String>,
+        /// stacked (just above the first line, the default) | top
+        #[arg(long)]
+        layout: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1052,6 +1071,30 @@ pub fn run_cli(cli: Cli) -> i32 {
                         send("subtitle_style_set", json!({"name": name, "value": parse_style_value(&value)}))
                     }
                 },
+                // ─── Track C — bilingual subtitles ────────────────────
+                SubtitleAction::Bilingual { state, primary, secondary, layout } => {
+                    let parsed = match state.as_deref().map(parse_on_off) {
+                        Some(None) => None,
+                        other => Some(other.flatten()),
+                    };
+                    match parsed {
+                        None => CommandResult::err(format!(
+                            "expected on or off, got {}",
+                            state.unwrap_or_default()
+                        )),
+                        Some(enabled) => {
+                            let mut args = json!({});
+                            if let Some(on) = enabled { args["enabled"] = json!(on); }
+                            // A track id typed on the command line arrives
+                            // as a string; the daemon takes either shape, so
+                            // both a number and a path go through untouched.
+                            if let Some(p) = primary { args["primary"] = json!(p); }
+                            if let Some(s) = secondary { args["secondary"] = json!(s); }
+                            if let Some(l) = layout { args["layout"] = json!(l); }
+                            send("subtitle_bilingual", args)
+                        }
+                    }
+                }
             }
         }
         Some(Commands::Audio { action }) => {

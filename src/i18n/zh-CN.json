@@ -81,7 +81,10 @@
     "stylePosition": "位置",
     "styleColor": "颜色",
     "styleOutline": "描边",
-    "styleBold": "粗体"
+    "styleBold": "粗体",
+    "bilingual": "双语字幕",
+    "bilingualHint": "同时显示原文和译文",
+    "secondLine": "第二行"
   },
   "audio": {
     "title": "音轨",

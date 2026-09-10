@@ -6,11 +6,20 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useStrings } from "../i18n/utils";
 import { formatDelay } from "../lib/format";
 import { findSubtitlesOnline } from "../lib/subtitleSearch";
+import { ToggleTrack } from "./ui/Toggle";
 
 export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { file, subtitles, loadSubtitle, selectSubtitle, subDelay, setSubDelay } =
-    usePlayerStore();
+  const {
+    file,
+    subtitles,
+    loadSubtitle,
+    selectSubtitle,
+    subDelay,
+    setSubDelay,
+    bilingual,
+    setBilingual,
+  } = usePlayerStore();
   const { whisperMode, whisperBinaryPath, whisperModelPath } = useSettingsStore();
   const t = useStrings();
 
@@ -135,8 +144,33 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
           ) : <span className="w-[10px]" />}
           <span className="flex-1 truncate" title={track.label}>{track.label}</span>
+          {/* The second line is on screen but is not what "select" means,
+              so it gets a mark of its own rather than the tick. */}
+          {track.secondary && (
+            <span className="text-[9px] uppercase tracking-wider text-brand-purple/70">
+              {t.subtitle.secondLine}
+            </span>
+          )}
         </button>
       ))}
+
+      {/* Bilingual. The reason most of this menu exists for the people who
+          asked for it: the original and the translation, together. */}
+      {subtitles.length > 0 && (
+        <>
+          <div className="mx-2 my-1 border-t border-white/6" />
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/60 transition-colors hover:bg-white/6"
+            onClick={() => setBilingual(!bilingual)}
+            role="switch"
+            aria-checked={bilingual}
+            title={t.subtitle.bilingualHint}
+          >
+            <span className="flex-1">{t.subtitle.bilingual}</span>
+            <ToggleTrack checked={bilingual} />
+          </button>
+        </>
+      )}
 
       {/* Timing. AI-generated tracks in particular tend to land a few
           hundred ms off, and until now there was no way to correct them. */}
