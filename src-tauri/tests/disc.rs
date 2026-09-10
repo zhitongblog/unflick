@@ -79,6 +79,9 @@ fn a_dvd_image_is_reported_as_a_dvd_and_opened_as_one() {
     // The two things that make the difference between playing and failing.
     assert_eq!(data["url"], "dvd://");
     assert_eq!(data["device"], img.path());
+    // An image has a path that means one thing forever, so it gets no
+    // identity of its own and keeps being keyed by that path.
+    assert!(data["key"].is_null(), "an image should not be re-keyed: {}", data);
 }
 
 #[test]
@@ -123,12 +126,25 @@ fn a_folder_of_video_ts_is_a_dvd() {
     let dir = std::env::temp_dir().join("unflick-it-disc-folder");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("VIDEO_TS")).unwrap();
+    std::fs::write(dir.join("VIDEO_TS").join("VIDEO_TS.IFO"), b"a video manager").unwrap();
 
     let d = Daemon::start();
     let reply = d.send("disc_list", json!({ "path": dir.to_string_lossy() }));
     reply.expect_ok();
     assert_eq!(reply.data()["kind"], "dvd");
     assert_eq!(reply.data()["device"], dir.to_string_lossy().into_owned());
+
+    // A mounted disc reports the identity its bookmarks and resume point
+    // are filed under, and its name — so both are visible from CLI and MCP
+    // without opening anything.
+    let key = reply.data()["key"].as_str().unwrap_or("").to_string();
+    assert!(key.starts_with("disc:dvd:"), "expected a disc identity, got {key:?}");
+    assert_eq!(reply.data()["label"], "unflick-it-disc-folder");
+    assert!(
+        reply.message().contains("\"unflick-it-disc-folder\""),
+        "the one-line answer should name the disc: {}",
+        reply.message()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

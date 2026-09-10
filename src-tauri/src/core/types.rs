@@ -3,7 +3,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerStatus {
     pub state: PlaybackState,
+    /// The path the caller gave us — what to show, and what mpv was handed.
     pub file: Option<String>,
+    /// What resume points, bookmarks and history are filed under. The same
+    /// string as `file` for everything except a mounted disc, whose path is
+    /// the drive it is in and whose key identifies the disc itself.
+    pub key: Option<String>,
+    /// A mounted disc's volume name, when there is one. `None` otherwise.
+    pub label: Option<String>,
     pub position: f64,
     pub duration: f64,
     pub volume: i64,
@@ -23,6 +30,8 @@ impl Default for PlayerStatus {
         Self {
             state: PlaybackState::Stopped,
             file: None,
+            key: None,
+            label: None,
             position: 0.0,
             duration: 0.0,
             volume: 100,

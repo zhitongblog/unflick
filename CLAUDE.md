@@ -222,11 +222,15 @@ unflick video reset
 
 # Bookmarks (named positions, kept across sessions)
 unflick bookmark add [--name <label>] [--position <s>] [--file <path>]
-unflick bookmark list [--file <path>] [--all]
+unflick bookmark list [--file <path>] [--key <id>] [--all]
 unflick bookmark goto <id>              # seeks, or opens the file if it's another one
 unflick bookmark rename <id> <name>     # --clear drops the name
 unflick bookmark remove <id>
-unflick bookmark clear [--file <path>] [--all]
+unflick bookmark clear [--file <path>] [--key <id>] [--all]
+# A mounted disc is keyed by the disc, not by the drive it is in, so one
+# disc's bookmarks are never offered on the next. `--key` names an identity
+# outright (from `unflick disc`, `unflick status`, or any listed bookmark) —
+# it is how bookmarks left under a drive letter before v0.14 are reached.
 
 # Housekeeping
 unflick cleanup [--apply]               # files an older install left behind

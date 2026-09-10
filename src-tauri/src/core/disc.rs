@@ -61,6 +61,14 @@ impl DiscKind {
             DiscKind::BluRay => "BDMV",
         }
     }
+
+    /// How this kind is spelled inside an identity key.
+    fn slug(self) -> &'static str {
+        match self {
+            DiscKind::Dvd => "dvd",
+            DiscKind::BluRay => "bluray",
+        }
+    }
 }
 
 /// A disc unflick knows how to open, and where it lives.
@@ -144,6 +152,16 @@ pub fn detect(path: &str) -> Option<Disc> {
 /// another turns up as `VIDEO_TS`, `Video_TS` or `video_ts`, and only one
 /// of those is what the standard says.
 fn kind_of_directory(dir: &Path) -> Option<DiscKind> {
+    marker_in(dir).map(|(kind, _)| kind)
+}
+
+/// The marker directory a folder holds, and where it actually is on disk.
+///
+/// Split out from `kind_of_directory` because identity needs the real
+/// entry: `VIDEO_TS` on a case-preserving filesystem may genuinely be
+/// spelled `Video_ts`, and re-deriving the path from the canonical name
+/// would fail to open it.
+fn marker_in(dir: &Path) -> Option<(DiscKind, PathBuf)> {
     let entries = std::fs::read_dir(dir).ok()?;
     let mut found = None;
     for entry in entries.flatten() {
@@ -151,13 +169,261 @@ fn kind_of_directory(dir: &Path) -> Option<DiscKind> {
         // Blu-ray wins a tie: a hybrid disc carrying both plays as the
         // better of the two.
         if name == DiscKind::BluRay.marker() {
-            return Some(DiscKind::BluRay);
+            return Some((DiscKind::BluRay, entry.path()));
         }
         if name == DiscKind::Dvd.marker() {
-            found = Some(DiscKind::Dvd);
+            found = Some((DiscKind::Dvd, entry.path()));
         }
     }
     found
+}
+
+// ─── Telling one disc from another ────────────────────────────────────────
+//
+// A mounted disc has no path of its own. On Windows it is `E:\`, on macOS
+// `/Volumes/DVD_VIDEO`, and the next disc into the same drive answers to the
+// same string. Everything unflick remembers about a source — resume point,
+// bookmarks, history — was keyed by that string, so a bookmark left on one
+// film was offered on the next, and its resume point was applied to it.
+// Disc *images* were never affected: a `.iso` has a path that means one
+// thing forever, and still does.
+//
+// What identifies a disc here is a hash of the disc's own index: the marker
+// directory's canonical name, that directory's listing, and the index file
+// inside it. One `read_dir` and one small read, over a directory whose
+// contents change when the disc changes — which is what a Windows drive
+// root and a macOS mount point both are, so nothing about this is
+// Windows-only in shape.
+//
+// What was rejected, and why:
+//
+//   * **Volume label alone.** DVDs ship labelled `DVD_VIDEO`, and a boxset
+//     reuses one label across every disc in the set. It collides exactly
+//     where it matters. Kept, but as the disc's *name* — for `recent` and
+//     for the "wrong disc" message — never as its key.
+//   * **Volume label + capacity**, the obvious pair, and still rejected. It
+//     needs a different syscall per OS (`GetVolumeInformationW` +
+//     `GetDiskFreeSpaceExW`; `statfs`; nothing usable for `/dev/sr0`), and
+//     none of it can be exercised without authoring and mounting a real
+//     image — so the Windows path would ship untested, which is how the
+//     drive-letter bug got here in the first place.
+//   * **The Windows volume serial number.** Windows-only in shape, and for
+//     CDFS it is synthesised from the volume creation timestamp, so it
+//     describes the authoring run rather than the film.
+//   * **libdvdread's `DVDDiscID`** (MD5 over the first ten IFO files) — the
+//     right answer if we already linked libdvdread. We do not, and ten
+//     reads off a spinning disc for a database key is not "cheap to read".
+//   * **Hashing the whole disc.** Correct and unusable: minutes per play.
+//   * **Reading the IFO out of a `.iso`.** Unnecessary — an image's path
+//     identifies it — and it would mean writing an ISO9660 *file* reader
+//     when all we have is a root-directory walker, for a key we do not need.
+//   * **`DefaultHasher`.** Its docs explicitly refuse to promise stability
+//     across Rust releases, so every user's disc bookmarks would silently
+//     detach on a toolchain bump. FNV-1a is ten lines and ours forever.
+//
+// Two consequences taken deliberately: a rip folder and the disc it came
+// from get the same key — same content, so the bookmarks follow the film and
+// moving the rip keeps them — and a `.iso` mounted as a drive letter and the
+// same `.iso` played by its path get two keys, because the image has a path
+// of its own and images must keep working exactly as they did.
+
+/// Prefix every disc identity carries, so a key can be told from a path
+/// without asking the filesystem anything.
+pub const KEY_PREFIX: &str = "disc:";
+
+/// Who a mounted disc is, as far as anything that remembers things is
+/// concerned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscIdentity {
+    /// `disc:dvd:<16 hex>` — stable across sessions, drives and machines.
+    pub key: String,
+    /// The volume name, for showing a person which disc this is. Never
+    /// part of the key.
+    pub label: Option<String>,
+    pub kind: DiscKind,
+}
+
+/// How many directory entries feed the hash.
+///
+/// A DVD's `VIDEO_TS` holds a handful; a Blu-ray's `BDMV` nests deeper. The
+/// cap bounds the work on a pathological disc without weakening the key,
+/// since the index file is hashed too.
+const MAX_LISTED_ENTRIES: usize = 512;
+
+/// How much of an index file is hashed. `VIDEO_TS.IFO` is tens of
+/// kilobytes; the cap is the guard against a directory entry that claims to
+/// be one and is a gigabyte.
+const MAX_INDEX_BYTES: u64 = 1024 * 1024;
+
+/// The index files that say what is actually on the disc.
+fn index_files(kind: DiscKind) -> &'static [&'static str] {
+    match kind {
+        // VIDEO_TS.IFO *is* the VMG — the video manager the disc opens
+        // with — read the cheap way, as bytes, rather than through a parser
+        // we would have to write and then keep correct.
+        DiscKind::Dvd => &["VIDEO_TS.IFO"],
+        DiscKind::BluRay => &["index.bdmv", "MovieObject.bdmv"],
+    }
+}
+
+/// Who the disc mounted at `device` is, or `None` when `device` is not a
+/// mounted disc at all.
+///
+/// `None` for an image, for a plain file, for a `dvd://` URL and for a
+/// drive with nothing readable in it — every one of those either has a path
+/// that identifies it already or has nothing to identify. The caller falls
+/// back to the path, which is exactly the behaviour that was there before,
+/// rather than inventing a key that every empty folder would share.
+pub fn identity(device: &str) -> Option<DiscIdentity> {
+    let dir = Path::new(device);
+    if !dir.is_dir() {
+        return None;
+    }
+    let (kind, marker) = marker_in(dir)?;
+
+    let mut hash = FNV_OFFSET;
+    // The canonical marker name first, so a DVD and a Blu-ray can never
+    // hash to the same thing even if their contents somehow did.
+    hash = fnv_bytes(hash, kind.marker().as_bytes());
+
+    // The listing: name, size, and whether it is a directory. One
+    // `read_dir`, no file contents. Sorted, because directory order is the
+    // filesystem's business and is not the same twice.
+    let mut listed: Vec<(String, u64, bool)> = Vec::new();
+    for entry in std::fs::read_dir(&marker).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_ascii_uppercase();
+        let (len, is_dir) = match entry.metadata() {
+            Ok(m) => (if m.is_dir() { 0 } else { m.len() }, m.is_dir()),
+            Err(_) => (0, false),
+        };
+        listed.push((name, len, is_dir));
+        if listed.len() >= MAX_LISTED_ENTRIES {
+            break;
+        }
+    }
+    listed.sort();
+    for (name, len, is_dir) in &listed {
+        hash = fnv_bytes(hash, name.as_bytes());
+        hash = fnv_bytes(hash, &len.to_le_bytes());
+        hash = fnv_bytes(hash, &[*is_dir as u8]);
+    }
+
+    // The index file itself — this is what tells two discs apart whose
+    // listings happen to have the same names and sizes. Matched against the
+    // listing we already have so a disc copied onto a case-preserving
+    // filesystem, where `VIDEO_TS.IFO` comes back as `Video_ts.ifo`, is
+    // still found.
+    let mut read_any = false;
+    for wanted in index_files(kind) {
+        let upper = wanted.to_ascii_uppercase();
+        if !listed.iter().any(|(n, _, is_dir)| !*is_dir && *n == upper) {
+            continue;
+        }
+        if let Some(bytes) = read_capped(&marker, wanted) {
+            hash = fnv_bytes(hash, wanted.as_bytes());
+            hash = fnv_bytes(hash, &bytes);
+            read_any = true;
+        }
+    }
+
+    // Nothing in the marker directory at all: an empty `VIDEO_TS`, which is
+    // what an unreadable disc can look like. Two of those are
+    // indistinguishable, so refuse to claim otherwise. A scratched disc with
+    // an unreadable IFO but a readable listing still gets a key — its VOB
+    // layout is enough to tell it from the next disc.
+    if !read_any && listed.is_empty() {
+        return None;
+    }
+
+    Some(DiscIdentity {
+        key: format!("{}{}:{:016x}", KEY_PREFIX, kind.slug(), hash),
+        label: volume_label(device),
+        kind,
+    })
+}
+
+/// Read one file out of `dir`, case-insensitively, capped.
+fn read_capped(dir: &Path, name: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let entry = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name))?;
+    let file = std::fs::File::open(entry.path()).ok()?;
+    let mut buf = Vec::new();
+    file.take(MAX_INDEX_BYTES).read_to_end(&mut buf).ok()?;
+    (!buf.is_empty()).then_some(buf)
+}
+
+/// The disc's name, for a person to read. Never its key — see the note
+/// above on why a label collides exactly where it matters.
+pub fn volume_label(device: &str) -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        // A drive root is the only thing Windows will report a label for.
+        // Anything else is an ordinary directory and falls through below.
+        if Path::new(device).parent().is_none() {
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetVolumeInformationW(
+                    root: *const u16,
+                    name_buf: *mut u16,
+                    name_len: u32,
+                    serial: *mut u32,
+                    max_component: *mut u32,
+                    flags: *mut u32,
+                    fs_buf: *mut u16,
+                    fs_len: u32,
+                ) -> i32;
+            }
+            let root: Vec<u16> = device.encode_utf16().chain(std::iter::once(0)).collect();
+            let mut name = [0u16; 261];
+            let ok = unsafe {
+                GetVolumeInformationW(
+                    root.as_ptr(),
+                    name.as_mut_ptr(),
+                    name.len() as u32,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    0,
+                )
+            };
+            if ok == 0 {
+                return None;
+            }
+            let end = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+            let label = String::from_utf16_lossy(&name[..end]).trim().to_string();
+            return (!label.is_empty()).then_some(label);
+        }
+    }
+
+    // Everywhere else the mount point carries the name: macOS mounts a disc
+    // at `/Volumes/<label>`, and a folder holding VIDEO_TS is named by
+    // whoever ripped it.
+    Path::new(device)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+}
+
+// FNV-1a, 64 bit. Chosen over `DefaultHasher` for one reason: the standard
+// library will not promise its hash is the same next release, and a key that
+// changed under a toolchain bump would detach every disc bookmark a user has
+// without anyone noticing. Not a cryptographic hash, and does not need to
+// be — 64 bits over a household's disc collection is not a collision risk.
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+fn fnv_bytes(mut hash: u64, bytes: &[u8]) -> u64 {
+    for b in bytes {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    // A separator, so ("AB", "C") and ("A", "BC") are not the same disc.
+    hash ^= 0xff;
+    hash.wrapping_mul(FNV_PRIME)
 }
 
 // ─── Reading the image ────────────────────────────────────────────────────
@@ -541,6 +807,159 @@ mod tests {
         std::fs::create_dir_all(dir.join("Video_ts")).unwrap();
         assert_eq!(detect(&dir.to_string_lossy()).map(|d| d.kind), Some(DiscKind::Dvd));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── Identity ─────────────────────────────────────────────────────────
+
+    /// A directory standing in for a drive, whose disc can be swapped.
+    struct FakeDrive(PathBuf);
+
+    impl FakeDrive {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(name);
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        /// Put a disc in: wipe whatever was there and write a fresh marker
+        /// directory. This is the whole bug in one method — the path does
+        /// not change, the disc does.
+        fn insert(&self, marker: &str, index: &str, ifo: &[u8], extras: &[(&str, usize)]) {
+            let m = self.0.join(marker);
+            let _ = std::fs::remove_dir_all(&m);
+            std::fs::create_dir_all(&m).unwrap();
+            std::fs::write(m.join(index), ifo).unwrap();
+            for (name, size) in extras {
+                std::fs::write(m.join(name), vec![0u8; *size]).unwrap();
+            }
+        }
+
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for FakeDrive {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn dvd(drive: &FakeDrive, ifo: &[u8], extras: &[(&str, usize)]) {
+        drive.insert("VIDEO_TS", "VIDEO_TS.IFO", ifo, extras);
+    }
+
+    #[test]
+    fn two_discs_in_one_drive_are_not_the_same_disc() {
+        // The drive-letter bug at its smallest: one path, two films.
+        let drive = FakeDrive::new("unflick-id-swap");
+
+        dvd(&drive, b"VMG for the first film", &[("VTS_01_1.VOB", 4096)]);
+        let first = identity(&drive.path()).expect("a mounted DVD has an identity");
+
+        dvd(&drive, b"VMG for the second film", &[("VTS_01_1.VOB", 8192)]);
+        let second = identity(&drive.path()).expect("and so does the next one");
+
+        assert_ne!(first.key, second.key, "two discs shared one identity");
+        assert!(first.key.starts_with("disc:dvd:"), "{}", first.key);
+    }
+
+    #[test]
+    fn the_same_disc_reads_the_same_twice() {
+        // If it did not, a resume point would never be found again.
+        let drive = FakeDrive::new("unflick-id-stable");
+        dvd(&drive, b"VMG", &[("VTS_01_1.VOB", 4096), ("VTS_01_0.IFO", 100)]);
+        let a = identity(&drive.path()).unwrap();
+        let b = identity(&drive.path()).unwrap();
+        assert_eq!(a.key, b.key);
+    }
+
+    #[test]
+    fn a_disc_keeps_its_identity_in_a_different_drive() {
+        // The identity is the disc's, not the mount's — otherwise moving a
+        // disc from E:\ to F:\ would lose everything remembered about it.
+        let one = FakeDrive::new("unflick-id-here");
+        let two = FakeDrive::new("unflick-id-there");
+        dvd(&one, b"VMG", &[("VTS_01_1.VOB", 4096)]);
+        dvd(&two, b"VMG", &[("VTS_01_1.VOB", 4096)]);
+        assert_eq!(
+            identity(&one.path()).unwrap().key,
+            identity(&two.path()).unwrap().key
+        );
+    }
+
+    #[test]
+    fn two_discs_with_identical_listings_are_still_told_apart() {
+        // Same file names, same byte lengths — the listing alone cannot
+        // separate these, so this is what proves the VMG is actually read.
+        let drive = FakeDrive::new("unflick-id-samesize");
+        dvd(&drive, b"AAAAAAAAAAAAAAAA", &[("VTS_01_1.VOB", 4096)]);
+        let a = identity(&drive.path()).unwrap();
+        dvd(&drive, b"BBBBBBBBBBBBBBBB", &[("VTS_01_1.VOB", 4096)]);
+        let b = identity(&drive.path()).unwrap();
+        assert_ne!(a.key, b.key);
+    }
+
+    #[test]
+    fn a_disc_with_no_readable_index_still_has_an_identity() {
+        // A scratched disc whose IFO will not read is still not the same
+        // disc as the next one, and the listing says so.
+        let drive = FakeDrive::new("unflick-id-noifo");
+        drive.insert("VIDEO_TS", "VTS_01_1.VOB", &vec![0u8; 4096], &[]);
+        let a = identity(&drive.path()).expect("the listing is enough");
+        drive.insert("VIDEO_TS", "VTS_01_1.VOB", &vec![0u8; 8192], &[]);
+        let b = identity(&drive.path()).unwrap();
+        assert_ne!(a.key, b.key);
+    }
+
+    #[test]
+    fn a_bluray_is_keyed_as_a_bluray() {
+        let drive = FakeDrive::new("unflick-id-bd");
+        drive.insert("BDMV", "index.bdmv", b"INDX0200", &[("MovieObject.bdmv", 512)]);
+        let id = identity(&drive.path()).expect("a mounted Blu-ray has an identity");
+        assert_eq!(id.kind, DiscKind::BluRay);
+        assert!(id.key.starts_with("disc:bluray:"), "{}", id.key);
+
+        // And can never collide with a DVD, whatever is inside it.
+        let dvd_drive = FakeDrive::new("unflick-id-bd-vs-dvd");
+        dvd(&dvd_drive, b"INDX0200", &[("MovieObject.bdmv", 512)]);
+        assert_ne!(id.key, identity(&dvd_drive.path()).unwrap().key);
+    }
+
+    #[test]
+    fn an_empty_drive_has_no_identity_to_give() {
+        // Inventing one would give every empty drive on earth the same key.
+        let drive = FakeDrive::new("unflick-id-empty");
+        std::fs::create_dir_all(drive.0.join("VIDEO_TS")).unwrap();
+        assert_eq!(identity(&drive.path()), None);
+    }
+
+    #[test]
+    fn images_and_ordinary_files_are_never_re_keyed() {
+        // An .iso has a path that means one thing forever; so does a file.
+        let p = write_temp("unflick-id-image.iso", &iso_with_root_entry("VIDEO_TS", false));
+        assert_eq!(identity(&p.to_string_lossy()), None);
+        let _ = std::fs::remove_file(p);
+
+        assert_eq!(identity("/home/alex/film.mkv"), None);
+        assert_eq!(identity("dvd://3"), None);
+    }
+
+    #[test]
+    fn the_label_names_a_disc_but_does_not_key_it() {
+        // Every DVD-Video disc in the world can be labelled DVD_VIDEO, and a
+        // boxset reuses one label across the set. So the label is reported
+        // and the hash decides.
+        let drive = FakeDrive::new("DVD_VIDEO");
+        dvd(&drive, b"disc one", &[]);
+        let first = identity(&drive.path()).unwrap();
+        dvd(&drive, b"disc two", &[]);
+        let second = identity(&drive.path()).unwrap();
+
+        assert_eq!(first.label.as_deref(), Some("DVD_VIDEO"));
+        assert_eq!(second.label.as_deref(), Some("DVD_VIDEO"));
+        assert_ne!(first.key, second.key);
     }
 
     #[test]

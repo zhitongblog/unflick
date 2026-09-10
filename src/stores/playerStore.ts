@@ -33,6 +33,12 @@ export interface Chapter {
  */
 export interface Bookmark {
   id: number;
+  /**
+   * What this bookmark is filed under. The same string as `path` for a
+   * file, a URL or a disc image; `disc:…` for a mounted disc, whose path is
+   * only the drive it happened to be in.
+   */
+  key: string;
   path: string;
   position: number;
   name: string | null;
@@ -75,6 +81,10 @@ export interface BackendStatus {
   chapter_count?: number;
   state: "stopped" | "playing" | "paused";
   file: string | null;
+  /** What resume points and bookmarks are filed under; see `Bookmark.key`. */
+  key?: string | null;
+  /** A mounted disc's volume name, when there is one. */
+  label?: string | null;
   position: number;
   duration: number;
   volume: number;
@@ -732,11 +742,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   gotoBookmark: async (bookmark: Bookmark) => {
-    if (bookmark.path === get().file) {
-      await get().seek(bookmark.position);
+    // Ask the backend where this actually goes before going there. A
+    // bookmark on a disc names a disc, and its `path` is only the drive it
+    // was in — comparing paths here would happily play whatever disc is in
+    // that drive now, and when nothing is playing there is no comparison to
+    // make at all.
+    let target: { path: string; position: number };
+    try {
+      target = await invoke<{ path: string; position: number }>("bookmark_target", {
+        id: bookmark.id,
+      });
+    } catch (e) {
+      const message =
+        typeof e === "string" ? e : e instanceof Error ? e.message : "Could not open that bookmark";
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", { detail: { kind: "error", message } }),
+      );
       return;
     }
-    await get().play(bookmark.path, null, bookmark.position);
+
+    if (target.path === get().file) {
+      await get().seek(target.position);
+      return;
+    }
+    await get().play(target.path, null, target.position);
   },
 
   renameBookmark: async (id: number, name: string | null) => {

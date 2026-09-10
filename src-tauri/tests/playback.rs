@@ -1669,6 +1669,365 @@ fn mcp_can_bookmark_and_jump_back() {
     d.wait_for(|d| d.position() >= 19.0, "MCP jump to the bookmark");
 }
 
+// ─── A disc has an identity ───────────────────────────────────────────────
+//
+// Everything unflick remembers used to be keyed by the path it was given,
+// and a mounted disc's path is the drive it is in. So a bookmark left on one
+// DVD was offered on the next one put in that drive, and its resume point
+// was applied to it. These drive the real binary against a directory whose
+// contents get swapped, which is what a drive is.
+//
+// None of these *play* a disc: the fixtures are a VIDEO_TS with a plausible
+// index in it, not a real DVD, and libdvdnav would rightly refuse. What is
+// under test is the bookkeeping either side of that — which is where the bug
+// was, and which is the part that has no disc-shaped hardware requirement.
+
+/// Put the first film in the drive.
+fn insert_first(drive: &common::FakeDrive) {
+    drive.insert_dvd(b"VMG for the first film -- 1999", 4096);
+}
+
+/// Take it out and put a different one in. Same path, different disc.
+fn insert_second(drive: &common::FakeDrive) {
+    drive.insert_dvd(b"VMG for the second film -- 2003", 8192);
+}
+
+#[test]
+fn two_discs_in_one_drive_do_not_see_each_others_bookmarks() {
+    let drive = common::FakeDrive::new("disc-bookmarks");
+    let d = Daemon::start();
+
+    insert_first(&drive);
+    d.send(
+        "bookmark_add",
+        json!({ "file": drive.path(), "position": 300.0, "name": "the good bit" }),
+    )
+    .expect_ok();
+
+    insert_second(&drive);
+    let list = d
+        .send("bookmark_list", json!({ "file": drive.path() }))
+        .expect_ok()
+        .data();
+    assert_eq!(
+        list.as_array().unwrap().len(),
+        0,
+        "the second disc was offered the first one's bookmarks: {}",
+        list
+    );
+
+    d.send(
+        "bookmark_add",
+        json!({ "file": drive.path(), "position": 120.0, "name": "on the other disc" }),
+    )
+    .expect_ok();
+
+    insert_first(&drive);
+    let list = d
+        .send("bookmark_list", json!({ "file": drive.path() }))
+        .expect_ok()
+        .data();
+    let names: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|b| b["name"].as_str())
+        .collect();
+    assert_eq!(names, vec!["the good bit"], "got {}", list);
+
+    // Both are still there, sharing one path and separated by their keys —
+    // which is the shape of the fix, visible from outside.
+    let all = d
+        .send("bookmark_list", json!({ "all": true }))
+        .expect_ok()
+        .data();
+    let all = all.as_array().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0]["path"], all[1]["path"], "same drive");
+    assert_ne!(all[0]["key"], all[1]["key"], "different discs");
+    for b in all {
+        assert!(
+            b["key"].as_str().unwrap().starts_with("disc:dvd:"),
+            "expected a disc identity, got {}",
+            b["key"]
+        );
+    }
+
+    // Scoping by an identity outright must not claim its own rows are
+    // orphans: `--key` names no drive, so there is nothing filed under one.
+    // Caught by driving this by hand — the note counted the very bookmarks
+    // it had just listed.
+    let key = all[0]["key"].as_str().unwrap().to_string();
+    let by_key = d.send("bookmark_list", json!({ "key": key }));
+    by_key.expect_ok();
+    assert_eq!(by_key.message(), "1 bookmark(s)", "{}", by_key.message());
+}
+
+#[test]
+fn a_resume_point_is_not_offered_to_the_next_disc_in_the_drive() {
+    let drive = common::FakeDrive::new("disc-resume");
+    let d = Daemon::start();
+
+    insert_first(&drive);
+    d.send("save_position", json!({ "path": drive.path(), "position": 640.0 }))
+        .expect_ok();
+
+    insert_second(&drive);
+    let pos = d
+        .send("get_position", json!({ "path": drive.path() }))
+        .expect_ok()
+        .data();
+    assert!(
+        pos["position"].is_null(),
+        "the next disc was dropped 10 minutes into someone else's film: {}",
+        pos
+    );
+
+    insert_first(&drive);
+    let pos = d
+        .send("get_position", json!({ "path": drive.path() }))
+        .expect_ok()
+        .data();
+    assert_eq!(pos["position"], 640.0, "the first disc lost its place");
+}
+
+#[test]
+fn two_discs_from_one_drive_are_two_entries_in_the_history() {
+    let drive = common::FakeDrive::new("disc-history");
+    let d = Daemon::start();
+
+    insert_first(&drive);
+    d.send("record_play", json!({ "path": drive.path() })).expect_ok();
+    insert_second(&drive);
+    d.send("record_play", json!({ "path": drive.path() })).expect_ok();
+
+    let recent = d.send("recent_list", json!({})).expect_ok().data();
+    let rows = recent.as_array().expect("recent is a list");
+    assert_eq!(rows.len(), 2, "two discs collapsed into one entry: {}", recent);
+    assert_eq!(rows[0]["path"], rows[1]["path"], "same drive");
+    assert_ne!(rows[0]["key"], rows[1]["key"], "different discs");
+}
+
+#[test]
+fn a_bookmark_on_another_disc_is_refused_before_anything_is_loaded() {
+    let drive = common::FakeDrive::new("disc-goto");
+    let d = Daemon::start();
+
+    insert_first(&drive);
+    let b = d
+        .send(
+            "bookmark_add",
+            json!({ "file": drive.path(), "position": 300.0, "name": "the good bit" }),
+        )
+        .expect_ok()
+        .data();
+    let id = b["id"].as_i64().unwrap();
+
+    insert_second(&drive);
+    let reply = d.send("bookmark_goto", json!({ "id": id }));
+    reply.expect_err_containing("another disc");
+    assert!(
+        reply.message().contains(&drive.path()),
+        "the refusal should say which drive to put it back in: {}",
+        reply.message()
+    );
+
+    // And nothing started playing on the way to saying so.
+    assert!(
+        d.status()["file"].is_null(),
+        "the wrong disc was loaded anyway: {}",
+        d.status()
+    );
+}
+
+#[test]
+fn an_ordinary_file_keeps_the_whole_bookmark_lifecycle() {
+    // The other half of the promise: a file behaves exactly as it did, and
+    // its key is its path.
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_chapters);
+
+    let b = d
+        .send("bookmark_add", json!({ "position": 21.0, "name": "Finale" }))
+        .expect_ok()
+        .data();
+    assert_eq!(b["key"], b["path"]);
+    assert_eq!(b["path"], f.with_chapters.to_string_lossy().into_owned());
+
+    let list = d.send("bookmark_list", json!({})).expect_ok().data();
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    // A plain file has nothing orphaned under it, so nothing is appended.
+    let listed = d.send("bookmark_list", json!({}));
+    assert_eq!(listed.message(), "1 bookmark(s)");
+
+    d.send("seek", json!({ "seconds": 1.0 })).expect_ok();
+    d.wait_for(|d| d.position() < 5.0, "seek back to the start");
+    d.send("bookmark_goto", json!({ "id": b["id"].as_i64().unwrap() }))
+        .expect_ok();
+    d.wait_for(|d| d.position() >= 21.0, "jump to the bookmark");
+
+    let cleared = d.send("bookmark_clear", json!({})).expect_ok().data();
+    assert_eq!(cleared["cleared"], 1);
+}
+
+#[test]
+fn an_image_is_still_keyed_by_its_path() {
+    // A `.iso` has a path that means one thing forever — the case the DVD
+    // work was already correct about, and must stay correct about.
+    let dir = common::FakeDrive::new("disc-images");
+    let one = std::path::Path::new(&dir.path()).join("first.iso");
+    let two = std::path::Path::new(&dir.path()).join("second.iso");
+    std::fs::write(&one, b"not really an image").unwrap();
+    std::fs::write(&two, b"nor is this one").unwrap();
+
+    let d = Daemon::start();
+    for (path, name) in [(&one, "in the first"), (&two, "in the second")] {
+        d.send(
+            "bookmark_add",
+            json!({ "file": path.to_string_lossy(), "position": 10.0, "name": name }),
+        )
+        .expect_ok();
+    }
+
+    for (path, name) in [(&one, "in the first"), (&two, "in the second")] {
+        let list = d
+            .send("bookmark_list", json!({ "file": path.to_string_lossy() }))
+            .expect_ok()
+            .data();
+        let rows = list.as_array().unwrap();
+        assert_eq!(rows.len(), 1, "images leaked into each other: {}", list);
+        assert_eq!(rows[0]["name"], name);
+        assert_eq!(rows[0]["key"], path.to_string_lossy().into_owned());
+    }
+}
+
+#[test]
+fn bookmarks_left_under_a_drive_letter_are_migrated_and_announced() {
+    // The rows that already exist in a real user's database: several discs'
+    // bookmarks piled under one drive path, unattributable. They are not
+    // deleted, not merged into an invented "unknown disc", and not offered
+    // to whatever disc is in the drive now — but they are reachable, and
+    // the answer says so.
+    let drive = common::FakeDrive::new("disc-migration");
+    insert_first(&drive);
+    let drive_path = drive.path();
+
+    let d = Daemon::start_seeded(|data_dir| {
+        let conn = rusqlite::Connection::open(data_dir.join("library.db"))
+            .expect("write a pre-migration database");
+        conn.execute_batch(
+            "
+            CREATE TABLE media (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                duration REAL, width INTEGER, height INTEGER,
+                video_codec TEXT, audio_codec TEXT, file_size INTEGER,
+                added_at TEXT NOT NULL DEFAULT (datetime('now')),
+                last_played TEXT,
+                play_count INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE playback_position (
+                path TEXT PRIMARY KEY,
+                position REAL NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE bookmark (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL,
+                position REAL NOT NULL,
+                name TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE session (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                path TEXT NOT NULL,
+                position REAL NOT NULL,
+                duration REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            ",
+        )
+        .expect("legacy schema");
+        conn.execute(
+            "INSERT INTO bookmark (path, position, name) VALUES (?1, 300.0, 'from before')",
+            [&drive_path],
+        )
+        .expect("legacy bookmark");
+    });
+
+    // Not offered to the disc in the drive.
+    let scoped = d.send("bookmark_list", json!({ "file": drive.path() }));
+    scoped.expect_ok();
+    assert_eq!(scoped.data().as_array().unwrap().len(), 0, "{}", scoped.data());
+    // But announced, with the command that reaches them.
+    assert!(
+        scoped.message().contains("before discs had an identity")
+            && scoped.message().contains("bookmark list --key"),
+        "the orphaned bookmark vanished without a word: {}",
+        scoped.message()
+    );
+
+    // Still there, still reachable by the key it was migrated under.
+    let by_key = d.send("bookmark_list", json!({ "key": drive.path() }));
+    by_key.expect_ok();
+    let by_key = by_key.data();
+    assert_eq!(by_key.as_array().unwrap().len(), 1, "{}", by_key);
+    assert_eq!(by_key[0]["name"], "from before");
+    assert_eq!(by_key[0]["key"], drive.path());
+
+    let all = d
+        .send("bookmark_list", json!({ "all": true }))
+        .expect_ok()
+        .data();
+    assert_eq!(all.as_array().unwrap().len(), 1);
+
+    // And deletable on purpose, which is the other half of orphaning
+    // rather than hiding.
+    let cleared = d
+        .send("bookmark_clear", json!({ "key": drive.path() }))
+        .expect_ok()
+        .data();
+    assert_eq!(cleared["cleared"], 1);
+}
+
+#[test]
+fn mcp_can_reach_a_disc_identity_and_the_bookmarks_under_a_drive() {
+    let drive = common::FakeDrive::new("disc-mcp");
+    insert_first(&drive);
+    let d = Daemon::start();
+
+    let replies = mcp_roundtrip(
+        &[
+            json!({
+                "jsonrpc": "2.0", "id": 30, "method": "tools/call",
+                "params": { "name": "disc_list", "arguments": { "path": drive.path() } }
+            }),
+            json!({ "jsonrpc": "2.0", "id": 31, "method": "tools/list" }),
+        ],
+        &d,
+    );
+
+    let text = replies[&30]["result"]["content"][0]["text"]
+        .as_str()
+        .expect("disc_list returns text");
+    let payload: serde_json::Value = serde_json::from_str(text).expect("disc_list JSON");
+    let key = payload["key"].as_str().expect("a disc reports its key");
+    assert!(key.starts_with("disc:dvd:"), "{}", key);
+    assert_eq!(payload["label"], "disc-mcp");
+
+    // And the scoping argument that reaches orphaned rows is advertised.
+    let tools = replies[&31]["result"]["tools"].as_array().unwrap();
+    for name in ["bookmark_list", "bookmark_clear"] {
+        let tool = tools.iter().find(|t| t["name"] == name).unwrap();
+        assert!(
+            tool["inputSchema"]["properties"]["key"].is_object(),
+            "`{name}` should take a key"
+        );
+    }
+}
+
 /// Strip mpv's `%<len>%` length prefixes from a filter string.
 ///
 /// mpv escapes any option value it considers ambiguous - anything with a

@@ -12,6 +12,48 @@
 //! on macOS, `/mnt` on Linux are all ordinary file paths by the time mpv sees
 //! them.
 
+use crate::db::SourceKey;
+
+/// What to remember `input` under, and where to open it.
+///
+/// For everything with a path of its own — a file, a URL, a `.iso` — the key
+/// *is* the path, byte for byte and deliberately unnormalised: every resume
+/// point and bookmark already in the database was written under the exact
+/// string the user typed, and canonicalising here would orphan the lot.
+///
+/// The exception is a mounted disc, whose path is the drive it happens to be
+/// in. `disc::identity` reads the disc's own index and returns something
+/// that means *that disc*, so the next one into the same drive is not
+/// offered its bookmarks.
+///
+/// Costs one `read_dir` and one small file read for a disc, and nothing at
+/// all for a URL — which is why the scheme check comes first.
+pub fn key_of(input: &str) -> SourceKey {
+    if scheme_of(input).is_some() {
+        return SourceKey::path(input);
+    }
+    match crate::core::disc::identity(input) {
+        Some(id) => SourceKey {
+            key: id.key,
+            path: input.to_string(),
+            label: id.label,
+        },
+        None => SourceKey::path(input),
+    }
+}
+
+/// The same, but free when `input` is what the player already has open.
+///
+/// This is what keeps the five-second autosave tick and every status-driven
+/// bookmark call off the optical drive: probing a disc twelve times a minute
+/// would keep it spun up for as long as the film is on.
+pub fn key_of_playing(player: &super::player::Player, input: &str) -> SourceKey {
+    match player.current_source() {
+        Some(src) if src.path == input => src,
+        _ => key_of(input),
+    }
+}
+
 /// The URL scheme of `input`, lowercased, or `None` if it is a plain path.
 ///
 /// Requires `://` so a Windows drive letter never reads as a scheme, and
@@ -150,6 +192,52 @@ mod tests {
         // Extended-length and device prefixes look like UNC but are local.
         assert!(!is_unc_path(r"\\?\D:\media\film.mkv"));
         assert!(!is_unc_path(r"\\.\PhysicalDrive0"));
+    }
+
+    #[test]
+    fn an_ordinary_path_is_its_own_key_byte_for_byte() {
+        // Every row written before discs had identities was keyed by the
+        // exact string the user typed. Normalising here — a trailing slash,
+        // a case fold, a canonicalise — would orphan all of them.
+        for path in [
+            r"D:\films\something.mkv",
+            "/home/alex/film.mp4",
+            "./relative.mkv",
+            "/tmp/an image.iso",
+        ] {
+            let src = key_of(path);
+            assert_eq!(src.key, path);
+            assert_eq!(src.path, path);
+            assert_eq!(src.label, None);
+            assert!(!src.is_disc());
+        }
+    }
+
+    #[test]
+    fn a_url_is_never_stat_ed() {
+        // Nothing here should reach the filesystem for something that is
+        // plainly not on it — including mpv's own disc syntax, which is
+        // taken at its word everywhere else too.
+        for url in ["https://example.com/f.mp4", "dvd://3", "smb://h/share/f.mkv"] {
+            assert_eq!(key_of(url), crate::db::SourceKey::path(url));
+        }
+    }
+
+    #[test]
+    fn a_mounted_disc_is_keyed_by_the_disc_and_opened_by_the_path() {
+        let dir = std::env::temp_dir().join("unflick-source-key-disc");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("VIDEO_TS")).unwrap();
+        std::fs::write(dir.join("VIDEO_TS").join("VIDEO_TS.IFO"), b"a video manager")
+            .unwrap();
+
+        let path = dir.to_string_lossy().into_owned();
+        let src = key_of(&path);
+        assert!(src.is_disc(), "expected a disc key, got {}", src.key);
+        assert_eq!(src.path, path, "mpv still needs somewhere to open");
+        assert_eq!(src.label.as_deref(), Some("unflick-source-key-disc"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

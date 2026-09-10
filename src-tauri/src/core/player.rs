@@ -14,6 +14,7 @@ use super::types::{
 use crate::mpv::ffi::{
     MPV_EVENT_END_FILE, MPV_EVENT_FILE_LOADED, MPV_EVENT_NONE, MPV_EVENT_START_FILE,
 };
+use crate::db::SourceKey;
 use crate::mpv::MpvHandle;
 
 /// How long `play` waits for mpv to confirm the source actually opened.
@@ -47,7 +48,7 @@ pub const SPEED_MAX: f64 = 100.0;
 pub struct Player {
     mpv: MpvHandle,
     /// Cache the last known file path since mpv may not have "path" available after stop.
-    current_file: Mutex<Option<String>>,
+    current_source: Mutex<Option<SourceKey>>,
     /// Equaliser / normalisation state.
     ///
     /// Held here rather than read back from mpv because mpv's `af` is a flat
@@ -77,7 +78,7 @@ impl Player {
         let mpv = MpvHandle::new("null")?;
         Ok(Self {
             mpv,
-            current_file: Mutex::new(None),
+            current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
@@ -95,7 +96,7 @@ impl Player {
         let mpv = MpvHandle::new("libmpv")?;
         Ok(Self {
             mpv,
-            current_file: Mutex::new(None),
+            current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
@@ -113,7 +114,7 @@ impl Player {
         let mpv = MpvHandle::new_with_video()?;
         Ok(Self {
             mpv,
-            current_file: Mutex::new(None),
+            current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
@@ -125,7 +126,7 @@ impl Player {
         let mpv = MpvHandle::new_with_wid(wid)?;
         Ok(Self {
             mpv,
-            current_file: Mutex::new(None),
+            current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
@@ -141,7 +142,7 @@ impl Player {
         let mpv = MpvHandle::new_with_wid_x11(wid)?;
         Ok(Self {
             mpv,
-            current_file: Mutex::new(None),
+            current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
@@ -219,7 +220,12 @@ impl Player {
         // path for "restore on startup" and "keep it across files".
         let _ = self.apply_chain(&self.audio_settings());
 
-        *self.current_file.lock().unwrap() = Some(path.to_string());
+        // Resolved once, here, and cached for as long as this source is
+        // loaded. For a mounted disc this is the one place the drive is
+        // read to find out *which* disc is in it; everything downstream —
+        // the autosave tick, bookmarks, the resume point — reads the answer
+        // rather than asking the drive again.
+        *self.current_source.lock().unwrap() = Some(source::key_of(path));
         // Clear stale SponsorBlock segments — they were for the previous
         // file. The URL play path will re-arm via after_play_url_hooks.
         if let Ok(mut segs) = self.sponsor_segments.lock() {
@@ -276,7 +282,7 @@ impl Player {
 
     /// Drop everything that described the file mpv was playing.
     fn forget_current(&self) {
-        *self.current_file.lock().unwrap() = None;
+        *self.current_source.lock().unwrap() = None;
         if let Ok(mut segs) = self.sponsor_segments.lock() {
             segs.clear();
         }
@@ -305,7 +311,7 @@ impl Player {
 
     pub fn stop(&self) -> Result<()> {
         self.mpv.command(&["stop"])?;
-        *self.current_file.lock().unwrap() = None;
+        *self.current_source.lock().unwrap() = None;
         if let Ok(mut segs) = self.sponsor_segments.lock() {
             segs.clear();
         }
@@ -413,8 +419,19 @@ impl Player {
     }
 
     pub fn status(&self) -> PlayerStatus {
-        let file = self.current_file.lock().unwrap().clone()
+        let source = self.current_source.lock().unwrap().clone();
+        let file = source
+            .as_ref()
+            .map(|s| s.path.clone())
             .or_else(|| self.mpv.get_property_string("path").ok());
+        // Nothing cached but mpv holding a path means something opened it
+        // behind our back; the path is then the best key there is, which is
+        // exactly what it was before identities existed.
+        let key = source
+            .as_ref()
+            .map(|s| s.key.clone())
+            .or_else(|| file.clone());
+        let label = source.as_ref().and_then(|s| s.label.clone());
 
         let position = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
         let duration = self.mpv.get_property_f64("duration").unwrap_or(0.0);
@@ -434,11 +451,23 @@ impl Player {
         PlayerStatus {
             state,
             file,
+            key,
+            label,
             position,
             duration,
             volume,
             speed,
         }
+    }
+
+    /// What is loaded, as the thing that remembers it knows it.
+    ///
+    /// Callers that already have a path should prefer
+    /// `source::key_of_playing`, which falls back to resolving. This is the
+    /// raw cache, and it is deliberately the only way to get a disc's
+    /// identity without touching the drive.
+    pub fn current_source(&self) -> Option<SourceKey> {
+        self.current_source.lock().unwrap().clone()
     }
 
     /// Take a screenshot of the current video frame

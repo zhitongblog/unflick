@@ -77,14 +77,21 @@ fn record_now(
     // window an hour later resumes at wherever the last *playing* tick
     // landed, which can be an hour away. One upsert every five seconds is
     // not a cost worth that hole.
-    let Some(path) = status.file else {
+    // Taken from the player's cache rather than re-derived from the path,
+    // and that is the whole point: this runs twelve times a minute, and
+    // resolving a mounted disc's identity means reading the drive. The
+    // cache was filled once, when the disc was loaded.
+    let Some(src) = player
+        .current_source()
+        .or_else(|| status.file.map(crate::db::SourceKey::path))
+    else {
         return;
     };
 
     // `remember_position` owns the rules — too early to bother, close
     // enough to the end that the file counts as watched. Reusing it means
     // an autosave and a stop cannot disagree about what a resume point is.
-    let _ = db.remember_position(&path, status.position, status.duration);
+    let _ = db.remember_position(&src, status.position, status.duration);
 
     // The session row follows the same "is it worth coming back to" rule,
     // for the same reason: offering to resume a film someone finished is
@@ -92,7 +99,7 @@ fn record_now(
     if crate::db::is_finished(status.position, status.duration) {
         let _ = db.clear_session();
     } else if status.position > 1.0 {
-        let _ = db.set_session(&path, status.position, status.duration);
+        let _ = db.set_session(&src, status.position, status.duration);
     }
 }
 

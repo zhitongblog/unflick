@@ -430,6 +430,10 @@ pub fn run() {
             commands::bookmark_rename,
             commands::bookmark_remove,
             commands::bookmark_clear,
+            // Track B (disc identity): the window asks where a bookmark
+            // goes before it jumps, so one left on a disc that is not in
+            // the drive is refused instead of played as whatever is.
+            commands::bookmark_target,
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.

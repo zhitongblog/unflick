@@ -241,6 +241,47 @@ fn fixture_dir() -> PathBuf {
     manifest_dir().join("target").join("test-fixtures")
 }
 
+// ─── A drive whose disc can be swapped ────────────────────────────────────
+
+/// A directory standing in for an optical drive: one path, and whatever
+/// disc is in it right now.
+///
+/// This is the bug reduced to something a test can hold. A real drive is a
+/// directory whose contents change when the disc changes — `E:\` on Windows,
+/// `/Volumes/DVD_VIDEO` on macOS — and that is exactly what this is, so the
+/// identity work is exercised on every platform even though only Windows
+/// can put a real disc in a real drive.
+pub struct FakeDrive(PathBuf);
+
+impl FakeDrive {
+    pub fn new(name: &str) -> Self {
+        let dir = fixture_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create fake drive");
+        Self(dir)
+    }
+
+    /// Put a DVD in. `vmg` stands in for `VIDEO_TS.IFO` — the disc's own
+    /// index, which is what tells one film from another.
+    pub fn insert_dvd(&self, vmg: &[u8], vob_size: usize) {
+        let marker = self.0.join("VIDEO_TS");
+        let _ = std::fs::remove_dir_all(&marker);
+        std::fs::create_dir_all(&marker).expect("create VIDEO_TS");
+        std::fs::write(marker.join("VIDEO_TS.IFO"), vmg).expect("write VMG");
+        std::fs::write(marker.join("VTS_01_1.VOB"), vec![0u8; vob_size]).expect("write VOB");
+    }
+
+    pub fn path(&self) -> String {
+        self.0.to_string_lossy().into_owned()
+    }
+}
+
+impl Drop for FakeDrive {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 // ─── Daemon under test ────────────────────────────────────────────────────
 
 /// A headless unflick daemon on a private port with a private database.
@@ -257,6 +298,20 @@ pub struct Daemon {
 
 impl Daemon {
     pub fn start() -> Self {
+        Self::start_seeded(|_| {})
+    }
+
+    /// Start a daemon on a data dir the test got to prepare first.
+    ///
+    /// The only way to find out whether a database written by an older
+    /// version still opens is to hand the real binary one and see.
+    pub fn start_seeded(seed: impl FnOnce(&Path)) -> Self {
+        let daemon = Self::spawn_with(seed);
+        daemon.wait_until_listening();
+        daemon
+    }
+
+    fn spawn_with(seed: impl FnOnce(&Path)) -> Self {
         let port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
         let addr = format!("127.0.0.1:{}", port);
         assert!(
@@ -268,6 +323,7 @@ impl Daemon {
         let data_dir = fixture_dir().join(format!("data-{}", port));
         let _ = std::fs::remove_dir_all(&data_dir);
         std::fs::create_dir_all(&data_dir).expect("create test data dir");
+        seed(&data_dir);
 
         let child = Command::new(env!("CARGO_BIN_EXE_unflick"))
             .arg("daemon")
@@ -282,14 +338,12 @@ impl Daemon {
             .spawn()
             .expect("failed to spawn unflick daemon");
 
-        let daemon = Self {
+        Self {
             child,
             addr,
             data_dir,
             keep_data_on_drop: false,
-        };
-        daemon.wait_until_listening();
-        daemon
+        }
     }
 
     fn wait_until_listening(&self) {

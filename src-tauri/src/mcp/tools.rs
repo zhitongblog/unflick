@@ -361,7 +361,7 @@ fn tools_window() -> Value {
         },
         {
             "name": "disc_list",
-            "description": "Optical drives on this machine and whether each holds a DVD or Blu-ray, plus whether this build can play them at all. Play one with `play` and the drive path (\"D:\\\\\"), a disc image (\"film.iso\"), or a folder holding VIDEO_TS / BDMV; a specific title is mpv's own syntax, \"dvd://3\".",
+            "description": "Optical drives on this machine and whether each holds a DVD or Blu-ray, plus whether this build can play them at all. Play one with `play` and the drive path (\"D:\\\\\"), a disc image (\"film.iso\"), or a folder holding VIDEO_TS / BDMV; a specific title is mpv's own syntax, \"dvd://3\". Each drive, and each probed path, also reports `key` — the identity its bookmarks and resume point are filed under, which changes when the disc does — and `label`, the volume name.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -540,7 +540,7 @@ fn tools_core() -> Value {
         },
         {
             "name": "get_status",
-            "description": "Get current playback status including state, file, position, duration, volume, and speed",
+            "description": "Get current playback status including state, file, position, duration, volume, and speed. `file` is the path the user gave; `key` is what resume points and bookmarks are filed under (the same string, except for a mounted disc, where it identifies the disc rather than the drive) and `label` is a disc's volume name.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
@@ -1160,18 +1160,19 @@ fn tools_understanding() -> Value {
         },
         {
             "name": "bookmark_list",
-            "description": "Bookmarks for the file being watched, in timeline order. Pass all=true for every file, or file to ask about a specific one. Each entry carries the id that bookmark_goto takes.",
+            "description": "Bookmarks for the file being watched, in timeline order. Pass all=true for every file, or file to ask about a specific one. Each entry carries the id that bookmark_goto takes, and the `key` it is filed under — the path for a file, the disc's own identity for a disc.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "file": { "type": "string", "description": "Path or URL. Defaults to what's playing." },
+                    "file": { "type": "string", "description": "Path or URL. Defaults to what's playing. A drive path resolves to the disc currently in it." },
+                    "key": { "type": "string", "description": "Exactly this identity, unresolved — from disc_list, get_status, or the `key` on a listed bookmark. Use it to reach bookmarks left under a drive letter before discs had an identity." },
                     "all": { "type": "boolean", "description": "Every file instead of just one." }
                 }
             }
         },
         {
             "name": "bookmark_goto",
-            "description": "Jump to a bookmark by id. Seeks if its file is already playing; otherwise opens that file at the bookmarked position, saving a resume point for the outgoing one.",
+            "description": "Jump to a bookmark by id. Seeks if its file is already playing; otherwise opens that file at the bookmarked position, saving a resume point for the outgoing one. A bookmark on a disc is refused, without loading anything, when that disc is not the one in the drive.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "integer", "description": "Bookmark id from bookmark_list" } },
@@ -1205,7 +1206,8 @@ fn tools_understanding() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "file": { "type": "string", "description": "Path or URL. Defaults to what's playing." },
+                    "file": { "type": "string", "description": "Path or URL. Defaults to what's playing. A drive path resolves to the disc currently in it." },
+                    "key": { "type": "string", "description": "Exactly this identity, unresolved — from disc_list, get_status, or the `key` on a listed bookmark. This is how bookmarks orphaned under a drive letter are deleted." },
                     "all": { "type": "boolean", "description": "Every bookmark, for every file." }
                 }
             }

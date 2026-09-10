@@ -69,6 +69,9 @@ pub fn scan_directory(db: &Database, dir: &str) -> Result<Vec<MediaEntry>> {
         // first playback) without blocking the user's directory pick.
         let media = MediaEntry {
             id: 0,
+            // A scanned file is always keyed by its path: a scan walks a
+            // directory tree, and nothing in one is a mounted disc.
+            key: file_path.clone(),
             path: file_path,
             title,
             duration: None,

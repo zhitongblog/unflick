@@ -1077,12 +1077,26 @@ pub fn save_position(path: String, position: f64, gui_player: State<'_, GuiPlaye
         .mpv()
         .map(|p| p.status().duration)
         .unwrap_or(0.0);
+    let src = source_key(&gui_player, &path);
     let db_lock = gui_player.db.lock().unwrap();
     if let Some(db) = db_lock.as_ref() {
-        db.remember_position(&path, position, duration)
+        db.remember_position(&src, position, duration)
             .map_err(|e| e.to_string())?;
     }
     Ok(json!({"saved": true}))
+}
+
+/// What the window's `path` argument is remembered under.
+///
+/// Goes through the player first, so the common case — the file that is on
+/// screen — costs nothing, and a mounted disc is not re-read off the drive
+/// on every position save. Everything the window can name resolves the same
+/// way the CLI and MCP do, because it is the same function.
+fn source_key(gui_player: &State<'_, GuiPlayer>, path: &str) -> crate::db::SourceKey {
+    match gui_player.mpv() {
+        Ok(player) => crate::core::source::key_of_playing(player, path),
+        Err(_) => crate::core::source::key_of(path),
+    }
 }
 
 /// What the user was last watching, or null.
@@ -1114,9 +1128,10 @@ pub fn session_clear(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> 
 
 #[command]
 pub fn get_position(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let src = source_key(&gui_player, &path);
     let db_lock = gui_player.db.lock().unwrap();
     if let Some(db) = db_lock.as_ref() {
-        let pos = db.get_position(&path).map_err(|e| e.to_string())?;
+        let pos = db.get_position(&src.key).map_err(|e| e.to_string())?;
         return Ok(json!({"position": pos}));
     }
     Ok(json!({"position": null}))
@@ -1124,18 +1139,20 @@ pub fn get_position(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Va
 
 #[command]
 pub fn clear_position(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let src = source_key(&gui_player, &path);
     let db_lock = gui_player.db.lock().unwrap();
     if let Some(db) = db_lock.as_ref() {
-        db.clear_position(&path).map_err(|e| e.to_string())?;
+        db.clear_position(&src.key).map_err(|e| e.to_string())?;
     }
     Ok(json!({"cleared": true}))
 }
 
 #[command]
 pub fn record_play(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let src = source_key(&gui_player, &path);
     let db_lock = gui_player.db.lock().unwrap();
     if let Some(db) = db_lock.as_ref() {
-        db.record_play(&path).map_err(|e| e.to_string())?;
+        db.record_play(&src).map_err(|e| e.to_string())?;
     }
     Ok(json!({"recorded": true}))
 }
@@ -2086,35 +2103,93 @@ pub fn bookmark_add(
         None => return Err("position is required for a file that isn't playing".to_string()),
     };
     let name = name.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let src = source_key(&gui_player, &path);
 
     let db_lock = gui_player.db.lock().unwrap();
     let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
-    let bookmark = db.add_bookmark(&path, position, name).map_err(|e| e.to_string())?;
+    let bookmark = db.add_bookmark(&src, position, name).map_err(|e| e.to_string())?;
     serde_json::to_value(bookmark).map_err(|e| e.to_string())
+}
+
+/// Which identity a list/clear applies to, mirroring `daemon::bookmark_scope`.
+///
+/// `key` is taken literally — that is how bookmarks orphaned under a drive
+/// letter are reached; `file` is a path to resolve, which for a drive means
+/// the disc in it right now.
+fn gui_bookmark_scope(
+    file: Option<String>,
+    key: Option<String>,
+    all: Option<bool>,
+    gui_player: &State<'_, GuiPlayer>,
+) -> Result<Option<crate::db::SourceKey>, String> {
+    if all.unwrap_or(false) {
+        return Ok(None);
+    }
+    if let Some(k) = key {
+        return Ok(Some(crate::db::SourceKey::path(k)));
+    }
+    let path = file
+        .or(gui_player.mpv().map_err(|e| e.to_string())?.status().file)
+        .ok_or_else(|| "nothing is playing".to_string())?;
+    Ok(Some(source_key(gui_player, &path)))
 }
 
 #[command]
 pub fn bookmark_list(
     file: Option<String>,
+    key: Option<String>,
     all: Option<bool>,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<Value, String> {
-    let scope = if all.unwrap_or(false) {
-        None
-    } else {
-        Some(
-            file.or(gui_player
-                .mpv()
-                .map_err(|e| e.to_string())?
-                .status()
-                .file)
-                .ok_or_else(|| "nothing is playing".to_string())?,
-        )
-    };
+    let scope = gui_bookmark_scope(file, key, all, &gui_player)?;
     let db_lock = gui_player.db.lock().unwrap();
     let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
-    let list = db.list_bookmarks(scope.as_deref()).map_err(|e| e.to_string())?;
+    let list = db
+        .list_bookmarks(scope.as_ref().map(|s| s.key.as_str()))
+        .map_err(|e| e.to_string())?;
     serde_json::to_value(list).map_err(|e| e.to_string())
+}
+
+/// Where a bookmark would take the window, checked first.
+///
+/// The window used to compare `bookmark.path` against the file on screen in
+/// TypeScript and play whatever was at that path otherwise — which for a
+/// drive means whatever disc happens to be in it, and when nothing is
+/// playing there was no comparison to make at all. The check belongs in
+/// Rust, next to the identity that decides it, and it happens before
+/// anything is loaded.
+#[command]
+pub fn bookmark_target(id: i64, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
+    let bookmark = db
+        .get_bookmark(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no bookmark with id {}", id))?;
+
+    if bookmark.key.starts_with(crate::core::disc::KEY_PREFIX)
+        && crate::core::source::key_of(&bookmark.path).key != bookmark.key
+    {
+        let name = db
+            .title_for_key(&bookmark.key)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "that disc".to_string());
+        let described = match &bookmark.name {
+            Some(n) => format!("\"{}\"", n),
+            None => "that bookmark".to_string(),
+        };
+        return Err(format!(
+            "{} is on another disc — put {} back in {} and try again",
+            described, name, bookmark.path
+        ));
+    }
+
+    Ok(json!({
+        "path": bookmark.path,
+        "position": bookmark.position,
+        "key": bookmark.key,
+    }))
 }
 
 #[command]
@@ -2143,24 +2218,16 @@ pub fn bookmark_remove(id: i64, gui_player: State<'_, GuiPlayer>) -> Result<Valu
 #[command]
 pub fn bookmark_clear(
     file: Option<String>,
+    key: Option<String>,
     all: Option<bool>,
     gui_player: State<'_, GuiPlayer>,
 ) -> Result<Value, String> {
-    let scope = if all.unwrap_or(false) {
-        None
-    } else {
-        Some(
-            file.or(gui_player
-                .mpv()
-                .map_err(|e| e.to_string())?
-                .status()
-                .file)
-                .ok_or_else(|| "nothing is playing".to_string())?,
-        )
-    };
+    let scope = gui_bookmark_scope(file, key, all, &gui_player)?;
     let db_lock = gui_player.db.lock().unwrap();
     let db = db_lock.as_ref().ok_or_else(|| "database unavailable".to_string())?;
-    let n = db.clear_bookmarks(scope.as_deref()).map_err(|e| e.to_string())?;
+    let n = db
+        .clear_bookmarks(scope.as_ref().map(|s| s.key.as_str()))
+        .map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": n }))
 }
 

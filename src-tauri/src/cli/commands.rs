@@ -338,6 +338,11 @@ pub enum BookmarkAction {
         /// A different file
         #[arg(long)]
         file: Option<String>,
+        /// Exactly this identity, unresolved — from `unflick disc`,
+        /// `unflick status`, or the `key` on any listed bookmark. This is
+        /// how bookmarks left under a drive letter are reached.
+        #[arg(long, conflicts_with_all = ["file", "all"])]
+        key: Option<String>,
         /// Every file instead of just one
         #[arg(long, conflicts_with = "file")]
         all: bool,
@@ -368,6 +373,10 @@ pub enum BookmarkAction {
         /// A different file
         #[arg(long)]
         file: Option<String>,
+        /// Exactly this identity, unresolved. This is how bookmarks
+        /// orphaned under a drive letter are deleted.
+        #[arg(long, conflicts_with_all = ["file", "all"])]
+        key: Option<String>,
         /// Every bookmark, for every file
         #[arg(long, conflicts_with = "file")]
         all: bool,
@@ -907,13 +916,20 @@ mod tests {
 /// Scope arguments shared by `bookmark list` and `bookmark clear`. Neither
 /// key is sent when the user named neither, which is what tells the daemon
 /// to fall back to the file that's playing.
-fn bookmark_scope_args(file: Option<String>, all: bool) -> serde_json::Value {
+fn bookmark_scope_args(
+    file: Option<String>,
+    key: Option<String>,
+    all: bool,
+) -> serde_json::Value {
     let mut args = json!({});
     if all {
         args["all"] = json!(true);
     }
     if let Some(f) = file {
         args["file"] = json!(f);
+    }
+    if let Some(k) = key {
+        args["key"] = json!(k);
     }
     args
 }
@@ -1352,8 +1368,8 @@ pub fn run_cli(cli: Cli) -> i32 {
                     }
                     send("bookmark_add", args)
                 }
-                BookmarkAction::List { file, all } => {
-                    send("bookmark_list", bookmark_scope_args(file, all))
+                BookmarkAction::List { file, key, all } => {
+                    send("bookmark_list", bookmark_scope_args(file, key, all))
                 }
                 BookmarkAction::Goto { id } => send("bookmark_goto", json!({"id": id})),
                 BookmarkAction::Rename { id, name, clear } => {
@@ -1366,8 +1382,8 @@ pub fn run_cli(cli: Cli) -> i32 {
                     send("bookmark_rename", args)
                 }
                 BookmarkAction::Remove { id } => send("bookmark_remove", json!({"id": id})),
-                BookmarkAction::Clear { file, all } => {
-                    send("bookmark_clear", bookmark_scope_args(file, all))
+                BookmarkAction::Clear { file, key, all } => {
+                    send("bookmark_clear", bookmark_scope_args(file, key, all))
                 }
             }
         }

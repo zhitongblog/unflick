@@ -467,11 +467,14 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             let speed = args.get("speed").and_then(|v| v.as_f64());
             let proxy = args.get("proxy").and_then(|v| v.as_str()).map(String::from);
 
-            // Save position of current file before switching
+            // Save position of current file before switching. From the
+            // player's cached source, not from the path: the outgoing file
+            // may be a disc, and the disc that identifies it is the one
+            // still in the drive for another moment.
             let current_status = player.status();
-            if let Some(ref current_file) = current_status.file {
+            if let Some(src) = player.current_source() {
                 let _ = db.remember_position(
-                    current_file,
+                    &src,
                     current_status.position,
                     current_status.duration,
                 );
@@ -551,8 +554,16 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             // *original* input as the key — saved positions are keyed by
             // the user-facing path/URL, not the resolved CDN URL which
             // changes between sessions).
+            //
+            // For a disc that key is the disc's own identity, so the resume
+            // point offered is the one for the film in the drive rather than
+            // for whatever was last in it. Resolving it here costs a second
+            // probe — `player.play` resolves its own — which is the price of
+            // knowing where to seek to *before* mpv opens the file, rather
+            // than jumping after the picture is already up.
+            let src = source::key_of(file);
             let effective_seek = seek.or_else(|| {
-                db.get_position(file).ok().flatten()
+                db.get_position(&src.key).ok().flatten()
             });
 
             match player.play(&resolved, effective_seek, volume, speed) {
@@ -584,7 +595,11 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                     // each caller: a play is a play whether it came from
                     // the window, a script, or an agent.
                     if !ctx.incognito.load(std::sync::atomic::Ordering::Relaxed) {
-                        let _ = db.record_play(file);
+                        // `src`, not the player's cache: for a URL the
+                        // player holds the yt-dlp-resolved CDN address,
+                        // which changes between sessions and is not what
+                        // anyone wants to see in their history.
+                        let _ = db.record_play(&src);
                     }
                     // A source still opening after the load deadline is not a
                     // failure, but calling it "playing" would be a guess. Say
@@ -707,17 +722,30 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             // without loading it, and so does a test.
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 return match crate::core::disc::detect(path) {
-                    Some(d) => CommandResult::ok_with_data(
-                        format!(
-                            "{} — opens as {}",
-                            match d.kind {
-                                crate::core::disc::DiscKind::Dvd => "DVD",
-                                crate::core::disc::DiscKind::BluRay => "Blu-ray",
-                            },
-                            d.url
-                        ),
-                        serde_json::to_value(&d).unwrap_or(json!(null)),
-                    ),
+                    Some(d) => {
+                        // The identity rides along so an agent — or a
+                        // person — can see what bookmarks and resume points
+                        // will be filed under, without opening anything.
+                        let id = crate::core::disc::identity(&d.device);
+                        let mut data = serde_json::to_value(&d).unwrap_or(json!({}));
+                        data["key"] = json!(id.as_ref().map(|i| i.key.clone()));
+                        data["label"] = json!(id.as_ref().and_then(|i| i.label.clone()));
+                        CommandResult::ok_with_data(
+                            format!(
+                                "{}{} — opens as {}",
+                                match d.kind {
+                                    crate::core::disc::DiscKind::Dvd => "DVD",
+                                    crate::core::disc::DiscKind::BluRay => "Blu-ray",
+                                },
+                                id.as_ref()
+                                    .and_then(|i| i.label.as_ref())
+                                    .map(|l| format!(" \"{}\"", l))
+                                    .unwrap_or_default(),
+                                d.url
+                            ),
+                            data,
+                        )
+                    }
                     None => CommandResult::ok_with_data(
                         format!("{} is not a video disc", path),
                         json!(null),
@@ -738,7 +766,16 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .map(|path| {
                     let p = path.to_string_lossy().into_owned();
                     let kind = crate::core::disc::detect(&p).map(|d| d.kind);
-                    json!({ "path": p, "disc": kind })
+                    // `key` is what this drive's contents are remembered
+                    // under — it changes when the disc does, which is the
+                    // whole point of it existing.
+                    let id = crate::core::disc::identity(&p);
+                    json!({
+                        "path": p,
+                        "disc": kind,
+                        "key": id.as_ref().map(|i| i.key.clone()),
+                        "label": id.as_ref().and_then(|i| i.label.clone()),
+                    })
                 })
                 .collect();
 
@@ -792,6 +829,19 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                             session.path
                         ));
                     }
+                    // And a drive can have a different disc in it than the
+                    // one that was being watched. The path still exists, so
+                    // the check above says nothing; without this, restoring
+                    // would start the wrong film at the right timestamp.
+                    if let Some(err) = wrong_disc(db, &session.key, &session.path, |name| {
+                        format!(
+                            "{} has a different disc in it than the one you were watching — \
+                             put {} back, or run `session clear` to forget it",
+                            session.path, name
+                        )
+                    }) {
+                        return err;
+                    }
                     // Straight through `play`, so the resume point, the
                     // history entry and the protocol check all apply. The
                     // seek comes from `playback_position`, which the same
@@ -814,8 +864,8 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         },
         "stop" => {
             let status = player.status();
-            if let Some(ref file) = status.file {
-                let _ = db.remember_position(file, status.position, status.duration);
+            if let Some(src) = player.current_source() {
+                let _ = db.remember_position(&src, status.position, status.duration);
             }
             // Stopping is the user saying they are done for now. The resume
             // point stays — reopening the file still lands where they were —
@@ -1317,14 +1367,14 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         "save_position" => {
             let path = args["path"].as_str().unwrap_or("");
             let position = args["position"].as_f64().unwrap_or(0.0);
-            match db.save_position(path, position) {
+            match db.save_position(&source::key_of_playing(player, path), position) {
                 Ok(()) => CommandResult::ok("position saved"),
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
         "get_position" => {
             let path = args["path"].as_str().unwrap_or("");
-            match db.get_position(path) {
+            match db.get_position(&source::key_of_playing(player, path).key) {
                 Ok(pos) => CommandResult::ok_with_data("ok", json!({"position": pos})),
                 Err(e) => CommandResult::err(e.to_string()),
             }
@@ -1814,7 +1864,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             if ctx.incognito.load(std::sync::atomic::Ordering::Relaxed) {
                 return CommandResult::ok("incognito is on; not recorded");
             }
-            match db.record_play(path) {
+            match db.record_play(&source::key_of_playing(player, path)) {
                 Ok(()) => CommandResult::ok(format!("recorded {}", path)),
                 Err(e) => CommandResult::err(e.to_string()),
             }
@@ -1911,13 +1961,14 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         // like the feature is broken.
         "bookmark_add" => {
             let status = player.status();
-            let path = match args.get("file").and_then(|v| v.as_str()) {
-                Some(f) => f.to_string(),
-                None => match status.file.clone() {
-                    Some(f) => f,
+            let src = match args.get("file").and_then(|v| v.as_str()) {
+                Some(f) => source::key_of_playing(player, f),
+                None => match player.current_source() {
+                    Some(s) => s,
                     None => return CommandResult::err(NOTHING_PLAYING),
                 },
             };
+            let path = src.path.clone();
             // Position defaults to where playback is, but only when the
             // bookmark is for the file that's playing — "now" means nothing
             // for some other file, and 0 would be a lie dressed as a value.
@@ -1936,7 +1987,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
 
-            match db.add_bookmark(&path, position, name) {
+            match db.add_bookmark(&src, position, name) {
                 Ok(b) => {
                     ctx.notify(topic::BOOKMARKS);
                     CommandResult::ok_with_data(
@@ -1948,13 +1999,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             }
         }
         "bookmark_list" => {
-            let path = match bookmark_scope(player, args) {
+            let scope = match bookmark_scope(player, args) {
                 Ok(p) => p,
                 Err(e) => return e,
             };
-            match db.list_bookmarks(path.as_deref()) {
+            match db.list_bookmarks(scope.as_ref().map(|s| s.key.as_str())) {
                 Ok(list) => CommandResult::ok_with_data(
-                    format!("{} bookmark(s)", list.len()),
+                    format!("{} bookmark(s){}", list.len(), orphan_note(db, scope.as_ref())),
                     json!(list),
                 ),
                 Err(e) => CommandResult::err(e.to_string()),
@@ -1969,6 +2020,19 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 Ok(None) => return CommandResult::err(format!("no bookmark with id {}", id)),
                 Err(e) => return CommandResult::err(e.to_string()),
             };
+
+            // A bookmark on a disc names a disc, not a drive. Check before
+            // anything reaches mpv, so a wrong disc is a refusal rather than
+            // the wrong film starting at someone else's favourite moment.
+            let described = describe_bookmark(&bookmark);
+            if let Some(err) = wrong_disc(db, &bookmark.key, &bookmark.path, |name| {
+                format!(
+                    "{} is on another disc — put {} back in {} and try again",
+                    described, name, bookmark.path
+                )
+            }) {
+                return err;
+            }
 
             // Already on the right file: a seek, not a reload. Reloading
             // would blank the window and lose the audio/subtitle track the
@@ -2034,11 +2098,11 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             }
         }
         "bookmark_clear" => {
-            let path = match bookmark_scope(player, args) {
+            let scope = match bookmark_scope(player, args) {
                 Ok(p) => p,
                 Err(e) => return e,
             };
-            match db.clear_bookmarks(path.as_deref()) {
+            match db.clear_bookmarks(scope.as_ref().map(|s| s.key.as_str())) {
                 Ok(n) => {
                     ctx.notify(topic::BOOKMARKS);
                     CommandResult::ok_with_data(
@@ -2214,17 +2278,90 @@ const NOTHING_PLAYING: &str = "nothing is playing — pass a file";
 /// to every file when nothing is playing would make `bookmark clear` delete
 /// the lot on a mistimed call, so the wide scope is never reached by
 /// accident — it has to be named.
-fn bookmark_scope(player: &Player, args: &Value) -> Result<Option<String>, CommandResult> {
+/// `key` names an identity outright — that is how bookmarks orphaned under
+/// a drive letter are reached, and how one disc is asked about while another
+/// is in the drive. `file` is a path to resolve, which for a drive means the
+/// disc currently in it.
+fn bookmark_scope(
+    player: &Player,
+    args: &Value,
+) -> Result<Option<crate::db::SourceKey>, CommandResult> {
     if args.get("all").and_then(|v| v.as_bool()).unwrap_or(false) {
         return Ok(None);
     }
-    if let Some(file) = args.get("file").and_then(|v| v.as_str()) {
-        return Ok(Some(file.to_string()));
+    if let Some(key) = args.get("key").and_then(|v| v.as_str()) {
+        // Taken literally, unresolved. `path` is set to the same string so
+        // the orphan note below has nothing surprising to say about it.
+        return Ok(Some(crate::db::SourceKey::path(key)));
     }
-    match player.status().file {
-        Some(f) => Ok(Some(f)),
+    if let Some(file) = args.get("file").and_then(|v| v.as_str()) {
+        return Ok(Some(source::key_of_playing(player, file)));
+    }
+    match player
+        .current_source()
+        .or_else(|| player.status().file.map(crate::db::SourceKey::path))
+    {
+        Some(src) => Ok(Some(src)),
         None => Err(CommandResult::err(format!("{} or all", NOTHING_PLAYING))),
     }
+}
+
+/// What to append to a disc-scoped bookmark listing when there are still
+/// bookmarks filed under the drive it is in.
+///
+/// Those are the ones made before discs had an identity: several discs'
+/// worth, piled under one `E:\`, and unattributable. They are not deleted
+/// and not merged into a made-up "unknown disc" — see `db::migrate` — so the
+/// one thing owed to the user is being told they are there and how to get at
+/// them. Goes in the message only; `data` stays a bare list.
+fn orphan_note(db: &Database, scope: Option<&crate::db::SourceKey>) -> String {
+    let Some(src) = scope else { return String::new() };
+    // A disc reached through a path, which is the only case where a drive
+    // is involved and so the only case where anything can be filed under
+    // one. `--key` names an identity outright and has no drive to speak of;
+    // counting `path` there would count the very rows just listed.
+    if !src.is_disc() || src.path == src.key {
+        return String::new();
+    }
+    match db.count_bookmarks(&src.path) {
+        Ok(n) if n > 0 => format!(
+            " — {} more {} left under {} before discs had an identity; see \
+             `bookmark list --key \"{}\"`",
+            n,
+            if n == 1 { "was" } else { "were" },
+            src.path,
+            src.path
+        ),
+        _ => String::new(),
+    }
+}
+
+/// Refuse, when a stored disc identity is not the disc in the drive now.
+///
+/// `None` means go ahead: either the row was never a disc's, or the right
+/// disc is in. Anything keyed by a path is left completely alone, so files,
+/// URLs and images behave exactly as they always did.
+fn wrong_disc(
+    db: &Database,
+    key: &str,
+    path: &str,
+    message: impl FnOnce(&str) -> String,
+) -> Option<CommandResult> {
+    if !key.starts_with(crate::core::disc::KEY_PREFIX) {
+        return None;
+    }
+    let present = source::key_of(path);
+    if present.key == key {
+        return None;
+    }
+    // Named by its history title where there is one — "put THE MATRIX back"
+    // is an instruction; "put disc:dvd:3f2a9c7b… back" is a hash.
+    let name = db
+        .title_for_key(key)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "that disc".to_string());
+    Some(CommandResult::err(message(&name)))
 }
 
 /// `1:23` / `1:02:03` — how a timestamp reads to a person, for the one-line
