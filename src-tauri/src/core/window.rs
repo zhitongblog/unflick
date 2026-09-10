@@ -11,6 +11,10 @@
 //! start playback, seek, and screenshot, but not put the window where the
 //! user wanted it. The GUI supplies a [`WindowHost`]; the headless daemon has
 //! none and says so.
+//!
+//! [`WindowHost`] was the first thing to ride this seam. `core::dev` is the
+//! second, on the same shape and with the same honesty about a missing
+//! window.
 
 use std::str::FromStr;
 

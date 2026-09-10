@@ -133,6 +133,34 @@ fn shrink_to_jpeg(input: &PathBuf, output: &PathBuf, max_edge: u32) -> Result<()
     Ok(())
 }
 
+/// Downscale an already-encoded image held in memory, and hand back JPEG.
+///
+/// The window captures (`core::dev`) arrive as PNG bytes rather than as a
+/// file, but want exactly the treatment a captured frame gets: one ffmpeg
+/// downscale, JPEG out, small enough to sit in a tool response. Reusing that
+/// path costs two temp files and keeps there being one place that knows how
+/// to shrink a picture — the alternative was linking an image crate for a
+/// second way to do the same thing.
+pub(crate) fn shrink_bytes_to_jpeg(bytes: &[u8], ext: &str, max_edge: u32) -> Result<Vec<u8>> {
+    let input = temp_path(ext);
+    if let Some(parent) = input.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| anyhow!("failed to create {}: {}", parent.display(), e))?;
+    }
+    std::fs::write(&input, bytes)
+        .map_err(|e| anyhow!("failed to stage the capture for encoding: {}", e))?;
+
+    let output = temp_path("jpg");
+    let encode = shrink_to_jpeg(&input, &output, max_edge);
+    let _ = std::fs::remove_file(&input);
+    encode?;
+
+    let out = std::fs::read(&output)
+        .map_err(|e| anyhow!("failed to read the encoded capture: {}", e))?;
+    let _ = std::fs::remove_file(&output);
+    Ok(out)
+}
+
 fn temp_path(ext: &str) -> PathBuf {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

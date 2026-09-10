@@ -102,7 +102,11 @@ fn main() {
             // when it went wrong.
             init_file_log();
             boot::mark("main: opening a file from the shell");
-            unflick_lib::run();
+            // Track A: never armed. This branch is a double-clicked film,
+            // which arrives with no flags at all — a film someone opened
+            // from Finder must not be scriptable by whatever else is on
+            // the machine.
+            unflick_lib::run(false);
             return;
         }
     }
@@ -134,7 +138,9 @@ fn main() {
     unsafe { winapi_attach_console(); }
     init_file_log();
     boot::mark("main: gui mode");
-    unflick_lib::run();
+    // Track A: `unflick --allow-dev` arms the dev surface for this process
+    // and no other. See `Cli::allow_dev` for why it is a flag.
+    unflick_lib::run(cli.allow_dev);
 }
 
 /// Set up a best-effort log file at `%TEMP%/unflick.log` that captures

@@ -13,6 +13,24 @@ pub struct Cli {
     /// Start MCP server (stdio JSON-RPC)
     #[arg(long)]
     pub mcp: bool,
+
+    // ─── Track A — GUI self-test bridge ───────────────────────────────
+    /// Arm the dev surface: let `unflick dev …` drive and read this
+    /// window's interface from outside
+    ///
+    /// Off by default, and cannot be turned on afterwards — a running
+    /// player has to be restarted with the flag. That is deliberate: a
+    /// runtime toggle would be a remote-enable path on an unauthenticated
+    /// port. Arming it lets any process on this machine run JavaScript in
+    /// the player's webview, not only the shell that typed the flag.
+    ///
+    /// A flag and not an environment variable, because `export
+    /// UNFLICK_ALLOW_DEV=1` in a shell profile silently arms every unflick
+    /// launched from that shell forever, including the one playing a film
+    /// six months later. A flag arms exactly the process it was typed at,
+    /// and `ps` shows it.
+    #[arg(long, global = true)]
+    pub allow_dev: bool,
 }
 
 /// `unflick cast` with no action reports what is being cast.
@@ -255,6 +273,98 @@ pub enum Commands {
     },
     /// Shut down the daemon
     Shutdown,
+    // ─── Track A — GUI self-test bridge ───────────────────────────────
+    /// Drive and read the player's own interface (needs --allow-dev)
+    ///
+    /// This is how a feature gets verified on the platform it is running
+    /// on rather than on the one that happened to have a window-capture
+    /// API. Start the player with `unflick --allow-dev` first; the flag
+    /// cannot be turned on afterwards.
+    Dev {
+        #[command(subcommand)]
+        action: DevAction,
+    },
+}
+
+// ─── Track A — GUI self-test bridge ───────────────────────────────────
+#[derive(Subcommand)]
+pub enum DevAction {
+    /// Run JavaScript in the window and print what it evaluated to
+    ///
+    /// Either an expression or statements with an explicit `return`.
+    Eval {
+        /// The script
+        script: String,
+        /// Seconds to wait for an answer (0.1–120)
+        #[arg(long, default_value = "5")]
+        timeout: f64,
+    },
+    /// Click an element, after checking it is really the thing on top
+    ///
+    /// Polls for the selector first, so a click issued right after an
+    /// action does not race the render. Refuses an ambiguous selector
+    /// unless --index says which, and refuses with the name of whatever
+    /// is covering the element when the hit test fails — a click that
+    /// lands on a modal overlay is a false pass, not a click.
+    Click {
+        /// CSS selector
+        selector: String,
+        /// Which match, when there is more than one (0-based)
+        #[arg(long)]
+        index: Option<u32>,
+        /// Seconds to wait for the selector to appear (0.1–120)
+        #[arg(long, default_value = "5")]
+        timeout: f64,
+    },
+    /// Visible text of every element matching a selector
+    ///
+    /// Every match, each with its index: reading is not acting, so several
+    /// matches are returned rather than refused.
+    Text {
+        /// CSS selector
+        selector: String,
+    },
+    /// The accessibility tree of the window: role, name, state, selector
+    ///
+    /// What to reach for first. An audio menu showing "undefined" for
+    /// every track appears here literally, as a node named "undefined".
+    Snapshot {
+        /// Scope to a subtree instead of the whole document
+        #[arg(long)]
+        selector: Option<String>,
+        /// How deep to descend
+        #[arg(long, default_value = "12")]
+        depth: u32,
+    },
+    /// A PNG of the interface layer
+    ///
+    /// The interface, not the decoded picture: mpv draws on its own
+    /// surface, which sits above the webview on Windows and below it on
+    /// macOS and Linux. `unflick frame capture` gives the picture, from
+    /// mpv, at higher fidelity than any compositor grab.
+    Capture {
+        /// Write the full-resolution PNG here. Omit and a downscaled
+        /// JPEG comes back inline as base64.
+        #[arg(long)]
+        output: Option<String>,
+        /// Longest edge of the inline JPEG, in pixels (64–2048)
+        #[arg(long, default_value = "768")]
+        max_edge: u32,
+    },
+    /// Wait for an element to appear — or, with --gone, to leave
+    ///
+    /// Verifying that a panel CLOSED is impossible without the second
+    /// half, which is why it is here.
+    Wait {
+        /// CSS selector
+        selector: String,
+        /// Wait for it to disappear instead
+        #[arg(long)]
+        gone: bool,
+        /// Seconds to wait (0.1–120)
+        #[arg(long, default_value = "10")]
+        timeout: f64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -962,13 +1072,15 @@ fn parse_on_off(raw: &str) -> Option<bool> {
 }
 
 pub fn run_cli(cli: Cli) -> i32 {
+    // Read before the match moves `cli.command` out. Track A.
+    let allow_dev = cli.allow_dev;
     let result = match cli.command {
         Some(Commands::Daemon) => {
             if daemon::is_daemon_running() {
                 CommandResult::err("daemon is already running")
             } else {
                 // This blocks forever
-                std::process::exit(daemon::start_daemon());
+                std::process::exit(daemon::start_daemon(allow_dev));
             }
         }
         Some(Commands::Play { file, seek, volume, speed }) => {
@@ -1493,6 +1605,40 @@ pub fn run_cli(cli: Cli) -> i32 {
         Some(Commands::Shutdown) => {
             send("shutdown", json!({}))
         }
+        // ─── Track A — GUI self-test bridge ───────────────────────────
+        // No `ensure_daemon()`, and that is the decision worth writing
+        // down. Every other windowed command calls it, which spawns an
+        // invisible `vo=null` daemon — one that was not started with
+        // `--allow-dev` and would answer "start unflick with --allow-dev"
+        // when the caller's real problem is that no GUI is running. Wrong
+        // signpost, and one that sends someone chasing a flag they already
+        // typed. There is precedent for skipping it: `cleanup`, `startup`
+        // and `settings` all do.
+        Some(Commands::Dev { action }) => match action {
+            DevAction::Eval { script, timeout } => send_dev(
+                "dev_eval",
+                json!({ "script": script, "timeout_seconds": timeout }),
+            ),
+            DevAction::Click { selector, index, timeout } => send_dev(
+                "dev_click",
+                json!({ "selector": selector, "index": index, "timeout_seconds": timeout }),
+            ),
+            DevAction::Text { selector } => {
+                send_dev("dev_text", json!({ "selector": selector }))
+            }
+            DevAction::Snapshot { selector, depth } => send_dev(
+                "dev_snapshot",
+                json!({ "selector": selector, "depth": depth }),
+            ),
+            DevAction::Capture { output, max_edge } => send_dev(
+                "dev_capture",
+                json!({ "output": output, "max_edge": max_edge }),
+            ),
+            DevAction::Wait { selector, gone, timeout } => send_dev(
+                "dev_wait",
+                json!({ "selector": selector, "gone": gone, "timeout_seconds": timeout }),
+            ),
+        },
         None => {
             CommandResult::err("no command specified. Use --help for usage.")
         }
@@ -1537,6 +1683,23 @@ fn send(cmd: &str, args: serde_json::Value) -> CommandResult {
     match daemon::send_to_daemon(cmd, args) {
         Ok(r) => r,
         Err(e) => CommandResult::err(e),
+    }
+}
+
+// ─── Track A — GUI self-test bridge ───────────────────────────────────
+/// Like `send`, but says the right thing when nobody answers.
+///
+/// `send_to_daemon`'s transport error is "daemon not running. Start it
+/// with: unflick daemon" — which for a dev command points at the one host
+/// that can never satisfy it. A headless daemon has no window. What the
+/// caller needs is the GUI, with the flag.
+fn send_dev(cmd: &str, args: serde_json::Value) -> CommandResult {
+    match daemon::send_to_daemon(cmd, args) {
+        Ok(r) => r,
+        Err(_) => CommandResult::err(
+            "no unflick is running — dev commands drive the window of a running GUI. \
+             Start it with: unflick --allow-dev",
+        ),
     }
 }
 

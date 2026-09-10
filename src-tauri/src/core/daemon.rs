@@ -28,6 +28,8 @@ use super::player::{self as player, Player};
 use super::playlist::Playlist;
 use super::source;
 use super::window::{WindowHost, WindowMode};
+// Track A — GUI self-test bridge
+use super::dev::{self, DevHost};
 use super::types::{CommandResult, RepeatMode};
 use crate::db::Database;
 
@@ -129,6 +131,27 @@ pub struct ControlContext {
     /// `None` in the headless daemon. See `core::events` for why the status
     /// poll is not enough.
     pub events: Option<Arc<dyn EventSink>>,
+    // ─── Track A — GUI self-test bridge ───────────────────────────────
+    /// Whether this host will answer `dev_*` at all. Off unless the process
+    /// was started with `--allow-dev`.
+    ///
+    /// The check lives here and never at the caller: anyone who can run
+    /// `unflick dev eval` can also set whatever the caller reads, so a
+    /// caller-side gate would be decoration. Read once at host start.
+    ///
+    /// What arming it exposes, plainly: the control port is loopback but
+    /// unauthenticated, so `--allow-dev` lets *any* process on this machine
+    /// run arbitrary JavaScript in the player's webview and take pictures of
+    /// it — not just the shell that typed the flag. That is an acceptable
+    /// trade for a developer-facing flag on a developer's machine, and would
+    /// need a token before it could be anything else.
+    pub allow_dev: bool,
+    /// The webview, when this server is hosted by the GUI.
+    ///
+    /// `None` in the headless daemon, which says "no window" rather than
+    /// reporting a click nothing performed — the same seam and the same
+    /// honesty as `window` above.
+    pub dev: Option<Arc<dyn DevHost>>,
 }
 
 impl ControlContext {
@@ -171,7 +194,12 @@ pub fn serve_control(ctx: Arc<ControlContext>) -> std::io::Result<()> {
 
 /// Start the headless daemon: create a `vo=null` Player and serve on the
 /// control port. Blocks forever; the return value is a process exit code.
-pub fn start_daemon() -> i32 {
+///
+/// `allow_dev` comes from `unflick daemon --allow-dev`. A headless daemon
+/// has no window to drive, so arming it only changes which refusal the dev
+/// commands give — which is exactly what makes both refusals testable
+/// without a GUI.
+pub fn start_daemon(allow_dev: bool) -> i32 {
     let player = match Player::new() {
         Ok(p) => Arc::new(p),
         Err(e) => {
@@ -198,6 +226,9 @@ pub fn start_daemon() -> i32 {
         // No GUI here, so no window to reshape and nobody to notify.
         window: None,
         events: None,
+        // Track A — no webview either, so `dev_*` answers "no window".
+        allow_dev,
+        dev: None,
     });
 
     // Spawned here rather than inside `serve_control` because the GUI needs
@@ -2230,6 +2261,33 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 );
             }
             std::process::exit(0);
+        }
+        // ─── Track A — GUI self-test bridge ───────────────────────────
+        // Three answers, in this order, and the order is the decision:
+        //
+        //   1. Policy. A locked-down instance must not even reveal whether
+        //      there is a window to drive, so the gate is answered first
+        //      and its message says nothing about one.
+        //   2. The arguments. A typo is reported as a typo — "no window"
+        //      would send someone looking at the wrong problem, which is
+        //      the same reasoning `window_mode` above spells out.
+        //   3. The window. Only now, and only to a caller who was allowed
+        //      to ask and asked for something that exists.
+        //
+        // Steps 1 and 2 are also the only ones a headless daemon can reach,
+        // which is what lets CI hold both refusals to account.
+        cmd if cmd.starts_with("dev_") => {
+            if !ctx.allow_dev {
+                return CommandResult::err(dev::GATE_MESSAGE);
+            }
+            let request = match dev::Request::parse(cmd, args) {
+                Ok(r) => r,
+                Err(e) => return CommandResult::err(e),
+            };
+            let Some(host) = ctx.dev.as_ref() else {
+                return CommandResult::err(dev::NO_WINDOW_MESSAGE);
+            };
+            dev::run(host.as_ref(), request)
         }
         _ => CommandResult::err(format!("unknown command: {}", cmd)),
     }

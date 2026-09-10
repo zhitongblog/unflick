@@ -263,6 +263,21 @@ unflick session clear                   # forget it
 unflick window mode [normal|pip|music]  # omit to read; needs the GUI running
 unflick nowplaying [--cover]            # title / artist / album / has_video
 
+# Driving and reading the interface itself (needs --allow-dev)
+# How a feature gets verified on the platform it runs on, rather than on
+# whichever one happened to have a window-capture API. Start the player
+# with `unflick --allow-dev` first — the flag arms exactly that process,
+# cannot be turned on afterwards, and (the control port being loopback but
+# unauthenticated) lets any process on the machine drive that window.
+unflick dev snapshot [--selector <sel>] [--depth <n>]   # a11y tree: role, name, state, selector
+unflick dev click <selector> [--index <n>] [--timeout <s>]
+unflick dev text <selector>             # every match, each with its index
+unflick dev wait <selector> [--gone] [--timeout <s>]
+unflick dev capture [--output <path>] [--max-edge <px>] # the UI layer, not the decoded picture
+unflick dev eval <script> [--timeout <s>]
+unflick --allow-dev                     # arm it on the GUI
+unflick daemon --allow-dev              # arm it headless (answers "no window")
+
 # Recently played / privacy
 unflick recent list [--limit <n>]
 unflick recent clear
@@ -344,6 +359,20 @@ unflick --mcp                   # Start MCP server (stdio)
 | `session` | What was last watched and how far in; `restore` reopens it | `unflick session` |
 | `disc_list` | Optical drives and what is in them; with `path`, what a path is | `unflick disc` |
 | `cast` | Send what is playing to a DLNA television, and drive it there | `unflick cast` |
+| `dev_snapshot` | Accessibility tree of the player's own window | `unflick dev snapshot` |
+| `dev_click` | Click an element, hit-tested rather than assumed | `unflick dev click` |
+| `dev_text` | Visible text of every match, with indices | `unflick dev text` |
+| `dev_wait` | Wait for an element to appear, or with `gone` to leave | `unflick dev wait` |
+| `dev_capture` | A picture of the interface layer (no `output` — see below) | `unflick dev capture` |
+| `dev_eval` | Run JavaScript in the window and get the value back | `unflick dev eval` |
+
+The six `dev_*` tools are listed whether or not the surface is armed, and
+refuse by naming `--allow-dev`: an agent that cannot see a tool cannot be
+told how to get it. `dev_capture` deliberately has no `output` property —
+writing files is the CLI's job, the same rule `describe_frame` follows.
+`dev_capture` returns the **interface**; the decoded picture comes from
+`describe_frame`, which reads it from mpv at higher fidelity than any
+compositor grab.
 
 ### Understanding tools
 

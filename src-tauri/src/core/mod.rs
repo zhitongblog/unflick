@@ -31,6 +31,8 @@ pub mod auto_subs;
 pub mod bilingual;
 pub mod url_post_play;
 pub mod window;
+// Track A — GUI self-test bridge
+pub mod dev;
 
 #[cfg(target_os = "windows")]
 pub mod win_assoc;

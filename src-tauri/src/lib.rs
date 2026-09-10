@@ -17,7 +17,10 @@ use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+/// `allow_dev` is Track A's gate, read once here and carried into the
+/// control context. It is never re-read, so there is no way to arm a
+/// window that started unarmed short of restarting it.
+pub fn run(allow_dev: bool) {
     core::boot::mark("run: handing off to tauri");
     tauri::Builder::default()
         // single-instance MUST come first so a second-launch is short-
@@ -48,7 +51,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GuiPlayer::new())
         .manage(PendingFile::from_env())
-        .setup(|app| {
+        // `move` for Track A's `allow_dev`: the gate is a plain bool read
+        // once in `run`, and the setup closure has to own its copy.
+        .setup(move |app| {
             core::boot::mark("setup: entered");
             let handle = app.handle();
 
@@ -273,7 +278,12 @@ pub fn run() {
             // but against *this* window's player. Without it, `unflick pause`
             // and MCP `pause` would spawn (or talk to) a separate vo=null mpv
             // the user can't see, while the video on screen kept playing.
-            spawn_embedded_control_server(app.handle().clone(), app.state::<GuiPlayer>(), window_host);
+            spawn_embedded_control_server(
+                app.handle().clone(),
+                app.state::<GuiPlayer>(),
+                window_host,
+                allow_dev,
+            );
 
             // Timeline previews accumulate on disk as people watch things.
             // Trim once per launch, off the startup path — it walks the
@@ -545,6 +555,8 @@ fn spawn_embedded_control_server(
     app: tauri::AppHandle,
     state: tauri::State<'_, GuiPlayer>,
     window_host: Arc<gui::window::TauriWindowHost>,
+    // Track A — whether `dev_*` is answered at all. See `core::dev`.
+    allow_dev: bool,
 ) {
     let Some(player) = state.render_player.get().cloned() else {
         eprintln!("[unflick] control server: no render player, skipping");
@@ -576,6 +588,14 @@ fn spawn_embedded_control_server(
             incognito,
             window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
             events: Some(window_host as Arc<dyn core::events::EventSink>),
+            // ─── Track A — GUI self-test bridge ───────────────────────
+            // The gate is armed here; the webview host that satisfies it
+            // is the other half of this track. Until that lands, an armed
+            // GUI answers `dev_*` with "no window" — the honest answer for
+            // a context that has no `DevHost`, and the same one the
+            // headless daemon gives.
+            allow_dev,
+            dev: None,
         });
 
         // Keep the resume point true as playback moves. Started before the

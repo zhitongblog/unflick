@@ -26,6 +26,14 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         return handle_startup();
     }
 
+    // ─── Track A — GUI self-test bridge ───────────────────────────────
+    // Same reason `describe_frame` is special-cased: the answer is a
+    // picture, and an agent that asked to see the interface wants pixels,
+    // not a wall of base64 text.
+    if name == "dev_capture" {
+        return handle_dev_capture(args);
+    }
+
     let (cmd, daemon_args) = match name {
         "cast" => {
             let mut a = json!({"action": args["action"].as_str().unwrap_or("status")});
@@ -143,6 +151,12 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "bookmark_rename" => ("bookmark_rename", args.clone()),
         "bookmark_remove" => ("bookmark_remove", args.clone()),
         "bookmark_clear" => ("bookmark_clear", args.clone()),
+        // Track A — GUI self-test bridge. Straight through: the tool
+        // schemas below and the control command take the same argument
+        // names on purpose, so there is no translation table to drift.
+        "dev_eval" | "dev_click" | "dev_text" | "dev_snapshot" | "dev_wait" => {
+            (name, args.clone())
+        }
         "shutdown" => ("shutdown", json!({})),
         _ => {
             return tool_result(true, json!([{"type": "text", "text": format!("unknown tool: {}", name)}]));
@@ -281,6 +295,51 @@ fn handle_describe_frame(args: &Value) -> Value {
     )
 }
 
+// ─── Track A — GUI self-test bridge ───────────────────────────────────
+/// Capture the interface layer and return it as an MCP image block.
+fn handle_dev_capture(args: &Value) -> Value {
+    // Never forward `output`. Writing files is the CLI's job — same rule,
+    // and same reason, as `describe_frame` above: an agent asking to see
+    // the window wants the pixels, not a path on someone else's disk.
+    let mut forwarded = json!({});
+    if let Some(v) = args.get("max_edge") {
+        forwarded["max_edge"] = v.clone();
+    }
+
+    let result = match daemon::send_to_daemon("dev_capture", forwarded) {
+        Ok(r) => r,
+        Err(e) => return tool_result(true, json!([{"type": "text", "text": e}])),
+    };
+    if !result.success {
+        return tool_result(true, json!([{"type": "text", "text": result.message}]));
+    }
+
+    let data = result.data.unwrap_or(Value::Null);
+    let Some(base64) = data.get("base64").and_then(|v| v.as_str()) else {
+        return tool_result(
+            true,
+            json!([{"type": "text", "text": "the window capture returned no image data"}]),
+        );
+    };
+    let width = data.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+    let height = data.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+    let mime = data
+        .get("mime_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("image/jpeg");
+
+    tool_result(
+        false,
+        json!([
+            {"type": "text", "text": format!(
+                "The unflick interface, {}×{}. This is the UI layer — the decoded picture is behind it; use describe_frame for that.",
+                width, height
+            )},
+            {"type": "image", "data": base64, "mimeType": mime},
+        ]),
+    )
+}
+
 fn tool_result(is_error: bool, content: Value) -> Value {
     json!({
         "content": content,
@@ -297,12 +356,132 @@ pub fn tool_definitions() -> Value {
         tools_understanding(),
         tools_audio(),
         tools_window(),
+        // Track A — GUI self-test bridge
+        tools_dev(),
     ] {
         if let Value::Array(items) = group {
             all.extend(items);
         }
     }
     Value::Array(all)
+}
+
+// ─── Track A — GUI self-test bridge ───────────────────────────────────
+/// Driving and reading the player's own interface.
+///
+/// Listed even when the surface is not armed, and refusing with the flag
+/// to type. Hiding them would leak less, but an agent that cannot see a
+/// tool cannot be told how to get it — and the refusal names `--allow-dev`,
+/// which is the whole of the answer.
+fn tools_dev() -> Value {
+    json!([
+        {
+            "name": "dev_snapshot",
+            "description": "The accessibility tree of the unflick window: every visible element with its role, accessible name, state and a CSS selector that feeds straight back into dev_click and dev_text. Reach for this first — it is how you find out what is on screen. Invisible nodes and unnamed wrappers are elided, so what comes back is what a person would see. Needs the GUI running, started with --allow-dev.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "Scope to a subtree instead of the whole document."
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "How deep to descend. Default 12."
+                    }
+                }
+            }
+        },
+        {
+            "name": "dev_click",
+            "description": "Click an element in the unflick window. Polls for the selector first, so a click issued right after an action does not race the render, then hit-tests the point before dispatching: if something else is on top, the click is refused and the covering element is named rather than reported as a success. A selector matching several elements is refused unless `index` says which.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector. Take it from dev_snapshot."
+                    },
+                    "index": {
+                        "type": "integer",
+                        "description": "Which match, 0-based, when the selector is ambiguous."
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "How long to wait for the selector to appear. Default 5."
+                    }
+                },
+                "required": ["selector"]
+            }
+        },
+        {
+            "name": "dev_text",
+            "description": "Visible text of every element matching a selector, each with its index. Several matches are returned rather than refused — reading is not acting. Use it to check what a list, a menu or a label actually says, which is where 'undefined' shows up.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector."
+                    }
+                },
+                "required": ["selector"]
+            }
+        },
+        {
+            "name": "dev_wait",
+            "description": "Wait for an element to appear, or with `gone` for it to leave the page. The second half is not optional: verifying that a panel closed is impossible without it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector."
+                    },
+                    "gone": {
+                        "type": "boolean",
+                        "description": "Wait for it to disappear instead of appear."
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "How long to wait. Default 10."
+                    }
+                },
+                "required": ["selector"]
+            }
+        },
+        {
+            "name": "dev_capture",
+            "description": "A picture of the unflick interface. This is the UI layer, not the decoded video: mpv draws on its own surface, which sits above the webview on Windows and below it on macOS and Linux, so no single grab means the same thing on all three. Use describe_frame for the picture itself — it comes from mpv, at higher fidelity than any compositor grab.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "max_edge": {
+                        "type": "integer",
+                        "description": "Longest edge of the returned image in pixels. Default 768."
+                    }
+                }
+            }
+        },
+        {
+            "name": "dev_eval",
+            "description": "Run JavaScript in the unflick window and get back what it evaluated to. Either an expression or statements with an explicit `return`. The escape hatch for what the other five verbs do not cover — prefer them where they fit, because they report their own refusals in terms of the page.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "script": {
+                        "type": "string",
+                        "description": "JavaScript to run."
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "How long to wait for an answer. Default 5."
+                    }
+                },
+                "required": ["script"]
+            }
+        }
+    ])
 }
 
 /// The window itself, and what a person would say is playing.

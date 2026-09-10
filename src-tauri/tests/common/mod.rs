@@ -330,6 +330,18 @@ impl Daemon {
         Self::start_seeded(|_| {})
     }
 
+    /// A daemon with the dev surface armed but nothing on screen.
+    ///
+    /// The only host CI can create, and the only one that can prove the
+    /// *second* refusal — "no window" rather than "off". Without it the
+    /// gate would be the only thing ever exercised, and a dev command that
+    /// silently claimed success on a windowless host would pass.
+    pub fn start_with_dev() -> Self {
+        let daemon = Self::spawn_with_args(|_| {}, &["--allow-dev"]);
+        daemon.wait_until_listening();
+        daemon
+    }
+
     /// Start a daemon on a data dir the test got to prepare first.
     ///
     /// The only way to find out whether a database written by an older
@@ -341,6 +353,10 @@ impl Daemon {
     }
 
     fn spawn_with(seed: impl FnOnce(&Path)) -> Self {
+        Self::spawn_with_args(seed, &[])
+    }
+
+    fn spawn_with_args(seed: impl FnOnce(&Path), extra: &[&str]) -> Self {
         let port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
         let addr = format!("127.0.0.1:{}", port);
         assert!(
@@ -356,6 +372,7 @@ impl Daemon {
 
         let child = Command::new(env!("CARGO_BIN_EXE_unflick"))
             .arg("daemon")
+            .args(extra)
             .env(unflick_lib::core::daemon::CONTROL_ADDR_ENV, &addr)
             .env(unflick_lib::db::DATA_DIR_ENV, &data_dir)
             // settings.json holds keybindings and subtitle styling. Without
@@ -455,6 +472,12 @@ impl Daemon {
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// Where this daemon is listening. Tests that spawn the real CLI need
+    /// it to point the child at this daemon rather than the user's.
+    pub fn addr(&self) -> &str {
+        &self.addr
     }
 }
 
