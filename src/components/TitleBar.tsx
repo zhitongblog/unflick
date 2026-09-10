@@ -66,7 +66,7 @@ export default function TitleBar() {
         <button
           onClick={() => appWindow.minimize()}
           className="flex h-8 w-10 items-center justify-center text-white/40 transition-all duration-150 hover:bg-white/8 hover:text-white/70"
-          title="Minimize"
+          title={t.window.minimize}
         >
           <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
             <rect width="10" height="1" />
@@ -77,7 +77,7 @@ export default function TitleBar() {
         <button
           onClick={() => appWindow.toggleMaximize()}
           className="flex h-8 w-10 items-center justify-center text-white/40 transition-all duration-150 hover:bg-white/8 hover:text-white/70"
-          title="Maximize"
+          title={t.window.maximize}
         >
           <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.2">
             <rect x="0.5" y="0.5" width="8" height="8" rx="1" />
@@ -88,7 +88,7 @@ export default function TitleBar() {
         <button
           onClick={() => appWindow.close()}
           className="flex h-8 w-10 items-center justify-center text-white/40 transition-all duration-150 hover:bg-red-500/80 hover:text-white"
-          title="Close"
+          title={t.window.close}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
             <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" />

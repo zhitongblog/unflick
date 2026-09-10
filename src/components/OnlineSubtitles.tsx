@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
+import { useStrings } from "../i18n/utils";
 
 /** One flattened search hit, matching `core::opensubtitles::SubtitleResult`. */
 type Result = {
@@ -41,6 +42,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const file = usePlayerStore((s) => s.file);
+  const t = useStrings();
 
   const [config, setConfig] = useState<Config | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -180,7 +182,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
         >
           <div className="mb-4 flex items-center justify-between">
             <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">
-              Find Subtitles Online
+              {t.onlineSubtitles.title}
             </h2>
             <button
               className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
@@ -194,7 +196,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
           </div>
 
           {config === null && (
-            <p className="py-6 text-center text-[11px] text-white/30">Loading…</p>
+            <p className="py-6 text-center text-[11px] text-white/30">{t.common.loading}</p>
           )}
 
           {/* Setup. Asking for the key here rather than sending the user off
@@ -203,8 +205,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
           {config && !config.configured && (
             <div className="space-y-3">
               <p className="text-[11px] leading-relaxed text-white/50">
-                OpenSubtitles needs your own free API key. Downloads count against your
-                personal daily allowance, which is why unflick doesn&apos;t ship a shared one.
+                {t.onlineSubtitles.needKey}
               </p>
               <a
                 href={CONSUMERS_URL}
@@ -212,7 +213,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                 rel="noreferrer"
                 className="block text-[11px] text-brand-purple underline decoration-brand-purple/40 underline-offset-2"
               >
-                Get a key at opensubtitles.com →
+                {t.onlineSubtitles.getKey}
               </a>
               <div className="flex gap-2">
                 <input
@@ -222,7 +223,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") saveKey();
                   }}
-                  placeholder="Paste your API key"
+                  placeholder={t.onlineSubtitles.keyPlaceholder}
                   className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
                 />
                 <button
@@ -230,7 +231,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   onClick={saveKey}
                   className="rounded-lg bg-brand-purple px-3 py-2 text-[11px] font-medium text-white transition-opacity disabled:opacity-30"
                 >
-                  {savingKey ? "Saving…" : "Save"}
+                  {savingKey ? t.common.saving : t.common.save}
                 </button>
               </div>
             </div>
@@ -247,7 +248,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") runSearch();
                   }}
-                  placeholder={file ? "Title to search for" : "Title to search for (nothing playing)"}
+                  placeholder={file ? t.onlineSubtitles.queryPlaceholder : t.onlineSubtitles.queryPlaceholderIdle}
                   className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
                 />
                 <input
@@ -257,7 +258,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") runSearch();
                   }}
-                  title="Comma-separated language codes, e.g. zh-CN,en"
+                  title={t.onlineSubtitles.languagesHint}
                   className="w-24 rounded-lg bg-white/5 px-3 py-2 text-[11px] tabular-nums text-white/80 outline-none ring-1 ring-white/8 focus:ring-brand-purple/50"
                 />
                 <button
@@ -265,7 +266,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   onClick={() => runSearch()}
                   className="rounded-lg bg-brand-purple px-3 py-2 text-[11px] font-medium text-white transition-opacity disabled:opacity-30"
                 >
-                  {searching ? "…" : "Search"}
+                  {searching ? "…" : t.common.search}
                 </button>
               </div>
 
@@ -274,14 +275,12 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                   in words rather than only as a per-row badge. */}
               {outcome && outcome.moviehash_matches > 0 && (
                 <p className="mb-2 text-[10px] text-emerald-400/80">
-                  {outcome.moviehash_matches} synced to this exact file — pick one of those
-                  and the timing will be right.
+                  {t.onlineSubtitles.hashMatches.replace("{count}", String(outcome.moviehash_matches))}
                 </p>
               )}
               {outcome && outcome.moviehash && outcome.moviehash_matches === 0 && (
                 <p className="mb-2 text-[10px] text-white/30">
-                  No subtitle matches this exact file; these are for the same title and may
-                  need a delay adjustment.
+                  {t.onlineSubtitles.noHashMatch}
                 </p>
               )}
 
@@ -294,7 +293,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
               <div className="-mx-1 flex-1 overflow-y-auto px-1">
                 {!searching && outcome && results.length === 0 && (
                   <p className="py-6 text-center text-[11px] text-white/25">
-                    Nothing found for “{outcome.query ?? query}”
+                    {t.onlineSubtitles.noResults.replace("{query}", outcome.query ?? query)}
                   </p>
                 )}
 
@@ -310,12 +309,12 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                         </span>
                         {r.moviehash_match && (
                           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400">
-                            exact match
+                            {t.onlineSubtitles.exactMatch}
                           </span>
                         )}
                         {r.hearing_impaired && (
                           <span className="rounded bg-white/8 px-1.5 py-0.5 text-[9px] text-white/40">
-                            SDH
+                            {t.onlineSubtitles.sdh}
                           </span>
                         )}
                         <span className="truncate text-[11px] text-white/70" title={r.file_name}>
@@ -323,9 +322,9 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                         </span>
                       </div>
                       <p className="mt-0.5 truncate text-[10px] text-white/25">
-                        {r.downloads.toLocaleString()} downloads
+                        {t.onlineSubtitles.downloads.replace("{count}", r.downloads.toLocaleString())}
                         {r.uploader ? ` · ${r.uploader}` : ""}
-                        {r.from_trusted ? " · trusted" : ""}
+                        {r.from_trusted ? ` · ${t.onlineSubtitles.trusted}` : ""}
                       </p>
                     </div>
                     <button
@@ -333,7 +332,7 @@ export default function OnlineSubtitles({ onClose }: { onClose: () => void }) {
                       onClick={() => download(r)}
                       className="shrink-0 rounded-lg bg-white/8 px-2.5 py-1.5 text-[10px] font-medium text-white/80 transition-colors hover:bg-white/14 disabled:opacity-30"
                     >
-                      {downloading === r.file_id ? "…" : "Use"}
+                      {downloading === r.file_id ? "…" : t.onlineSubtitles.use}
                     </button>
                   </div>
                 ))}

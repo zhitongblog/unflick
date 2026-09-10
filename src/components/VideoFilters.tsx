@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { useStrings } from "../i18n/utils";
 
 interface FilterValues {
   brightness: number;
@@ -49,12 +50,9 @@ function aspectChoice(aspect: string): string {
   return "auto";
 }
 
-const FILTER_LABELS: { key: keyof FilterValues; label: string }[] = [
-  { key: "brightness", label: "Brightness" },
-  { key: "contrast", label: "Contrast" },
-  { key: "saturation", label: "Saturation" },
-  { key: "gamma", label: "Gamma" },
-  { key: "hue", label: "Hue" },
+/** Slider order. The visible names come from the bundle at render time. */
+const FILTER_KEYS: (keyof FilterValues)[] = [
+  "brightness", "contrast", "saturation", "gamma", "hue",
 ];
 
 function FiltersIcon() {
@@ -109,6 +107,7 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [geometry, setGeometry] = useState<Geometry>(DEFAULT_GEOMETRY);
   const panelRef = useRef<HTMLDivElement>(null);
+  const t = useStrings();
   const hasActive = Object.values(filters).some((v) => v !== 0);
 
   // Read geometry when the panel opens rather than on mount: it can be
@@ -179,7 +178,7 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
           open || hasActive || geometryActive ? "text-brand-purple" : "text-white/35 hover:text-white/70 hover:bg-white/6"
         } active:scale-90`}
         onClick={() => setOpen((v) => !v)}
-        title="Video Filters"
+        title={t.filters.title}
         disabled={disabled}
       >
         <FiltersIcon />
@@ -197,32 +196,32 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
           >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Video Filters
+                {t.filters.title}
               </p>
               {hasActive && (
                 <button
                   className="text-[10px] font-medium text-white/30 transition-colors hover:text-brand-pink"
                   onClick={handleReset}
                 >
-                  Reset
+                  {t.common.reset}
                 </button>
               )}
             </div>
             <div className="flex flex-col gap-3">
-              {FILTER_LABELS.map(({ key, label }) => (
-                <FilterSlider key={key} label={label} filterKey={key} value={filters[key]} onChange={handleChange} />
+              {FILTER_KEYS.map((key) => (
+                <FilterSlider key={key} label={t.filters[key]} filterKey={key} value={filters[key]} onChange={handleChange} />
               ))}
             </div>
 
             <div className="my-3 border-t border-white/6" />
 
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-              Geometry
+              {t.filters.geometry}
             </p>
 
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center gap-2">
-                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">Aspect</span>
+                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">{t.filters.aspect}</span>
                 <select
                   value={aspectChoice(geometry.aspect)}
                   onChange={(e) => setTransform("aspect", e.target.value)}
@@ -230,14 +229,14 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
                 >
                   {ASPECT_CHOICES.map((a) => (
                     <option key={a} value={a} style={{ background: "#1c1c26", color: "#ffffff" }}>
-                      {a}
+                      {a === "auto" ? t.filters.aspectAuto : a}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">Rotate</span>
+                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">{t.filters.rotate}</span>
                 <div className="flex flex-1 gap-1">
                   {[0, 90, 180, 270].map((deg) => (
                     <button
@@ -256,7 +255,7 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">Zoom</span>
+                <span className="w-14 flex-shrink-0 text-[10px] text-white/40">{t.filters.zoom}</span>
                 <input
                   type="range"
                   min={0.5}
@@ -279,7 +278,7 @@ export default function VideoFilters({ disabled }: { disabled?: boolean }) {
                     : "border-white/10 bg-white/4 text-white/50 hover:text-white/80"
                 }`}
               >
-                Deinterlace
+                {t.filters.deinterlace}
               </button>
             </div>
           </motion.div>

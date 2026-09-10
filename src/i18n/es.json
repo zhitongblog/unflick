@@ -9,7 +9,16 @@
     "loading": "Cargando…",
     "remove": "Eliminar",
     "clear": "Limpiar",
-    "reset": "Restablecer"
+    "reset": "Restablecer",
+    "on": "Activado",
+    "off": "Desactivado",
+    "search": "Buscar",
+    "saving": "Guardando…"
+  },
+  "window": {
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "close": "Cerrar"
   },
   "menu": {
     "file": "Archivo",
@@ -87,6 +96,22 @@
     "prevFailed": "No se pudo volver al elemento anterior",
     "playFailed": "No se pudo reproducir esa entrada"
   },
+  "player": {
+    "play": "Reproducir",
+    "pause": "Pausa",
+    "stop": "Detener",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "noPlaylist": "Sin lista de reproducción",
+    "speed": "Velocidad de reproducción",
+    "screenshot": "Captura",
+    "mute": "Silenciar",
+    "unmute": "Activar sonido",
+    "pip": "Imagen en imagen",
+    "fullscreen": "Pantalla completa",
+    "noFile": "Ningún archivo cargado",
+    "videoRegion": "Zona de vídeo"
+  },
   "subtitle": {
     "title": "Subtítulos",
     "off": "Desactivados",
@@ -104,13 +129,32 @@
     "styleBold": "Negrita",
     "bilingual": "Bilingüe",
     "bilingualHint": "Mostrar el original y la traducción juntos",
-    "secondLine": "2.ª"
+    "secondLine": "2.ª",
+    "findOnline": "Buscar subtítulos en línea…",
+    "generateAi": "Generar subtítulos con IA",
+    "loadFailed": "No se pudo cargar el subtítulo"
   },
   "audio": {
     "title": "Pista de audio",
     "noTracks": "Sin pistas de audio.",
     "delay": "Retardo",
-    "reset": "Restablecer"
+    "reset": "Restablecer",
+    "tracks": "Pistas de audio",
+    "equalizer": "Ecualizador…"
+  },
+  "equalizer": {
+    "title": "Ecualizador",
+    "enable": "Activar",
+    "bypass": "Omitir",
+    "bandHint": "{freq} Hz — doble clic para restablecer",
+    "preset": "Preajuste",
+    "choose": "Elegir…",
+    "preamp": "Preamplificación",
+    "preampHint": "Margen para las bandas realzadas",
+    "normalize": "Nivelar el volumen",
+    "normalizeHint": "diálogos bajos frente a acción alta",
+    "pitch": "Mantener el tono al acelerar",
+    "resetAll": "Restablecer todo"
   },
   "filters": {
     "title": "Filtros de vídeo",
@@ -119,7 +163,13 @@
     "saturation": "Saturación",
     "gamma": "Gamma",
     "hue": "Tono",
-    "reset": "Restablecer todo"
+    "reset": "Restablecer todo",
+    "geometry": "Geometría",
+    "aspect": "Relación de aspecto",
+    "aspectAuto": "Automática",
+    "rotate": "Rotar",
+    "zoom": "Zoom",
+    "deinterlace": "Desentrelazar"
   },
   "clip": {
     "title": "Extraer clip",
@@ -129,7 +179,13 @@
     "gif": "Exportar como GIF",
     "saving": "Guardando…",
     "saved": "Clip guardado en {path}",
-    "failed": "Error al guardar: {error}"
+    "failed": "Error al guardar: {error}",
+    "extract": "Extraer",
+    "extractAnother": "Extraer otro",
+    "extracting": "Extrayendo…",
+    "invalidTime": "Formato de tiempo no válido.",
+    "endBeforeStart": "El final debe ser posterior al inicio.",
+    "noFile": "Ningún archivo cargado."
   },
   "urlDialog": {
     "title": "Abrir URL",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "No se encontró yt-dlp. Instálalo desde",
     "ytDlpMissingSuffix": "y ponlo en tu PATH.",
     "proxyActive": "Proxy activo:"
+  },
+  "onlineSubtitles": {
+    "title": "Buscar subtítulos en línea",
+    "needKey": "OpenSubtitles necesita tu propia clave API gratuita. Las descargas se descuentan de tu cupo diario personal, por eso unflick no incluye una compartida.",
+    "getKey": "Consigue una clave en opensubtitles.com →",
+    "keyPlaceholder": "Pega tu clave API",
+    "queryPlaceholder": "Título que buscar",
+    "queryPlaceholderIdle": "Título que buscar (no hay nada en reproducción)",
+    "languagesHint": "Códigos de idioma separados por comas, p. ej. es,en",
+    "hashMatches": "{count} coinciden exactamente con este archivo — elige uno de esos y la sincronía será correcta.",
+    "noHashMatch": "Ningún subtítulo coincide exactamente con este archivo; estos son del mismo título y puede que necesiten un ajuste de retardo.",
+    "noResults": "No se encontró nada para «{query}»",
+    "exactMatch": "coincidencia exacta",
+    "sdh": "SPS",
+    "downloads": "{count} descargas",
+    "trusted": "de confianza",
+    "use": "Usar"
   },
   "context": {
     "openFile": "Abrir archivo…",
@@ -202,18 +275,34 @@
       "bundledReady": "Whisper integrado listo",
       "bundledMissing": "No se detectó Whisper integrado.",
       "apiKey": "Clave API de OpenAI",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "Los subtítulos con IA funcionan tal cual. No hay nada que configurar.",
+      "useCustom": "Usar una instalación propia →",
+      "resetBundled": "← Volver a la instalación incluida",
+      "downloadHint": "Descarga whisper.cpp desde GitHub y un archivo de modelo GGML.",
+      "disabledBody": "La generación de subtítulos con IA está desactivada. Elige «Local (Whisper)» u «OpenAI API» para activarla."
     },
     "tools": {
-      "section": "Herramientas",
+      "section": "Extractor de URL (yt-dlp)",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "Versión {version}",
       "ytDlpChecking": "Comprobando…",
       "update": "Actualizar",
       "updating": "Actualizando…",
-      "updated": "Actualizado"
+      "updated": "Actualizado",
+      "ready": "Listo — admite YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo",
+      "sourceUser": "actualizado automáticamente",
+      "sourceBundled": "incluido con unflick",
+      "sourcePath": "desde el PATH del sistema",
+      "updateHint": "Pulsa Actualizar para traer la última versión (recomendado cada pocas semanas, ya que los sitios de streaming cambian de formato a menudo).",
+      "missing": "yt-dlp no está instalado. Las URL de sitios de streaming no funcionarán.",
+      "installFrom": "Instálalo desde",
+      "orDownload": "— o pulsa abajo para descargarlo automáticamente.",
+      "downloading": "Descargando…",
+      "download": "Descargar yt-dlp"
     },
     "savedToast": "Guardado",
+    "saveFailed": "No se pudo guardar: {error}",
     "alwaysOnTop": "Siempre encima",
     "alwaysOnTopHint": "Fija la ventana de unflick por encima de las demás apps. Útil para mirar mientras trabajas en otra ventana.",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "Pantalla de bienvenida",
       "body": "La presentación de una pantalla del primer arranque: qué es unflick, las teclas y el complemento de CLI y MCP.",
       "button": "Volver a mostrarla"
+    },
+    "themeMidnight": "Medianoche",
+    "themePurple": "Púrpura",
+    "screenshots": {
+      "section": "Capturas",
+      "askEachTime": "Preguntar cada vez (predeterminado)",
+      "choose": "Elegir…",
+      "clear": "Borrar (volver a preguntar cada vez)",
+      "hint": "Si se define, las capturas se guardan aquí automáticamente con el nombre del vídeo y la marca de tiempo. Déjalo vacío para que se pregunte cada vez."
+    },
+    "onlineSubs": {
+      "section": "Subtítulos en línea",
+      "keyLabel": "Clave API de OpenSubtitles",
+      "keySaved": "•••••••• (guardada)",
+      "keyHintPrefix": "Tu propia clave gratuita de",
+      "keyHintSuffix": ". Las descargas se descuentan de tu cupo diario personal, por eso unflick no incluye una compartida.",
+      "languagesLabel": "Idiomas preferidos",
+      "languagesHint": "Códigos separados por comas, buscados en ese orden — p. ej."
+    },
+    "network": {
+      "section": "Red",
+      "useSystemProxy": "Usar el proxy del sistema",
+      "detected": "Detectado:",
+      "none": "Ahora mismo no hay ningún proxy del sistema. Las peticiones a sitios de streaming irán directas.",
+      "hint": "Al activarlo, unflick lee automáticamente la configuración de proxy de Windows (Configuración → Red → Proxy) y la usa para la extracción de YouTube/Bilibili."
     }
   },
   "hotkeys": {

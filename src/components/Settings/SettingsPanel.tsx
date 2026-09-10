@@ -165,7 +165,10 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     } catch (e) {
       window.dispatchEvent(
         new CustomEvent("unflick:toast", {
-          detail: { kind: "error", message: `Could not save: ${String(e).slice(0, 100)}` },
+          detail: {
+            kind: "error",
+            message: t.settings.saveFailed.replace("{error}", String(e).slice(0, 100)),
+          },
         }),
       );
     }
@@ -382,11 +385,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             {/* Screenshots */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Screenshots
+                {t.settings.screenshots.section}
               </p>
               <div className="flex items-center gap-2">
                 <div className="flex-1 truncate rounded-lg border border-white/6 bg-white/4 px-3 py-2 text-[11px] text-white/70 font-mono">
-                  {screenshotDir || "Ask each time (default)"}
+                  {screenshotDir || t.settings.screenshots.askEachTime}
                 </div>
                 <button
                   className="rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-[11px] text-white/70 hover:border-white/20 hover:text-white transition"
@@ -398,7 +401,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     }
                   }}
                 >
-                  Choose…
+                  {t.settings.screenshots.choose}
                 </button>
                 {screenshotDir && (
                   <button
@@ -407,14 +410,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       setScreenshotDir(null);
                       void saveSettings();
                     }}
-                    title="Clear (back to dialog)"
+                    title={t.settings.screenshots.clear}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                   </button>
                 )}
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-white/30">
-                When set, screenshots save here automatically with the video name and timestamp. Leave empty to be asked each time.
+                {t.settings.screenshots.hint}
               </p>
             </div>
 
@@ -521,13 +524,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <span className="font-medium">{t.settings.ai.bundledReady}</span>
                   </div>
                   <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
-                    AI subtitle generation works out of the box. No configuration needed.
+                    {t.settings.ai.bundledBody}
                   </p>
                   <button
                     className="mt-2 text-[10px] text-white/30 hover:text-white/50"
                     onClick={() => setShowAdvanced(true)}
                   >
-                    Use a custom installation →
+                    {t.settings.ai.useCustom}
                   </button>
                 </div>
               )}
@@ -543,42 +546,42 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                         setShowAdvanced(false);
                       }}
                     >
-                      ← Reset to bundled installation
+                      {t.settings.ai.resetBundled}
                     </button>
                   )}
                   <div>
                     <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                      Whisper Binary
+                      {t.settings.ai.whisperBinary}
                     </label>
                     <div className="flex gap-2">
                       <input type="text" value={draftBinaryPath} onChange={(e) => setDraftBinaryPath(e.target.value)} placeholder="path/to/whisper-cli.exe" className={inputClass} />
                       <button className={browseBtnClass} onClick={() => handleBrowse(setDraftBinaryPath)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
-                        Browse
+                        {t.common.browse}
                       </button>
                     </div>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                      Model File
+                      {t.settings.ai.whisperModel}
                     </label>
                     <div className="flex gap-2">
                       <input type="text" value={draftModelPath} onChange={(e) => setDraftModelPath(e.target.value)} placeholder="path/to/ggml-base.en.bin" className={inputClass} />
                       <button className={browseBtnClass} onClick={() => handleBrowse(setDraftModelPath)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
-                        Browse
+                        {t.common.browse}
                       </button>
                     </div>
                   </div>
                   <p className="text-[10px] leading-relaxed text-white/15">
-                    Download whisper.cpp from GitHub and a GGML model file.
+                    {t.settings.ai.downloadHint}
                   </p>
                 </div>
               )}
 
               {draftMode === "off" && (
                 <p className="text-[10px] leading-relaxed text-white/15">
-                  AI subtitle generation is disabled. Select Local Whisper or OpenAI API to enable.
+                  {t.settings.ai.disabledBody}
                 </p>
               )}
             </div>
@@ -590,19 +593,19 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 blob. */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Online Subtitles
+                {t.settings.onlineSubs.section}
               </p>
               <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
                 <div>
                   <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                    OpenSubtitles API Key
+                    {t.settings.onlineSubs.keyLabel}
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="password"
                       value={osKey}
                       onChange={(e) => setOsKey(e.target.value)}
-                      placeholder={osConfigured ? "•••••••• (saved)" : "Paste your API key"}
+                      placeholder={osConfigured ? t.settings.onlineSubs.keySaved : t.onlineSubtitles.keyPlaceholder}
                       className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
                     />
                     <button
@@ -611,11 +614,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                       onClick={() => saveOsSetting("opensubtitles_api_key", osKey.trim())}
                       className="rounded-lg bg-white/8 px-3 py-2 text-[11px] text-white/70 transition-colors hover:bg-white/14 disabled:opacity-30"
                     >
-                      Save
+                      {t.common.save}
                     </button>
                   </div>
                   <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
-                    Your own free key from{" "}
+                    {t.settings.onlineSubs.keyHintPrefix}{" "}
                     <a
                       href="https://www.opensubtitles.com/consumers"
                       target="_blank"
@@ -624,14 +627,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     >
                       opensubtitles.com
                     </a>
-                    . Downloads count against your personal daily allowance, so unflick
-                    doesn&apos;t ship a shared one.
+                    {t.settings.onlineSubs.keyHintSuffix}
                   </p>
                 </div>
 
                 <div className="border-t border-white/6 pt-3">
                   <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                    Preferred Languages
+                    {t.settings.onlineSubs.languagesLabel}
                   </label>
                   <input
                     type="text"
@@ -644,7 +646,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     className="w-full rounded-lg bg-white/5 px-3 py-2 text-[11px] text-white/80 outline-none ring-1 ring-white/8 placeholder:text-white/20 focus:ring-brand-purple/50"
                   />
                   <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
-                    Comma-separated codes, searched in order — e.g.{" "}
+                    {t.settings.onlineSubs.languagesHint}{" "}
                     <span className="font-mono text-white/45">zh-CN,en</span>.
                   </p>
                 </div>
@@ -654,34 +656,34 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             {/* Network */}
             <div>
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Network
+                {t.settings.network.section}
               </p>
               <div className="space-y-3 rounded-xl border border-white/6 bg-white/3 p-4">
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                      Use system proxy
+                      {t.settings.network.useSystemProxy}
                     </label>
                     <Toggle
                       checked={draftProxy === "system"}
                       onChange={(next) => setDraftProxy(next ? "system" : "")}
-                      label="Use system proxy"
+                      label={t.settings.network.useSystemProxy}
                     />
                   </div>
                   {draftProxy === "system" && systemProxy && (
                     <p className="text-[10px] leading-relaxed text-emerald-300/80">
-                      ✓ Detected: <span className="font-mono text-white/50">{systemProxy}</span>
+                      ✓ {t.settings.network.detected}{" "}
+                      <span className="font-mono text-white/50">{systemProxy}</span>
                     </p>
                   )}
                   {draftProxy === "system" && !systemProxy && (
                     <p className="text-[10px] leading-relaxed text-amber-300/80">
-                      No system proxy is currently set. Streaming-site fetches will go direct.
+                      {t.settings.network.none}
                     </p>
                   )}
                   {draftProxy !== "system" && (
                     <p className="text-[10px] leading-relaxed text-white/30">
-                      When on, unflick reads your Windows proxy setting (Settings → Network → Proxy)
-                      automatically and uses it for YouTube/Bilibili extraction.
+                      {t.settings.network.hint}
                     </p>
                   )}
                 </div>
@@ -689,7 +691,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="border-t border-white/6 pt-3">
                   <div className="mb-1.5 flex items-center justify-between">
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-white/20">
-                      URL Extractor (yt-dlp)
+                      {t.settings.tools.section}
                     </p>
                     {ytDlpAvailable && (
                       <button
@@ -697,41 +699,47 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                         onClick={handleUpdateYtDlp}
                         disabled={ytDlpUpdating}
                       >
-                        {ytDlpUpdating ? "Updating…" : "Update"}
+                        {ytDlpUpdating ? t.settings.tools.updating : t.settings.tools.update}
                       </button>
                     )}
                   </div>
                   {ytDlpAvailable === null ? (
-                    <p className="text-[10px] text-white/25">Checking…</p>
+                    <p className="text-[10px] text-white/25">{t.settings.tools.ytDlpChecking}</p>
                   ) : ytDlpAvailable ? (
                     <div className="text-[10px] text-emerald-300/80">
-                      ✓ Ready — supports YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo
+                      ✓ {t.settings.tools.ready}
                       <p className="mt-1 text-white/30">
-                        {ytDlpVersion && <>Version <span className="font-mono text-white/40">{ytDlpVersion}</span></>}
-                        {ytDlpSource === "user" && <> · auto-updated</>}
-                        {ytDlpSource === "bundled" && <> · bundled with unflick</>}
-                        {ytDlpSource === "path" && <> · from system PATH</>}
+                        {ytDlpVersion && (
+                          <>
+                            {t.settings.tools.ytDlpVersion.split("{version}")[0]}
+                            <span className="font-mono text-white/40">{ytDlpVersion}</span>
+                            {t.settings.tools.ytDlpVersion.split("{version}")[1]}
+                          </>
+                        )}
+                        {ytDlpSource === "user" && <> · {t.settings.tools.sourceUser}</>}
+                        {ytDlpSource === "bundled" && <> · {t.settings.tools.sourceBundled}</>}
+                        {ytDlpSource === "path" && <> · {t.settings.tools.sourcePath}</>}
                       </p>
                       <p className="mt-1 text-white/25">
-                        Click Update to fetch the latest version (recommended every few weeks since streaming sites change formats often).
+                        {t.settings.tools.updateHint}
                       </p>
                     </div>
                   ) : (
                     <div className="text-[10px] text-amber-300/80">
-                      ⚠ yt-dlp is not installed. Streaming-site URLs won't work.
+                      ⚠ {t.settings.tools.missing}
                       <p className="mt-1 text-white/30">
-                        Install from{" "}
+                        {t.settings.tools.installFrom}{" "}
                         <a href="https://github.com/yt-dlp/yt-dlp/releases" target="_blank" rel="noreferrer" className="text-amber-200 underline hover:text-amber-100">
                           github.com/yt-dlp/yt-dlp
                         </a>
-                        {" "}— or click below to download automatically.
+                        {" "}{t.settings.tools.orDownload}
                       </p>
                       <button
                         className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
                         onClick={handleUpdateYtDlp}
                         disabled={ytDlpUpdating}
                       >
-                        {ytDlpUpdating ? "Downloading…" : "Download yt-dlp"}
+                        {ytDlpUpdating ? t.settings.tools.downloading : t.settings.tools.download}
                       </button>
                     </div>
                   )}
@@ -934,21 +942,21 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               </p>
               <div className="flex gap-2">
                 {([
-                  { value: "dark" as const, label: "Dark", color: "#030712" },
-                  { value: "midnight" as const, label: "Midnight", color: "#000000" },
-                  { value: "purple" as const, label: "Purple", color: "#0a0015" },
-                ]).map((t) => (
+                  { value: "dark" as const, label: t.settings.themeDark, color: "#030712" },
+                  { value: "midnight" as const, label: t.settings.themeMidnight, color: "#000000" },
+                  { value: "purple" as const, label: t.settings.themePurple, color: "#0a0015" },
+                ]).map((choice) => (
                   <button
-                    key={t.value}
-                    onClick={() => setTheme(t.value)}
+                    key={choice.value}
+                    onClick={() => setTheme(choice.value)}
                     className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all duration-150 ${
-                      theme === t.value
+                      theme === choice.value
                         ? "border-brand-purple/30 bg-brand-purple/10 text-brand-purple"
                         : "border-white/6 bg-white/4 text-white/35 hover:border-white/10 hover:text-white/50"
                     }`}
                   >
-                    <span className="h-5 w-full rounded border border-white/6" style={{ backgroundColor: t.color }} />
-                    {t.label}
+                    <span className="h-5 w-full rounded border border-white/6" style={{ backgroundColor: choice.color }} />
+                    {choice.label}
                   </button>
                 ))}
               </div>
@@ -977,7 +985,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               >
                 <div className="flex flex-col items-start gap-0.5 text-left">
                   <span className={alwaysOnTop ? "text-brand-purple" : "text-white/55"}>
-                    {alwaysOnTop ? "On" : "Off"}
+                    {alwaysOnTop ? t.common.on : t.common.off}
                   </span>
                   <span className="text-[10px] leading-snug text-white/30">
                     {t.settings.alwaysOnTopHint}

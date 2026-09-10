@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "./ui/Toggle";
+import { useStrings } from "../i18n/utils";
 
 type AudioState = {
   enabled: boolean;
@@ -36,6 +37,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
+  const t = useStrings();
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -97,7 +99,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         className="glass-elevated absolute bottom-full right-0 mb-2 w-[320px] rounded-xl p-4 shadow-2xl"
       >
-        <p className="text-[11px] text-white/25">{error ?? "Loading…"}</p>
+        <p className="text-[11px] text-white/25">{error ?? t.common.loading}</p>
       </motion.div>
     );
   }
@@ -115,13 +117,13 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
     >
       <div className="mb-3 flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
-          Equalizer
+          {t.equalizer.title}
         </p>
         <Toggle
           checked={state.enabled}
           onChange={(next) => apply({ enabled: next })}
-          label="Equalizer"
-          title={state.enabled ? "Bypass" : "Enable"}
+          label={t.equalizer.title}
+          title={state.enabled ? t.equalizer.bypass : t.equalizer.enable}
         />
       </div>
 
@@ -145,7 +147,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
               value={gain}
               onChange={(e) => dragBand(i, Number(e.target.value))}
               onDoubleClick={() => dragBand(i, 0)}
-              title={`${state.frequencies[i]} Hz — double-click to reset`}
+              title={t.equalizer.bandHint.replace("{freq}", String(state.frequencies[i]))}
               className="eq-slider h-24"
               style={{ writingMode: "vertical-lr", direction: "rtl" }}
             />
@@ -160,7 +162,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
 
       <div className="space-y-2.5">
         <div className="flex items-center gap-2">
-          <span className="w-16 text-[11px] text-white/50">Preset</span>
+          <span className="w-16 text-[11px] text-white/50">{t.equalizer.preset}</span>
           <select
             value=""
             onChange={async (e) => {
@@ -178,7 +180,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
             // to push a natively-sized select straight out of the panel.
             className="min-w-0 flex-1 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-white/80 outline-none ring-1 ring-white/8"
           >
-            <option value="">Choose…</option>
+            <option value="">{t.equalizer.choose}</option>
             {presets.map((p) => (
               <option key={p.name} value={p.name} title={p.description}>
                 {p.name} — {p.description}
@@ -188,8 +190,8 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="w-16 text-[11px] text-white/50" title="Headroom for boosted bands">
-            Preamp
+          <span className="w-16 text-[11px] text-white/50" title={t.equalizer.preampHint}>
+            {t.equalizer.preamp}
           </span>
           <input
             type="range"
@@ -217,8 +219,8 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
             onChange={(e) => apply({ normalize: e.target.checked })}
             className="accent-brand-purple"
           />
-          <span className="text-[11px] text-white/60">Normalize loudness</span>
-          <span className="ml-auto text-[9px] text-white/20">quiet dialogue vs. loud action</span>
+          <span className="text-[11px] text-white/60">{t.equalizer.normalize}</span>
+          <span className="ml-auto text-[9px] text-white/20">{t.equalizer.normalizeHint}</span>
         </label>
 
         <label className="flex cursor-pointer items-center gap-2">
@@ -236,7 +238,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
             }}
             className="accent-brand-purple"
           />
-          <span className="text-[11px] text-white/60">Keep pitch when speeding up</span>
+          <span className="text-[11px] text-white/60">{t.equalizer.pitch}</span>
         </label>
       </div>
 
@@ -257,7 +259,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
           }
         }}
       >
-        Reset all
+        {t.equalizer.resetAll}
       </button>
     </motion.div>
   );

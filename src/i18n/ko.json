@@ -9,7 +9,16 @@
     "loading": "불러오는 중…",
     "remove": "제거",
     "clear": "지우기",
-    "reset": "초기화"
+    "reset": "초기화",
+    "on": "켬",
+    "off": "끔",
+    "search": "검색",
+    "saving": "저장 중…"
+  },
+  "window": {
+    "minimize": "최소화",
+    "maximize": "최대화",
+    "close": "닫기"
   },
   "menu": {
     "file": "파일",
@@ -87,6 +96,22 @@
     "prevFailed": "이전 항목으로 돌아가지 못했습니다",
     "playFailed": "그 항목을 재생하지 못했습니다"
   },
+  "player": {
+    "play": "재생",
+    "pause": "일시정지",
+    "stop": "정지",
+    "previous": "이전",
+    "next": "다음",
+    "noPlaylist": "재생목록 없음",
+    "speed": "재생 속도",
+    "screenshot": "스크린샷",
+    "mute": "음소거",
+    "unmute": "음소거 해제",
+    "pip": "화면 속 화면",
+    "fullscreen": "전체 화면",
+    "noFile": "불러온 파일 없음",
+    "videoRegion": "영상 영역"
+  },
   "subtitle": {
     "title": "자막",
     "off": "끄기",
@@ -104,13 +129,32 @@
     "styleBold": "굵게",
     "bilingual": "이중 자막",
     "bilingualHint": "원문과 번역을 함께 표시",
-    "secondLine": "2행"
+    "secondLine": "2행",
+    "findOnline": "온라인에서 자막 찾기…",
+    "generateAi": "AI로 자막 생성",
+    "loadFailed": "자막을 불러오지 못했습니다"
   },
   "audio": {
     "title": "오디오 트랙",
     "noTracks": "오디오 트랙이 없습니다.",
     "delay": "지연",
-    "reset": "초기화"
+    "reset": "초기화",
+    "tracks": "오디오 트랙",
+    "equalizer": "이퀄라이저…"
+  },
+  "equalizer": {
+    "title": "이퀄라이저",
+    "enable": "켜기",
+    "bypass": "우회",
+    "bandHint": "{freq} Hz — 두 번 클릭하면 초기화",
+    "preset": "프리셋",
+    "choose": "선택…",
+    "preamp": "프리앰프",
+    "preampHint": "부스트한 대역을 위한 헤드룸",
+    "normalize": "음량 평준화",
+    "normalizeHint": "대사는 작고 액션은 큰 경우",
+    "pitch": "빠르게 재생해도 음정 유지",
+    "resetAll": "모두 초기화"
   },
   "filters": {
     "title": "비디오 필터",
@@ -119,7 +163,13 @@
     "saturation": "채도",
     "gamma": "감마",
     "hue": "색상",
-    "reset": "모두 초기화"
+    "reset": "모두 초기화",
+    "geometry": "화면 형태",
+    "aspect": "화면비",
+    "aspectAuto": "자동",
+    "rotate": "회전",
+    "zoom": "확대",
+    "deinterlace": "디인터레이스"
   },
   "clip": {
     "title": "클립 추출",
@@ -129,7 +179,13 @@
     "gif": "GIF 로 내보내기",
     "saving": "저장 중…",
     "saved": "클립을 {path} 에 저장했습니다",
-    "failed": "저장 실패: {error}"
+    "failed": "저장 실패: {error}",
+    "extract": "추출",
+    "extractAnother": "다시 추출",
+    "extracting": "추출 중…",
+    "invalidTime": "시간 형식이 올바르지 않습니다.",
+    "endBeforeStart": "끝은 시작보다 뒤여야 합니다.",
+    "noFile": "불러온 파일이 없습니다."
   },
   "urlDialog": {
     "title": "URL 열기",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "yt-dlp를 찾지 못했습니다. 여기에서 설치하세요:",
     "ytDlpMissingSuffix": "그리고 PATH에 두세요.",
     "proxyActive": "프록시 사용 중:"
+  },
+  "onlineSubtitles": {
+    "title": "온라인에서 자막 찾기",
+    "needKey": "OpenSubtitles는 본인의 무료 API 키가 필요합니다. 다운로드는 개인 일일 한도에서 차감되므로 unflick은 공용 키를 제공하지 않습니다.",
+    "getKey": "opensubtitles.com에서 키 받기 →",
+    "keyPlaceholder": "API 키를 붙여넣기",
+    "queryPlaceholder": "검색할 제목",
+    "queryPlaceholderIdle": "검색할 제목 (재생 중인 항목 없음)",
+    "languagesHint": "쉼표로 구분한 언어 코드, 예: ko,en",
+    "hashMatches": "이 파일과 정확히 일치하는 자막 {count}개 — 그중 하나를 고르면 싱크가 맞습니다.",
+    "noHashMatch": "이 파일과 정확히 일치하는 자막은 없습니다. 아래는 같은 제목의 자막이며 지연 조정이 필요할 수 있습니다.",
+    "noResults": "“{query}”에 맞는 결과가 없습니다",
+    "exactMatch": "정확히 일치",
+    "sdh": "청각장애인용",
+    "downloads": "다운로드 {count}회",
+    "trusted": "신뢰할 수 있는 업로더",
+    "use": "사용"
   },
   "context": {
     "openFile": "파일 열기…",
@@ -202,18 +275,34 @@
       "bundledReady": "내장 Whisper 사용 가능",
       "bundledMissing": "내장 Whisper 를 찾을 수 없습니다.",
       "apiKey": "OpenAI API 키",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "AI 자막은 바로 사용할 수 있습니다. 설정할 것이 없습니다.",
+      "useCustom": "직접 설치한 것 사용 →",
+      "resetBundled": "← 기본 제공 설치로 되돌리기",
+      "downloadHint": "GitHub에서 whisper.cpp와 GGML 모델 파일을 받으세요.",
+      "disabledBody": "AI 자막 생성이 꺼져 있습니다. ‘로컬(Whisper)’ 또는 ‘OpenAI API’를 선택하면 켜집니다."
     },
     "tools": {
-      "section": "도구",
+      "section": "URL 추출기 (yt-dlp)",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "버전 {version}",
       "ytDlpChecking": "확인 중…",
       "update": "업데이트",
       "updating": "업데이트 중…",
-      "updated": "업데이트 완료"
+      "updated": "업데이트 완료",
+      "ready": "준비됨 — YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo 지원",
+      "sourceUser": "자동 업데이트됨",
+      "sourceBundled": "unflick에 포함됨",
+      "sourcePath": "시스템 PATH에서",
+      "updateHint": "‘업데이트’를 누르면 최신 버전을 받습니다 (스트리밍 사이트가 형식을 자주 바꾸므로 몇 주에 한 번 권장).",
+      "missing": "yt-dlp가 설치되어 있지 않습니다. 스트리밍 사이트 URL은 재생할 수 없습니다.",
+      "installFrom": "설치 위치:",
+      "orDownload": "— 또는 아래를 눌러 자동으로 내려받으세요.",
+      "downloading": "다운로드 중…",
+      "download": "yt-dlp 내려받기"
     },
     "savedToast": "저장됨",
+    "saveFailed": "저장하지 못했습니다: {error}",
     "alwaysOnTop": "항상 위에 표시",
     "alwaysOnTopHint": "unflick 창을 항상 다른 앱 위에 고정합니다. 작업하면서 영상을 볼 때 편리합니다.",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "환영 화면",
       "body": "첫 실행 때 보이는 한 화면짜리 소개 — unflick이 무엇인지, 단축키, 그리고 CLI와 MCP 플러그인.",
       "button": "다시 보기"
+    },
+    "themeMidnight": "미드나이트",
+    "themePurple": "퍼플",
+    "screenshots": {
+      "section": "스크린샷",
+      "askEachTime": "매번 묻기 (기본값)",
+      "choose": "선택…",
+      "clear": "지우기 (매번 묻기로 되돌리기)",
+      "hint": "설정하면 스크린샷이 영상 이름과 타임스탬프로 여기에 자동 저장됩니다. 비워 두면 매번 묻습니다."
+    },
+    "onlineSubs": {
+      "section": "온라인 자막",
+      "keyLabel": "OpenSubtitles API 키",
+      "keySaved": "••••••••(저장됨)",
+      "keyHintPrefix": "본인의 무료 키는 여기에서:",
+      "keyHintSuffix": ". 다운로드는 개인 일일 한도에서 차감되므로 unflick은 공용 키를 제공하지 않습니다.",
+      "languagesLabel": "선호 언어",
+      "languagesHint": "쉼표로 구분한 코드를 순서대로 검색합니다 — 예:"
+    },
+    "network": {
+      "section": "네트워크",
+      "useSystemProxy": "시스템 프록시 사용",
+      "detected": "감지됨:",
+      "none": "시스템 프록시가 설정되어 있지 않습니다. 스트리밍 사이트 요청은 직접 연결됩니다.",
+      "hint": "켜면 unflick이 Windows 프록시 설정(설정 → 네트워크 → 프록시)을 자동으로 읽어 YouTube/Bilibili 추출에 사용합니다."
     }
   },
   "hotkeys": {

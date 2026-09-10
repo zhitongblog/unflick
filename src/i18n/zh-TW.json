@@ -9,7 +9,16 @@
     "loading": "載入中…",
     "remove": "移除",
     "clear": "清空",
-    "reset": "重設"
+    "reset": "重設",
+    "on": "開啟",
+    "off": "關閉",
+    "search": "搜尋",
+    "saving": "儲存中…"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "關閉"
   },
   "menu": {
     "file": "檔案",
@@ -87,6 +96,22 @@
     "prevFailed": "無法跳到上一項",
     "playFailed": "無法播放該項目"
   },
+  "player": {
+    "play": "播放",
+    "pause": "暫停",
+    "stop": "停止",
+    "previous": "上一個",
+    "next": "下一個",
+    "noPlaylist": "沒有播放清單",
+    "speed": "播放速度",
+    "screenshot": "截圖",
+    "mute": "靜音",
+    "unmute": "取消靜音",
+    "pip": "子母畫面",
+    "fullscreen": "全螢幕",
+    "noFile": "未載入檔案",
+    "videoRegion": "影片區域"
+  },
   "subtitle": {
     "title": "字幕",
     "off": "關閉",
@@ -104,13 +129,32 @@
     "styleBold": "粗體",
     "bilingual": "雙語字幕",
     "bilingualHint": "同時顯示原文和譯文",
-    "secondLine": "第二行"
+    "secondLine": "第二行",
+    "findOnline": "線上尋找字幕…",
+    "generateAi": "AI 生成字幕",
+    "loadFailed": "字幕載入失敗"
   },
   "audio": {
     "title": "音軌",
     "noTracks": "沒有音軌。",
     "delay": "延遲",
-    "reset": "重設"
+    "reset": "重設",
+    "tracks": "音軌",
+    "equalizer": "等化器…"
+  },
+  "equalizer": {
+    "title": "等化器",
+    "enable": "啟用",
+    "bypass": "旁通",
+    "bandHint": "{freq} Hz — 按兩下重設",
+    "preset": "預設",
+    "choose": "選擇…",
+    "preamp": "前級增益",
+    "preampHint": "為提升的頻段保留餘裕",
+    "normalize": "響度正規化",
+    "normalizeHint": "對白太小聲、動作太大聲",
+    "pitch": "變速不變調",
+    "resetAll": "全部重設"
   },
   "filters": {
     "title": "影片濾鏡",
@@ -119,7 +163,13 @@
     "saturation": "飽和度",
     "gamma": "Gamma",
     "hue": "色相",
-    "reset": "全部重設"
+    "reset": "全部重設",
+    "geometry": "畫面幾何",
+    "aspect": "長寬比",
+    "aspectAuto": "自動",
+    "rotate": "旋轉",
+    "zoom": "縮放",
+    "deinterlace": "去交錯"
   },
   "clip": {
     "title": "擷取片段",
@@ -129,7 +179,13 @@
     "gif": "輸出為 GIF",
     "saving": "儲存中…",
     "saved": "片段已儲存到 {path}",
-    "failed": "儲存失敗：{error}"
+    "failed": "儲存失敗：{error}",
+    "extract": "擷取",
+    "extractAnother": "再擷取一段",
+    "extracting": "擷取中…",
+    "invalidTime": "時間格式無效。",
+    "endBeforeStart": "結束時間必須晚於開始時間。",
+    "noFile": "未載入檔案。"
   },
   "urlDialog": {
     "title": "開啟 URL",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "找不到 yt-dlp。請從",
     "ytDlpMissingSuffix": "安裝並把它放進 PATH。",
     "proxyActive": "代理已啟用："
+  },
+  "onlineSubtitles": {
+    "title": "線上尋找字幕",
+    "needKey": "OpenSubtitles 需要你自己的免費 API Key。下載會計入你個人的每日額度，所以 unflick 不附帶共用的 Key。",
+    "getKey": "前往 opensubtitles.com 取得 Key →",
+    "keyPlaceholder": "貼上你的 API Key",
+    "queryPlaceholder": "要搜尋的片名",
+    "queryPlaceholderIdle": "要搜尋的片名（目前沒有播放）",
+    "languagesHint": "以逗號分隔的語言代碼，例如 zh-TW,en",
+    "hashMatches": "有 {count} 筆與這個檔案完全相符 — 選其中一筆，時間軸就會是對的。",
+    "noHashMatch": "沒有與這個檔案完全相符的字幕；以下是同一片名的字幕，可能需要調整延遲。",
+    "noResults": "找不到與「{query}」相符的字幕",
+    "exactMatch": "完全相符",
+    "sdh": "聽障字幕",
+    "downloads": "{count} 次下載",
+    "trusted": "可信上傳者",
+    "use": "使用"
   },
   "context": {
     "openFile": "開啟檔案…",
@@ -202,18 +275,34 @@
       "bundledReady": "內建 Whisper 已就緒",
       "bundledMissing": "未偵測到內建 Whisper。",
       "apiKey": "OpenAI API Key",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "AI 字幕開箱即用，不需要任何設定。",
+      "useCustom": "使用自訂安裝 →",
+      "resetBundled": "← 恢復為內建安裝",
+      "downloadHint": "從 GitHub 下載 whisper.cpp，再下載一個 GGML 模型檔。",
+      "disabledBody": "AI 字幕生成已關閉。選擇「本機（Whisper）」或「OpenAI API」來啟用。"
     },
     "tools": {
-      "section": "工具",
+      "section": "URL 擷取器（yt-dlp）",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "版本 {version}",
       "ytDlpChecking": "檢查中…",
       "update": "更新",
       "updating": "更新中…",
-      "updated": "已更新"
+      "updated": "已更新",
+      "ready": "就緒 — 支援 YouTube、Bilibili、Twitch、Vimeo、抖音、TikTok、微博",
+      "sourceUser": "自動更新",
+      "sourceBundled": "unflick 內建",
+      "sourcePath": "來自系統 PATH",
+      "updateHint": "點「更新」取得最新版本（建議每隔幾週更新一次，串流網站經常改格式）。",
+      "missing": "未安裝 yt-dlp，串流網站的連結無法播放。",
+      "installFrom": "安裝位置",
+      "orDownload": "— 或點下面的按鈕自動下載。",
+      "downloading": "下載中…",
+      "download": "下載 yt-dlp"
     },
     "savedToast": "已儲存",
+    "saveFailed": "儲存失敗：{error}",
     "alwaysOnTop": "視窗置頂",
     "alwaysOnTopHint": "讓 unflick 視窗永遠位於其他應用之上，方便邊工作邊看影片。",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "歡迎畫面",
       "body": "首次啟動時的那一頁介紹——unflick 是什麼、幾個快速鍵，以及 CLI 與 MCP 外掛。",
       "button": "再看一次"
+    },
+    "themeMidnight": "午夜",
+    "themePurple": "紫色",
+    "screenshots": {
+      "section": "截圖",
+      "askEachTime": "每次詢問（預設）",
+      "choose": "選擇…",
+      "clear": "清除（恢復為每次詢問）",
+      "hint": "設定後，截圖會自動存到這裡，檔名用影片名稱加時間戳記。留空則每次詢問。"
+    },
+    "onlineSubs": {
+      "section": "線上字幕",
+      "keyLabel": "OpenSubtitles API Key",
+      "keySaved": "••••••••（已儲存）",
+      "keyHintPrefix": "你自己的免費 Key，來自",
+      "keyHintSuffix": "。下載會計入你個人的每日額度，所以 unflick 不附帶共用的 Key。",
+      "languagesLabel": "偏好語言",
+      "languagesHint": "以逗號分隔的語言代碼，依序搜尋 — 例如"
+    },
+    "network": {
+      "section": "網路",
+      "useSystemProxy": "使用系統 Proxy",
+      "detected": "已偵測到：",
+      "none": "目前沒有設定系統 Proxy，串流網站的請求會直連。",
+      "hint": "開啟後，unflick 會自動讀取 Windows 的 Proxy 設定（設定 → 網路 → Proxy），並用它擷取 YouTube/Bilibili。"
     }
   },
   "hotkeys": {

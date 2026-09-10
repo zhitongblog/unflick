@@ -209,38 +209,45 @@ export default function PlayerBar() {
     const items: NativeItem[] = [];
     const actions: NativeAction[] = [];
 
-    items.push({ label: hasActive ? "Off" : "✓ Off", separator: false, disabled: false });
+    items.push({
+      label: (hasActive ? "" : "✓ ") + t.subtitle.off,
+      separator: false,
+      disabled: false,
+    });
     actions.push(() => ps.selectSubtitle(null));
 
-    for (const t of subs) {
+    for (const track of subs) {
       items.push({
-        label: (t.active ? "✓ " : "") + t.label,
+        label: (track.active ? "✓ " : "") + track.label,
         separator: false,
         disabled: false,
       });
-      actions.push(() => ps.selectSubtitle(t.id));
+      actions.push(() => ps.selectSubtitle(track.id));
     }
 
     items.push({ label: "", separator: true, disabled: false });
     actions.push(null);
 
-    items.push({ label: "Load subtitle file…", separator: false, disabled: false });
+    items.push({ label: t.subtitle.loadFile, separator: false, disabled: false });
     actions.push(async () => {
       try {
         const r = await invoke<{ path: string | null }>("open_subtitle_dialog");
         if (r.path) await ps.loadSubtitle(r.path);
       } catch (err) {
         window.dispatchEvent(new CustomEvent("unflick:toast", {
-          detail: { kind: "error", message: `Load failed: ${String(err).slice(0, 100)}` },
+          detail: {
+            kind: "error",
+            message: `${t.subtitle.loadFailed}: ${String(err).slice(0, 100)}`,
+          },
         }));
       }
     });
 
-    items.push({ label: "Find subtitles online…", separator: false, disabled: false });
+    items.push({ label: t.subtitle.findOnline, separator: false, disabled: false });
     actions.push(() => findSubtitlesOnline());
 
     if (ss.whisperMode === "local" && ps.file) {
-      items.push({ label: "Generate AI Subtitles", separator: false, disabled: false });
+      items.push({ label: t.subtitle.generateAi, separator: false, disabled: false });
       const args = {
         videoPath: ps.file,
         mode: "local" as const,
@@ -323,24 +330,24 @@ export default function PlayerBar() {
     const actions: NativeAction[] = [];
 
     if (tracks.length === 0) {
-      items.push({ label: "No audio tracks", separator: false, disabled: true });
+      items.push({ label: t.audio.noTracks, separator: false, disabled: true });
       actions.push(null);
     } else {
-      for (const t of tracks) {
+      for (const track of tracks) {
         items.push({
-          label: (t.selected ? "✓ " : "") + audioTrackLabel(t),
+          label: (track.selected ? "✓ " : "") + audioTrackLabel(track),
           separator: false,
           disabled: false,
         });
         actions.push(() => {
-          invoke("audio_select", { id: t.id }).catch(console.error);
+          invoke("audio_select", { id: track.id }).catch(console.error);
         });
       }
     }
 
     items.push({ label: "", separator: true, disabled: false });
     actions.push(null);
-    items.push({ label: "Equalizer…", separator: false, disabled: false });
+    items.push({ label: t.audio.equalizer, separator: false, disabled: false });
     actions.push(() => setShowEqualizer(true));
 
     await showNativeMenuAt(btn, items, actions);
@@ -371,7 +378,7 @@ export default function PlayerBar() {
           <button
             className={barBtnClass()}
             onClick={toggleLibrary}
-            title="Library (L)"
+            title={`${t.library.title} (L)`}
           >
             <LibraryIcon />
           </button>
@@ -380,7 +387,7 @@ export default function PlayerBar() {
               {extractFileName(file)}
             </p>
           ) : (
-            <p className="text-[12px] text-white/20">No file loaded</p>
+            <p className="text-[12px] text-white/20">{t.player.noFile}</p>
           )}
         </div>
 
@@ -400,7 +407,7 @@ export default function PlayerBar() {
             <button
               className={barBtnClass(showAudioMenu)}
               onClick={handleAudioButton}
-              title="Audio Tracks"
+              title={t.audio.tracks}
               disabled={state === "stopped"}
             >
               <AudioIcon />
@@ -431,7 +438,7 @@ export default function PlayerBar() {
             <button
               className={barBtnClass(showSubtitleMenu)}
               onClick={handleSubtitleButton}
-              title="Subtitles"
+              title={t.subtitle.title}
               disabled={state === "stopped"}
             >
               <SubtitleIcon />
@@ -491,7 +498,7 @@ export default function PlayerBar() {
           <button
             className={`relative ${barBtnClass()}`}
             onClick={togglePlaylist}
-            title="Playlist (N)"
+            title={`${t.playlist.title} (N)`}
           >
             <PlaylistIcon />
             {playlistItems.length > 0 && (
@@ -510,7 +517,7 @@ export default function PlayerBar() {
           <button
             className={barBtnClass()}
             onClick={() => invoke("toggle_pip").catch(console.error)}
-            title="Picture-in-Picture (P)"
+            title={`${t.player.pip} (P)`}
           >
             <PipIcon />
           </button>
@@ -528,7 +535,7 @@ export default function PlayerBar() {
           <button
             className={barBtnClass()}
             onClick={() => invoke("set_fullscreen").catch(console.error)}
-            title="Fullscreen (F)"
+            title={`${t.player.fullscreen} (F)`}
           >
             <FullscreenIcon />
           </button>

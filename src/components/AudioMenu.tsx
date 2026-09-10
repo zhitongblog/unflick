@@ -56,7 +56,7 @@ export default function AudioMenu({
       className="glass-elevated absolute bottom-full right-0 mb-2 w-56 rounded-xl py-1.5 shadow-2xl"
     >
       <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-        Audio Tracks
+        {t.audio.tracks}
       </p>
 
       {isLoading && (
@@ -66,7 +66,7 @@ export default function AudioMenu({
       )}
 
       {!isLoading && tracks.length === 0 && (
-        <p className="px-3 py-2 text-[11px] text-white/25">No audio tracks</p>
+        <p className="px-3 py-2 text-[11px] text-white/25">{t.audio.noTracks}</p>
       )}
 
       {!isLoading && tracks.map((track) => {
@@ -136,7 +136,7 @@ export default function AudioMenu({
           <line x1="9" y1="8" x2="15" y2="8" />
           <line x1="17" y1="16" x2="23" y2="16" />
         </svg>
-        Equalizer...
+        {t.audio.equalizer}
       </button>
     </motion.div>
   );

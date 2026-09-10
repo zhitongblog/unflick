@@ -56,7 +56,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
       window.dispatchEvent(new CustomEvent("unflick:toast", {
         detail: {
           kind: "error",
-          message: typeof e === "string" ? e : "Failed to load subtitle",
+          message: typeof e === "string" ? e : t.subtitle.loadFailed,
         },
       }));
       return;
@@ -76,7 +76,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
     };
     onClose();
     window.dispatchEvent(new CustomEvent("unflick:toast", {
-      detail: { kind: "success", message: "Generating subtitles…" },
+      detail: { kind: "success", message: t.whisper.generating },
     }));
     try {
       const result = await invoke<{ srt_path: string }>("generate_subtitles", args);
@@ -86,14 +86,17 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
       // the lifecycle explicit.
       await usePlayerStore.getState().loadSubtitle(result.srt_path);
       window.dispatchEvent(new CustomEvent("unflick:toast", {
-        detail: { kind: "success", message: "Subtitles ready" },
+        detail: { kind: "success", message: t.whisper.generated },
       }));
     } catch (err) {
       const msg = String(err);
       window.dispatchEvent(new CustomEvent("unflick:toast", {
         detail: {
           kind: "error",
-          message: `Subtitle generation failed: ${msg.length > 100 ? msg.slice(0, 100) + "…" : msg}`,
+          message: t.whisper.failed.replace(
+            "{error}",
+            msg.length > 100 ? msg.slice(0, 100) + "…" : msg,
+          ),
         },
       }));
     }
@@ -111,11 +114,11 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
       className="glass-elevated absolute bottom-full right-0 mb-2 w-56 rounded-xl py-1.5 shadow-2xl"
     >
       <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-        Subtitles
+        {t.subtitle.title}
       </p>
 
       {subtitles.length === 0 && (
-        <p className="px-3 py-2 text-[11px] text-white/25">No subtitle tracks</p>
+        <p className="px-3 py-2 text-[11px] text-white/25">{t.subtitle.noTracks}</p>
       )}
 
       {subtitles.length > 0 && (
@@ -128,7 +131,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
           {!hasActive ? (
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
           ) : <span className="w-[10px]" />}
-          <span className="flex-1">Off</span>
+          <span className="flex-1">{t.subtitle.off}</span>
         </button>
       )}
 
@@ -211,7 +214,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
-        Load subtitle file...
+        {t.subtitle.loadFile}
       </button>
 
       <button
@@ -225,7 +228,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        Find subtitles online...
+        {t.subtitle.findOnline}
       </button>
 
       {whisperMode === "local" && file && (
@@ -236,7 +239,7 @@ export default function SubtitleMenu({ onClose }: { onClose: () => void }) {
             onClick={handleGenerateAi}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" /></svg>
-            Generate AI Subtitles
+            {t.subtitle.generateAi}
           </button>
         </>
       )}

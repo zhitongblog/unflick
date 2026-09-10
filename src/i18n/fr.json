@@ -9,7 +9,16 @@
     "loading": "Chargement…",
     "remove": "Supprimer",
     "clear": "Effacer",
-    "reset": "Réinitialiser"
+    "reset": "Réinitialiser",
+    "on": "Activé",
+    "off": "Désactivé",
+    "search": "Rechercher",
+    "saving": "Enregistrement…"
+  },
+  "window": {
+    "minimize": "Réduire",
+    "maximize": "Agrandir",
+    "close": "Fermer"
   },
   "menu": {
     "file": "Fichier",
@@ -87,6 +96,22 @@
     "prevFailed": "Impossible de revenir à l'élément précédent",
     "playFailed": "Impossible de lire cet élément"
   },
+  "player": {
+    "play": "Lecture",
+    "pause": "Pause",
+    "stop": "Arrêter",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "noPlaylist": "Aucune liste de lecture",
+    "speed": "Vitesse de lecture",
+    "screenshot": "Capture d’écran",
+    "mute": "Couper le son",
+    "unmute": "Rétablir le son",
+    "pip": "Image dans l’image",
+    "fullscreen": "Plein écran",
+    "noFile": "Aucun fichier chargé",
+    "videoRegion": "Zone vidéo"
+  },
   "subtitle": {
     "title": "Sous-titres",
     "off": "Désactivés",
@@ -104,13 +129,32 @@
     "styleBold": "Gras",
     "bilingual": "Bilingue",
     "bilingualHint": "Afficher l'original et la traduction ensemble",
-    "secondLine": "2e"
+    "secondLine": "2e",
+    "findOnline": "Chercher des sous-titres en ligne…",
+    "generateAi": "Générer des sous-titres par IA",
+    "loadFailed": "Impossible de charger le sous-titre"
   },
   "audio": {
     "title": "Piste audio",
     "noTracks": "Aucune piste audio.",
     "delay": "Décalage",
-    "reset": "Réinitialiser"
+    "reset": "Réinitialiser",
+    "tracks": "Pistes audio",
+    "equalizer": "Égaliseur…"
+  },
+  "equalizer": {
+    "title": "Égaliseur",
+    "enable": "Activer",
+    "bypass": "Contourner",
+    "bandHint": "{freq} Hz — double-clic pour réinitialiser",
+    "preset": "Préréglage",
+    "choose": "Choisir…",
+    "preamp": "Préampli",
+    "preampHint": "Marge pour les bandes amplifiées",
+    "normalize": "Uniformiser le volume",
+    "normalizeHint": "dialogues faibles vs action forte",
+    "pitch": "Garder la hauteur en accéléré",
+    "resetAll": "Tout réinitialiser"
   },
   "filters": {
     "title": "Filtres vidéo",
@@ -119,7 +163,13 @@
     "saturation": "Saturation",
     "gamma": "Gamma",
     "hue": "Teinte",
-    "reset": "Tout réinitialiser"
+    "reset": "Tout réinitialiser",
+    "geometry": "Géométrie",
+    "aspect": "Format",
+    "aspectAuto": "Auto",
+    "rotate": "Rotation",
+    "zoom": "Zoom",
+    "deinterlace": "Désentrelacement"
   },
   "clip": {
     "title": "Extraire un clip",
@@ -129,7 +179,13 @@
     "gif": "Exporter en GIF",
     "saving": "Enregistrement…",
     "saved": "Clip enregistré dans {path}",
-    "failed": "Échec de l'enregistrement : {error}"
+    "failed": "Échec de l'enregistrement : {error}",
+    "extract": "Extraire",
+    "extractAnother": "Extraire un autre",
+    "extracting": "Extraction…",
+    "invalidTime": "Format d’heure invalide.",
+    "endBeforeStart": "La fin doit être après le début.",
+    "noFile": "Aucun fichier chargé."
   },
   "urlDialog": {
     "title": "Ouvrir une URL",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "yt-dlp introuvable. Installez-le depuis",
     "ytDlpMissingSuffix": "et placez-le dans votre PATH.",
     "proxyActive": "Proxy actif :"
+  },
+  "onlineSubtitles": {
+    "title": "Chercher des sous-titres en ligne",
+    "needKey": "OpenSubtitles demande votre propre clé API gratuite. Les téléchargements sont décomptés de votre quota quotidien personnel, c’est pourquoi unflick n’en fournit pas une partagée.",
+    "getKey": "Obtenir une clé sur opensubtitles.com →",
+    "keyPlaceholder": "Collez votre clé API",
+    "queryPlaceholder": "Titre à rechercher",
+    "queryPlaceholderIdle": "Titre à rechercher (aucune lecture en cours)",
+    "languagesHint": "Codes de langue séparés par des virgules, p. ex. fr,en",
+    "hashMatches": "{count} correspondent exactement à ce fichier — prenez-en un et la synchro sera bonne.",
+    "noHashMatch": "Aucun sous-titre ne correspond exactement à ce fichier ; ceux-ci sont du même titre et demanderont peut-être un décalage.",
+    "noResults": "Rien trouvé pour « {query} »",
+    "exactMatch": "correspondance exacte",
+    "sdh": "SME",
+    "downloads": "{count} téléchargements",
+    "trusted": "de confiance",
+    "use": "Utiliser"
   },
   "context": {
     "openFile": "Ouvrir un fichier…",
@@ -202,18 +275,34 @@
       "bundledReady": "Whisper intégré prêt",
       "bundledMissing": "Aucun Whisper intégré détecté.",
       "apiKey": "Clé API OpenAI",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "Les sous-titres par IA fonctionnent tels quels. Rien à configurer.",
+      "useCustom": "Utiliser une installation personnalisée →",
+      "resetBundled": "← Revenir à l’installation fournie",
+      "downloadHint": "Téléchargez whisper.cpp depuis GitHub, ainsi qu’un fichier de modèle GGML.",
+      "disabledBody": "La génération de sous-titres par IA est désactivée. Choisissez « Local (Whisper) » ou « OpenAI API » pour l’activer."
     },
     "tools": {
-      "section": "Outils",
+      "section": "Extracteur d’URL (yt-dlp)",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "Version {version}",
       "ytDlpChecking": "Vérification…",
       "update": "Mettre à jour",
       "updating": "Mise à jour…",
-      "updated": "Mis à jour"
+      "updated": "Mis à jour",
+      "ready": "Prêt — prend en charge YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo",
+      "sourceUser": "mis à jour automatiquement",
+      "sourceBundled": "fourni avec unflick",
+      "sourcePath": "depuis le PATH système",
+      "updateHint": "Cliquez sur Mettre à jour pour récupérer la dernière version (recommandé toutes les quelques semaines, les sites de streaming changent souvent de format).",
+      "missing": "yt-dlp n’est pas installé. Les URL de sites de streaming ne fonctionneront pas.",
+      "installFrom": "Installer depuis",
+      "orDownload": "— ou cliquez ci-dessous pour le télécharger automatiquement.",
+      "downloading": "Téléchargement…",
+      "download": "Télécharger yt-dlp"
     },
     "savedToast": "Enregistré",
+    "saveFailed": "Impossible d’enregistrer : {error}",
     "alwaysOnTop": "Toujours au premier plan",
     "alwaysOnTopHint": "Garde la fenêtre unflick au-dessus de toutes les autres apps. Pratique pour regarder pendant que tu travailles ailleurs.",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "Écran d'accueil",
       "body": "La présentation d'une page affichée au premier lancement — ce qu'est unflick, les touches, et l'extension CLI et MCP.",
       "button": "L'afficher à nouveau"
+    },
+    "themeMidnight": "Minuit",
+    "themePurple": "Violet",
+    "screenshots": {
+      "section": "Captures d’écran",
+      "askEachTime": "Demander à chaque fois (par défaut)",
+      "choose": "Choisir…",
+      "clear": "Effacer (redemander à chaque fois)",
+      "hint": "Si défini, les captures sont enregistrées ici automatiquement, nommées d’après la vidéo et l’horodatage. Laissez vide pour qu’on vous demande à chaque fois."
+    },
+    "onlineSubs": {
+      "section": "Sous-titres en ligne",
+      "keyLabel": "Clé API OpenSubtitles",
+      "keySaved": "•••••••• (enregistrée)",
+      "keyHintPrefix": "Votre propre clé gratuite depuis",
+      "keyHintSuffix": ". Les téléchargements sont décomptés de votre quota quotidien personnel, c’est pourquoi unflick n’en fournit pas une partagée.",
+      "languagesLabel": "Langues préférées",
+      "languagesHint": "Codes séparés par des virgules, cherchés dans l’ordre — p. ex."
+    },
+    "network": {
+      "section": "Réseau",
+      "useSystemProxy": "Utiliser le proxy système",
+      "detected": "Détecté :",
+      "none": "Aucun proxy système n’est défini. Les requêtes vers les sites de streaming iront en direct.",
+      "hint": "Une fois activé, unflick lit automatiquement le réglage proxy de Windows (Paramètres → Réseau → Proxy) et l’utilise pour l’extraction YouTube/Bilibili."
     }
   },
   "hotkeys": {

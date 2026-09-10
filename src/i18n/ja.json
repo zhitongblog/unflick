@@ -9,7 +9,16 @@
     "loading": "読み込み中…",
     "remove": "削除",
     "clear": "クリア",
-    "reset": "リセット"
+    "reset": "リセット",
+    "on": "オン",
+    "off": "オフ",
+    "search": "検索",
+    "saving": "保存中…"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "閉じる"
   },
   "menu": {
     "file": "ファイル",
@@ -87,6 +96,22 @@
     "prevFailed": "前の項目に戻れませんでした",
     "playFailed": "その項目を再生できませんでした"
   },
+  "player": {
+    "play": "再生",
+    "pause": "一時停止",
+    "stop": "停止",
+    "previous": "前へ",
+    "next": "次へ",
+    "noPlaylist": "プレイリストがありません",
+    "speed": "再生速度",
+    "screenshot": "スクリーンショット",
+    "mute": "ミュート",
+    "unmute": "ミュート解除",
+    "pip": "ピクチャ・イン・ピクチャ",
+    "fullscreen": "全画面",
+    "noFile": "ファイルが読み込まれていません",
+    "videoRegion": "動画領域"
+  },
   "subtitle": {
     "title": "字幕",
     "off": "オフ",
@@ -104,13 +129,32 @@
     "styleBold": "太字",
     "bilingual": "二か国語字幕",
     "bilingualHint": "原語と翻訳を同時に表示",
-    "secondLine": "2行目"
+    "secondLine": "2行目",
+    "findOnline": "オンラインで字幕を探す…",
+    "generateAi": "AI で字幕を生成",
+    "loadFailed": "字幕の読み込みに失敗しました"
   },
   "audio": {
     "title": "音声トラック",
     "noTracks": "音声トラックがありません。",
     "delay": "遅延",
-    "reset": "リセット"
+    "reset": "リセット",
+    "tracks": "音声トラック",
+    "equalizer": "イコライザー…"
+  },
+  "equalizer": {
+    "title": "イコライザー",
+    "enable": "有効にする",
+    "bypass": "バイパス",
+    "bandHint": "{freq} Hz — ダブルクリックでリセット",
+    "preset": "プリセット",
+    "choose": "選択…",
+    "preamp": "プリアンプ",
+    "preampHint": "ブーストしたバンドのためのヘッドルーム",
+    "normalize": "音量を均一化",
+    "normalizeHint": "セリフは小さく、アクションは大きい",
+    "pitch": "速度を変えても音程を保つ",
+    "resetAll": "すべてリセット"
   },
   "filters": {
     "title": "ビデオフィルター",
@@ -119,7 +163,13 @@
     "saturation": "彩度",
     "gamma": "ガンマ",
     "hue": "色相",
-    "reset": "すべてリセット"
+    "reset": "すべてリセット",
+    "geometry": "画面の形",
+    "aspect": "アスペクト比",
+    "aspectAuto": "自動",
+    "rotate": "回転",
+    "zoom": "ズーム",
+    "deinterlace": "インターレース解除"
   },
   "clip": {
     "title": "クリップを切り出す",
@@ -129,7 +179,13 @@
     "gif": "GIF として出力",
     "saving": "保存中…",
     "saved": "クリップを {path} に保存しました",
-    "failed": "保存に失敗しました: {error}"
+    "failed": "保存に失敗しました: {error}",
+    "extract": "切り出す",
+    "extractAnother": "続けて切り出す",
+    "extracting": "切り出し中…",
+    "invalidTime": "時間の形式が正しくありません。",
+    "endBeforeStart": "終了は開始より後にしてください。",
+    "noFile": "ファイルが読み込まれていません。"
   },
   "urlDialog": {
     "title": "URL を開く",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "yt-dlp が見つかりません。",
     "ytDlpMissingSuffix": "からインストールし、PATH に置いてください。",
     "proxyActive": "プロキシ有効："
+  },
+  "onlineSubtitles": {
+    "title": "オンラインで字幕を探す",
+    "needKey": "OpenSubtitles には自分の無料 API キーが必要です。ダウンロードは個人の 1 日あたりの上限に加算されるため、unflick は共有キーを同梱していません。",
+    "getKey": "opensubtitles.com でキーを取得 →",
+    "keyPlaceholder": "API キーを貼り付け",
+    "queryPlaceholder": "検索するタイトル",
+    "queryPlaceholderIdle": "検索するタイトル（再生中のものはありません）",
+    "languagesHint": "カンマ区切りの言語コード（例: ja,en）",
+    "hashMatches": "このファイルと完全に一致するものが {count} 件 — そのどれかを選べばタイミングは合っています。",
+    "noHashMatch": "このファイルと完全に一致する字幕はありません。以下は同じタイトルのもので、遅延の調整が必要な場合があります。",
+    "noResults": "「{query}」に一致するものは見つかりませんでした",
+    "exactMatch": "完全一致",
+    "sdh": "SDH",
+    "downloads": "{count} 回ダウンロード",
+    "trusted": "信頼できる投稿者",
+    "use": "使う"
   },
   "context": {
     "openFile": "ファイルを開く…",
@@ -202,18 +275,34 @@
       "bundledReady": "同梱の Whisper が利用可能",
       "bundledMissing": "同梱の Whisper が見つかりません。",
       "apiKey": "OpenAI API キー",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "AI 字幕はそのまま使えます。設定は不要です。",
+      "useCustom": "独自のインストールを使う →",
+      "resetBundled": "← 同梱のインストールに戻す",
+      "downloadHint": "GitHub から whisper.cpp と GGML モデルファイルをダウンロードしてください。",
+      "disabledBody": "AI 字幕生成はオフです。「ローカル（Whisper）」または「OpenAI API」を選ぶと有効になります。"
     },
     "tools": {
-      "section": "ツール",
+      "section": "URL 抽出ツール（yt-dlp）",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "バージョン {version}",
       "ytDlpChecking": "確認中…",
       "update": "更新",
       "updating": "更新中…",
-      "updated": "更新済み"
+      "updated": "更新済み",
+      "ready": "利用可能 — YouTube、Bilibili、Twitch、Vimeo、Douyin、TikTok、Weibo に対応",
+      "sourceUser": "自動更新",
+      "sourceBundled": "unflick 同梱",
+      "sourcePath": "システムの PATH から",
+      "updateHint": "「更新」を押すと最新版を取得します（ストリーミングサイトはよく形式を変えるため、数週間ごとの更新を推奨）。",
+      "missing": "yt-dlp がインストールされていません。ストリーミングサイトの URL は再生できません。",
+      "installFrom": "インストール元:",
+      "orDownload": "— または下のボタンで自動ダウンロード。",
+      "downloading": "ダウンロード中…",
+      "download": "yt-dlp をダウンロード"
     },
     "savedToast": "保存しました",
+    "saveFailed": "保存できませんでした: {error}",
     "alwaysOnTop": "常に最前面",
     "alwaysOnTopHint": "unflick のウィンドウを他のアプリの上に固定します。作業しながら動画を見るのに便利です。",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "ようこそ画面",
       "body": "初回起動時に表示される 1 画面の紹介 — unflick とは何か、キー操作、そして CLI と MCP プラグイン。",
       "button": "もう一度表示"
+    },
+    "themeMidnight": "ミッドナイト",
+    "themePurple": "パープル",
+    "screenshots": {
+      "section": "スクリーンショット",
+      "askEachTime": "毎回たずねる（デフォルト）",
+      "choose": "選択…",
+      "clear": "クリア（毎回たずねるに戻す）",
+      "hint": "設定すると、スクリーンショットは動画名とタイムスタンプを付けてここに自動保存されます。空欄なら毎回たずねます。"
+    },
+    "onlineSubs": {
+      "section": "オンライン字幕",
+      "keyLabel": "OpenSubtitles API キー",
+      "keySaved": "••••••••（保存済み）",
+      "keyHintPrefix": "自分の無料キーの取得元:",
+      "keyHintSuffix": "。ダウンロードは個人の 1 日あたりの上限に加算されるため、unflick は共有キーを同梱していません。",
+      "languagesLabel": "優先言語",
+      "languagesHint": "カンマ区切りのコードを順に検索します — 例:"
+    },
+    "network": {
+      "section": "ネットワーク",
+      "useSystemProxy": "システムプロキシを使う",
+      "detected": "検出:",
+      "none": "システムプロキシは設定されていません。ストリーミングサイトへの通信は直接行われます。",
+      "hint": "オンにすると、unflick は Windows のプロキシ設定（設定 → ネットワーク → プロキシ）を自動で読み取り、YouTube/Bilibili の取得に使います。"
     }
   },
   "hotkeys": {

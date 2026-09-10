@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "./ui/Toggle";
 import { usePlayerStore } from "../stores/playerStore";
+import { useStrings } from "../i18n/utils";
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -23,6 +24,7 @@ function parseTimeInput(value: string): number {
 export default function ClipDialog({ onClose }: { onClose: () => void }) {
   const { position, file } = usePlayerStore();
   const overlayRef = useRef<HTMLDivElement>(null);
+  const t = useStrings();
 
   const [startInput, setStartInput] = useState(() => formatTime(Math.floor(position)));
   const [endInput, setEndInput] = useState(() => formatTime(Math.floor(position + 10)));
@@ -52,14 +54,14 @@ export default function ClipDialog({ onClose }: { onClose: () => void }) {
   const handleExtract = async () => {
     const start = parseTimeInput(startInput);
     const end = parseTimeInput(endInput);
-    if (isNaN(start) || isNaN(end)) { setStatus({ type: "error", message: "Invalid time format." }); return; }
-    if (end <= start) { setStatus({ type: "error", message: "End must be after start." }); return; }
-    if (!file) { setStatus({ type: "error", message: "No file loaded." }); return; }
+    if (isNaN(start) || isNaN(end)) { setStatus({ type: "error", message: t.clip.invalidTime }); return; }
+    if (end <= start) { setStatus({ type: "error", message: t.clip.endBeforeStart }); return; }
+    if (!file) { setStatus({ type: "error", message: t.clip.noFile }); return; }
 
-    setStatus({ type: "running", message: "Extracting..." });
+    setStatus({ type: "running", message: t.clip.extracting });
     try {
       const result = await invoke<{ output: string }>("extract_clip", { input: file, start, end, output: outputPath, asGif });
-      setStatus({ type: "done", message: `Saved: ${result.output}` });
+      setStatus({ type: "done", message: t.clip.saved.replace("{path}", result.output) });
     } catch (err) {
       setStatus({ type: "error", message: String(err) });
     }
@@ -88,7 +90,7 @@ export default function ClipDialog({ onClose }: { onClose: () => void }) {
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">Extract Clip</h2>
+            <h2 className="idle-title text-[12px] font-bold uppercase tracking-wider">{t.clip.title}</h2>
             <button className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50" onClick={onClose}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -97,30 +99,30 @@ export default function ClipDialog({ onClose }: { onClose: () => void }) {
           {/* Time inputs */}
           <div className="mb-3 flex gap-3">
             <div className="flex-1">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">Start</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">{t.clip.start}</label>
               <input type="text" value={startInput} onChange={(e) => setStartInput(e.target.value)} placeholder="0:00" className={inputClass} />
             </div>
             <div className="flex-1">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">End</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">{t.clip.end}</label>
               <input type="text" value={endInput} onChange={(e) => setEndInput(e.target.value)} placeholder="0:10" className={inputClass} />
             </div>
           </div>
 
           {/* Output */}
           <div className="mb-3">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">Output</label>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-white/20">{t.clip.output}</label>
             <div className="flex gap-2">
               <input type="text" value={outputPath} onChange={(e) => setOutputPath(e.target.value)} className={`min-w-0 flex-1 ${inputClass}`} />
               <button className="flex-shrink-0 rounded-lg border border-white/6 bg-white/4 px-2.5 py-1.5 text-[11px] text-white/35 transition-colors hover:bg-white/8 hover:text-white/60" onClick={handleBrowse}>
-                Browse
+                {t.common.browse}
               </button>
             </div>
           </div>
 
           {/* GIF toggle */}
           <div className="mb-4 flex items-center gap-2">
-            <Toggle checked={asGif} onChange={setAsGif} label="Save as GIF" />
-            <span className="text-[11px] text-white/35">Save as GIF</span>
+            <Toggle checked={asGif} onChange={setAsGif} label={t.clip.gif} />
+            <span className="text-[11px] text-white/35">{t.clip.gif}</span>
           </div>
 
           {/* Status */}
@@ -143,9 +145,9 @@ export default function ClipDialog({ onClose }: { onClose: () => void }) {
             {status.type === "running" ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Extracting...
+                {t.clip.extracting}
               </span>
-            ) : status.type === "done" ? "Extract Another" : "Extract"}
+            ) : status.type === "done" ? t.clip.extractAnother : t.clip.extract}
           </button>
         </motion.div>
       </motion.div>

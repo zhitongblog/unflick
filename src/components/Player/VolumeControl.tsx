@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePlayerStore } from "../../stores/playerStore";
+import { useStrings } from "../../i18n/utils";
 
 function VolumeIcon({ level }: { level: number }) {
   if (level === 0) {
@@ -34,6 +35,7 @@ export default function VolumeControl() {
   const [showSlider, setShowSlider] = useState(false);
   const [prevVolume, setPrevVolume] = useState(100);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const t = useStrings();
 
   const toggleMute = () => {
     if (volume > 0) {
@@ -71,7 +73,7 @@ export default function VolumeControl() {
       <button
         className="rounded-full p-1.5 text-white/50 transition-all duration-150 hover:text-white/80 hover:bg-white/8 active:scale-90"
         onClick={toggleMute}
-        title={volume === 0 ? "Unmute" : "Mute"}
+        title={volume === 0 ? t.player.unmute : t.player.mute}
       >
         <VolumeIcon level={volume} />
       </button>

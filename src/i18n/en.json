@@ -9,7 +9,16 @@
     "loading": "Loading…",
     "remove": "Remove",
     "clear": "Clear",
-    "reset": "Reset"
+    "reset": "Reset",
+    "on": "On",
+    "off": "Off",
+    "search": "Search",
+    "saving": "Saving…"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "close": "Close"
   },
   "menu": {
     "file": "File",
@@ -87,6 +96,22 @@
     "prevFailed": "Could not skip to the previous item",
     "playFailed": "Could not play that entry"
   },
+  "player": {
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop",
+    "previous": "Previous",
+    "next": "Next",
+    "noPlaylist": "No playlist",
+    "speed": "Playback speed",
+    "screenshot": "Screenshot",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "pip": "Picture-in-Picture",
+    "fullscreen": "Fullscreen",
+    "noFile": "No file loaded",
+    "videoRegion": "Video region"
+  },
   "subtitle": {
     "title": "Subtitles",
     "off": "Off",
@@ -104,13 +129,32 @@
     "styleBold": "Bold",
     "bilingual": "Bilingual",
     "bilingualHint": "Show the original and the translation together",
-    "secondLine": "2nd"
+    "secondLine": "2nd",
+    "findOnline": "Find subtitles online…",
+    "generateAi": "Generate AI Subtitles",
+    "loadFailed": "Failed to load subtitle"
   },
   "audio": {
     "title": "Audio Track",
     "noTracks": "No audio tracks.",
     "delay": "Delay",
-    "reset": "Reset"
+    "reset": "Reset",
+    "tracks": "Audio Tracks",
+    "equalizer": "Equalizer…"
+  },
+  "equalizer": {
+    "title": "Equalizer",
+    "enable": "Enable",
+    "bypass": "Bypass",
+    "bandHint": "{freq} Hz — double-click to reset",
+    "preset": "Preset",
+    "choose": "Choose…",
+    "preamp": "Preamp",
+    "preampHint": "Headroom for boosted bands",
+    "normalize": "Normalize loudness",
+    "normalizeHint": "quiet dialogue vs. loud action",
+    "pitch": "Keep pitch when speeding up",
+    "resetAll": "Reset all"
   },
   "filters": {
     "title": "Video Filters",
@@ -119,7 +163,13 @@
     "saturation": "Saturation",
     "gamma": "Gamma",
     "hue": "Hue",
-    "reset": "Reset all"
+    "reset": "Reset all",
+    "geometry": "Geometry",
+    "aspect": "Aspect",
+    "aspectAuto": "Auto",
+    "rotate": "Rotate",
+    "zoom": "Zoom",
+    "deinterlace": "Deinterlace"
   },
   "clip": {
     "title": "Extract Clip",
@@ -129,7 +179,13 @@
     "gif": "Export as GIF",
     "saving": "Saving…",
     "saved": "Clip saved to {path}",
-    "failed": "Clip failed: {error}"
+    "failed": "Clip failed: {error}",
+    "extract": "Extract",
+    "extractAnother": "Extract Another",
+    "extracting": "Extracting…",
+    "invalidTime": "Invalid time format.",
+    "endBeforeStart": "End must be after start.",
+    "noFile": "No file loaded."
   },
   "urlDialog": {
     "title": "Open URL",
@@ -159,6 +215,23 @@
     "ytDlpMissingPrefix": "yt-dlp not found. Install it from",
     "ytDlpMissingSuffix": "and put it on your PATH.",
     "proxyActive": "Proxy active:"
+  },
+  "onlineSubtitles": {
+    "title": "Find Subtitles Online",
+    "needKey": "OpenSubtitles needs your own free API key. Downloads count against your personal daily allowance, which is why unflick doesn’t ship a shared one.",
+    "getKey": "Get a key at opensubtitles.com →",
+    "keyPlaceholder": "Paste your API key",
+    "queryPlaceholder": "Title to search for",
+    "queryPlaceholderIdle": "Title to search for (nothing playing)",
+    "languagesHint": "Comma-separated language codes, e.g. zh-CN,en",
+    "hashMatches": "{count} synced to this exact file — pick one of those and the timing will be right.",
+    "noHashMatch": "No subtitle matches this exact file; these are for the same title and may need a delay adjustment.",
+    "noResults": "Nothing found for “{query}”",
+    "exactMatch": "exact match",
+    "sdh": "SDH",
+    "downloads": "{count} downloads",
+    "trusted": "trusted",
+    "use": "Use"
   },
   "context": {
     "openFile": "Open file…",
@@ -202,18 +275,34 @@
       "bundledReady": "Bundled Whisper ready",
       "bundledMissing": "No bundled Whisper detected.",
       "apiKey": "OpenAI API key",
-      "apiKeyPlaceholder": "sk-…"
+      "apiKeyPlaceholder": "sk-…",
+      "bundledBody": "AI subtitle generation works out of the box. No configuration needed.",
+      "useCustom": "Use a custom installation →",
+      "resetBundled": "← Reset to bundled installation",
+      "downloadHint": "Download whisper.cpp from GitHub and a GGML model file.",
+      "disabledBody": "AI subtitle generation is disabled. Select Local Whisper or OpenAI API to enable."
     },
     "tools": {
-      "section": "Tools",
+      "section": "URL Extractor (yt-dlp)",
       "ytDlp": "yt-dlp",
       "ytDlpVersion": "Version {version}",
       "ytDlpChecking": "Checking…",
       "update": "Update",
       "updating": "Updating…",
-      "updated": "Updated"
+      "updated": "Updated",
+      "ready": "Ready — supports YouTube, Bilibili, Twitch, Vimeo, Douyin, TikTok, Weibo",
+      "sourceUser": "auto-updated",
+      "sourceBundled": "bundled with unflick",
+      "sourcePath": "from system PATH",
+      "updateHint": "Click Update to fetch the latest version (recommended every few weeks since streaming sites change formats often).",
+      "missing": "yt-dlp is not installed. Streaming-site URLs won’t work.",
+      "installFrom": "Install from",
+      "orDownload": "— or click below to download automatically.",
+      "downloading": "Downloading…",
+      "download": "Download yt-dlp"
     },
     "savedToast": "Saved",
+    "saveFailed": "Could not save: {error}",
     "alwaysOnTop": "Always on top",
     "alwaysOnTopHint": "Pin the unflick window above all other apps. Useful for watching while working in another window.",
     "streaming": {
@@ -254,6 +343,31 @@
       "section": "Welcome screen",
       "body": "The one-screen introduction from first launch — what unflick is, the keys, and the CLI and MCP plugin.",
       "button": "Show it again"
+    },
+    "themeMidnight": "Midnight",
+    "themePurple": "Purple",
+    "screenshots": {
+      "section": "Screenshots",
+      "askEachTime": "Ask each time (default)",
+      "choose": "Choose…",
+      "clear": "Clear (back to dialog)",
+      "hint": "When set, screenshots save here automatically with the video name and timestamp. Leave empty to be asked each time."
+    },
+    "onlineSubs": {
+      "section": "Online Subtitles",
+      "keyLabel": "OpenSubtitles API Key",
+      "keySaved": "•••••••• (saved)",
+      "keyHintPrefix": "Your own free key from",
+      "keyHintSuffix": ". Downloads count against your personal daily allowance, so unflick doesn’t ship a shared one.",
+      "languagesLabel": "Preferred Languages",
+      "languagesHint": "Comma-separated codes, searched in order — e.g."
+    },
+    "network": {
+      "section": "Network",
+      "useSystemProxy": "Use system proxy",
+      "detected": "Detected:",
+      "none": "No system proxy is currently set. Streaming-site fetches will go direct.",
+      "hint": "When on, unflick reads your Windows proxy setting (Settings → Network → Proxy) automatically and uses it for YouTube/Bilibili extraction."
     }
   },
   "hotkeys": {

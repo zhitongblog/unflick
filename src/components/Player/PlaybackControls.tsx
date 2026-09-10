@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePlayerStore } from "../../stores/playerStore";
 import { usePlaylistStore } from "../../stores/playlistStore";
 import { formatSpeed } from "../../lib/format";
+import { useStrings } from "../../i18n/utils";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
@@ -70,6 +71,7 @@ export default function PlaybackControls() {
   const { state, speed, pause, resume, stop, play, file, setSpeed } = usePlayerStore();
   const { items: playlistItems, next: playlistNext, prev: playlistPrev } = usePlaylistStore();
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const t = useStrings();
 
   // Pull the mpv overlay out of the way when the speed picker is open
   // so it isn't hidden behind the video region.
@@ -121,7 +123,7 @@ export default function PlaybackControls() {
         className={iconBtnClass(state !== "stopped")}
         onClick={stop}
         disabled={state === "stopped"}
-        title="Stop"
+        title={t.player.stop}
       >
         <StopIcon />
       </button>
@@ -131,7 +133,7 @@ export default function PlaybackControls() {
         className={iconBtnClass(hasPlaylist)}
         disabled={!hasPlaylist}
         onClick={() => hasPlaylist && playlistPrev()}
-        title={hasPlaylist ? "Previous" : "No playlist"}
+        title={hasPlaylist ? t.player.previous : t.player.noPlaylist}
       >
         <PrevIcon />
       </button>
@@ -145,7 +147,7 @@ export default function PlaybackControls() {
         onClick={handlePlayPause}
         whileTap={{ scale: 0.88 }}
         whileHover={{ scale: 1.06 }}
-        title={state === "playing" ? "Pause" : "Play"}
+        title={state === "playing" ? t.player.pause : t.player.play}
       >
         {state === "playing" ? <PauseIcon /> : <PlayIcon />}
       </motion.button>
@@ -155,7 +157,7 @@ export default function PlaybackControls() {
         className={iconBtnClass(hasPlaylist)}
         disabled={!hasPlaylist}
         onClick={() => hasPlaylist && playlistNext()}
-        title={hasPlaylist ? "Next" : "No playlist"}
+        title={hasPlaylist ? t.player.next : t.player.noPlaylist}
       >
         <NextIcon />
       </button>
@@ -169,7 +171,7 @@ export default function PlaybackControls() {
               : "text-white/35 hover:text-white/60 hover:bg-white/5"
           }`}
           onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-          title="Playback speed"
+          title={t.player.speed}
         >
           {formatSpeed(speed)}
         </button>
@@ -239,7 +241,7 @@ export default function PlaybackControls() {
         className={`ml-0.5 ${iconBtnClass(state !== "stopped")}`}
         onClick={() => window.dispatchEvent(new CustomEvent("unflick:screenshot"))}
         disabled={state === "stopped"}
-        title="Screenshot (S)"
+        title={`${t.player.screenshot} (S)`}
       >
         <ScreenshotIcon />
       </button>

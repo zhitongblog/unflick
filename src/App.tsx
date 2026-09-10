@@ -1605,7 +1605,7 @@ useEffect(() => {
             right: showPlaylist ? 288 : 0,
             background: "transparent",
           }}
-          aria-label="video region"
+          aria-label={t.player.videoRegion}
         />
 
 
