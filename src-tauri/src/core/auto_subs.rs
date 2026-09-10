@@ -121,7 +121,7 @@ fn worth_looking_up(path: &str, enabled: bool, key_configured: bool) -> bool {
 /// given, and the same file reaches us as `D:\x\y.mkv` from a drag-drop
 /// and `D:/x/y.mkv` from the command line. A mismatch here would silently
 /// switch the feature off for one of the two.
-fn still_playing(player: &Player, path: &str) -> bool {
+pub(crate) fn still_playing(player: &Player, path: &str) -> bool {
     player
         .status()
         .file

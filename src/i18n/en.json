@@ -101,7 +101,10 @@
     "stylePosition": "Position",
     "styleColor": "Colour",
     "styleOutline": "Outline",
-    "styleBold": "Bold"
+    "styleBold": "Bold",
+    "bilingual": "Bilingual",
+    "bilingualHint": "Show the original and the translation together",
+    "secondLine": "2nd"
   },
   "audio": {
     "title": "Audio Track",

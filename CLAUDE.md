@@ -195,6 +195,12 @@ unflick subtitle auto [query] [--lang <codes>]     # search + download best matc
 unflick subtitle delay [<seconds>] [--relative]
 unflick subtitle style get
 unflick subtitle style set <scale|pos|color|border_size|bold> <value>
+# The original and a translation on screen together. Omit on|off to read
+# which two tracks are up, where the second line sits, and whether the two
+# are in sync. --primary / --secondary take a track id or a subtitle file,
+# which is loaded if it isn't already; with neither, the two are picked from
+# the track list using the UI locale and `subtitle_languages`.
+unflick subtitle bilingual [on|off] [--primary <id|file>] [--secondary <id|file>] [--layout stacked|top]
 
 # Audio
 unflick audio list
@@ -321,7 +327,8 @@ unflick --mcp                   # Start MCP server (stdio)
 | `library_scan` | Scan directory for media | `unflick library scan` |
 | `library_search` | Search media library | `unflick library search` |
 | `file_info` | Get media file metadata | `unflick info` |
-| `subtitle_delay` | Get/set subtitle timing offset | `unflick subtitle delay` |
+| `subtitle_delay` | Get/set subtitle timing offset (moves both lines together) | `unflick subtitle delay` |
+| `subtitle_bilingual` | Two subtitle tracks at once — original plus translation | `unflick subtitle bilingual` |
 | `audio_delay` | Get/set audio timing offset | `unflick audio delay` |
 | `chapter_list` / `chapter_seek` | Chapter navigation | `unflick chapter …` |
 | `ab_loop` | Repeat a section | `unflick loop …` |

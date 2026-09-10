@@ -101,7 +101,10 @@
     "stylePosition": "Position",
     "styleColor": "Farbe",
     "styleOutline": "Umrandung",
-    "styleBold": "Fett"
+    "styleBold": "Fett",
+    "bilingual": "Zweisprachig",
+    "bilingualHint": "Original und Übersetzung zusammen anzeigen",
+    "secondLine": "2."
   },
   "audio": {
     "title": "Tonspur",

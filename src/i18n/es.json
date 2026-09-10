@@ -101,7 +101,10 @@
     "stylePosition": "Posición",
     "styleColor": "Color",
     "styleOutline": "Contorno",
-    "styleBold": "Negrita"
+    "styleBold": "Negrita",
+    "bilingual": "Bilingüe",
+    "bilingualHint": "Mostrar el original y la traducción juntos",
+    "secondLine": "2.ª"
   },
   "audio": {
     "title": "Pista de audio",

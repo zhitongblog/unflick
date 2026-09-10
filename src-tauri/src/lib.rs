@@ -400,6 +400,8 @@ pub fn run() {
             commands::audio_delay,
             commands::subtitle_style_get,
             commands::subtitle_style_set,
+            // Track C — bilingual subtitles
+            commands::subtitle_bilingual,
             commands::chapter_list,
             commands::chapter_seek,
             commands::chapter_step,

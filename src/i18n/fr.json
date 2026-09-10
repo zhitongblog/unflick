@@ -101,7 +101,10 @@
     "stylePosition": "Position",
     "styleColor": "Couleur",
     "styleOutline": "Contour",
-    "styleBold": "Gras"
+    "styleBold": "Gras",
+    "bilingual": "Bilingue",
+    "bilingualHint": "Afficher l'original et la traduction ensemble",
+    "secondLine": "2e"
   },
   "audio": {
     "title": "Piste audio",

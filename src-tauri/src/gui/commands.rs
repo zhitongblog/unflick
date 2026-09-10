@@ -722,6 +722,10 @@ pub fn player_play(
     // URL by `arm_post_play_hooks`. The call returns immediately.
     if let Some(player_arc) = gui_player.render_player.get() {
         crate::core::auto_subs::after_play_file_hooks(player_arc.clone(), file.clone());
+        // Track C — bilingual subtitles: mpv drops the second line on every
+        // load, so a remembered preference is put back once the tracks for
+        // this file have turned up. Returns immediately.
+        crate::core::bilingual::after_play_hooks(player_arc.clone());
     }
     Ok(json!({"message": format!("playing {}", file)}))
 }
@@ -1917,6 +1921,31 @@ pub fn subtitle_style_set(
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
     player.set_subtitle_style(&name, &value).map_err(|e| e.to_string())?;
     Ok(player.subtitle_style())
+}
+
+// ─── Track C — bilingual subtitles ────────────────────────────────────────
+
+/// Show two subtitle tracks at once. Every argument is optional and no
+/// argument at all is a read, so the menu can use one command for both
+/// drawing the switch and flipping it.
+#[command]
+pub fn subtitle_bilingual(
+    enabled: Option<bool>,
+    primary: Option<Value>,
+    secondary: Option<Value>,
+    layout: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let mut args = json!({});
+    if let Some(v) = enabled { args["enabled"] = json!(v); }
+    if let Some(v) = primary { args["primary"] = v; }
+    if let Some(v) = secondary { args["secondary"] = v; }
+    if let Some(v) = layout { args["layout"] = json!(v); }
+    let (message, mut data) =
+        crate::core::bilingual::command(&player, &args).map_err(|e| e.to_string())?;
+    data["message"] = json!(message);
+    Ok(data)
 }
 
 #[command]
