@@ -67,7 +67,7 @@ function LibraryEntry({ entry, onPlay }: { entry: MediaEntry; onPlay: (path: str
 }
 
 export default function LibraryPanel() {
-  const { entries, searchQuery, isLoading, setSearchQuery, toggleLibrary, fetchLibrary, search, scanDirectory, clearLibrary } =
+  const { entries, searchQuery, isLoading, error, clearError, setSearchQuery, toggleLibrary, fetchLibrary, search, scanDirectory, clearLibrary } =
     useLibraryStore();
   const play = usePlayerStore((s) => s.play);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -146,9 +146,9 @@ export default function LibraryPanel() {
                     : "text-white/35 hover:bg-white/6 hover:text-white/60"
                 }`}
                 onClick={handleClear}
-                title={confirmClear ? "Click again to confirm" : t.library.clearAll}
+                title={confirmClear ? t.library.confirmHint : t.library.clearAll}
               >
-                {confirmClear ? "Confirm?" : t.common.clear}
+                {confirmClear ? t.library.confirm : t.common.clear}
               </button>
             )}
             <button
@@ -162,7 +162,7 @@ export default function LibraryPanel() {
             <button
               className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
               onClick={toggleLibrary}
-              title="Close (L)"
+              title={t.library.close}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -192,7 +192,64 @@ export default function LibraryPanel() {
             </div>
           )}
 
-          {!isLoading && entries.length === 0 && (
+          {/* A failed scan used to land on the empty state below, which
+              claims we looked and found nothing. Say what happened instead,
+              and keep the backend's own words for a bug report. */}
+          {error && (
+            <div className="mx-1 mb-2 rounded-lg border border-red-500/20 bg-red-500/6 px-3 py-2">
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 text-[11px] font-medium text-red-200/90">
+                  {t.library.errorTitle}
+                </p>
+                <button
+                  onClick={clearError}
+                  aria-label={t.openError.dismiss}
+                  className="flex-shrink-0 rounded px-1 text-[11px] leading-none text-white/25 transition-colors hover:text-white/60"
+                >
+                  ✕
+                </button>
+              </div>
+              <details className="mt-1 group">
+                <summary className="cursor-pointer select-none list-none text-[10px] text-white/25 transition-colors hover:text-white/50">
+                  {t.openError.details}
+                </summary>
+                <p className="mt-1 select-text break-words font-mono text-[10px] leading-relaxed text-white/40">
+                  {error}
+                </p>
+              </details>
+            </div>
+          )}
+
+          {/* Searching for something the library does not have is not the
+              same as having an empty library. Until now both rendered "your
+              library is empty — scan a folder", which told someone with 400
+              films that they had none. */}
+          {!isLoading && !error && entries.length === 0 && searchQuery.trim() !== "" && (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/10" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <p className="px-4 text-[12px] leading-relaxed text-white/25">
+                {t.library.noMatch.replace("{query}", searchQuery.trim())}
+              </p>
+              <button
+                className="rounded-lg bg-white/5 px-4 py-2 text-[11px] font-medium text-white/50 transition-colors hover:bg-white/8 hover:text-white/80"
+                onClick={() => handleSearch("")}
+              >
+                {t.library.clearSearch}
+              </button>
+              <button
+                className="text-[10.5px] text-white/25 underline decoration-white/15 underline-offset-2 transition-colors hover:text-white/50 disabled:opacity-40"
+                onClick={handleScanFolder}
+                disabled={isScanning}
+              >
+                {isScanning ? t.common.loading : t.library.scan}
+              </button>
+            </div>
+          )}
+
+          {!isLoading && !error && entries.length === 0 && searchQuery.trim() === "" && (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/10" strokeLinecap="round">
                 <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
@@ -200,7 +257,10 @@ export default function LibraryPanel() {
                 <line x1="17" y1="2" x2="17" y2="22" />
                 <line x1="2" y1="12" x2="22" y2="12" />
               </svg>
-              <p className="text-[12px] text-white/25">{t.library.empty}</p>
+              <p className="px-4 text-[12px] text-white/25">{t.library.empty}</p>
+              <p className="px-5 text-[10.5px] leading-relaxed text-white/20">
+                {t.library.emptyHint}
+              </p>
               <button
                 className="rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all hover:opacity-80 active:scale-95 disabled:opacity-40"
                 style={{ background: "linear-gradient(135deg, #7C3AED, #DB2777)" }}
@@ -209,6 +269,11 @@ export default function LibraryPanel() {
               >
                 {isScanning ? t.common.loading : t.library.scan}
               </button>
+              {/* The same thing from a terminal. Not translated: a command
+                  is not a sentence, and a translation can only break it. */}
+              <code className="select-text font-mono text-[10px] text-white/15">
+                unflick library scan &lt;folder&gt;
+              </code>
             </div>
           )}
 
@@ -221,7 +286,10 @@ export default function LibraryPanel() {
         {!isLoading && entries.length > 0 && (
           <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
             <p className="text-[10px] text-white/15 font-medium">
-              {entries.length} item{entries.length !== 1 ? "s" : ""}
+              {(entries.length === 1 ? t.library.itemsOne : t.library.items).replace(
+                "{count}",
+                String(entries.length),
+              )}
             </p>
           </div>
         )}

@@ -34,7 +34,8 @@
     "title": "把影片拖到這裡",
     "subtitle": "或點擊開啟檔案",
     "openFile": "開啟檔案",
-    "openUrl": "開啟 URL"
+    "openUrl": "開啟 URL",
+    "dropToPlay": "放開即播放"
   },
   "update": {
     "available": "可用",
@@ -51,7 +52,16 @@
     "scan": "掃描目錄",
     "empty": "媒體庫還是空的。掃描一個資料夾開始使用。",
     "clearAll": "全部清空",
-    "add": "新增"
+    "add": "新增",
+    "emptyHint": "掃描會讀取該資料夾及其所有子目錄。檔案不會被搬動。",
+    "noMatch": "媒體庫裡沒有符合「{query}」的內容。",
+    "clearSearch": "清除搜尋",
+    "errorTitle": "媒體庫讀取失敗。",
+    "confirm": "確認？",
+    "confirmHint": "再按一次確認",
+    "close": "關閉（L）",
+    "items": "{count} 項",
+    "itemsOne": "{count} 項"
   },
   "playlist": {
     "title": "播放列表",
@@ -65,7 +75,17 @@
     "repeatOff": "關閉",
     "repeatOne": "單一",
     "repeatAll": "全部",
-    "shuffle": "隨機"
+    "shuffle": "隨機",
+    "emptyTitle": "佇列是空的",
+    "emptyHint": "加入檔案，或一次拖進多個——第一個開始播放，其餘排進這裡。",
+    "close": "關閉（N）",
+    "items": "{count} 項",
+    "itemsOne": "{count} 項",
+    "addFailed": "無法把該檔案加入播放清單",
+    "removeFailed": "無法移除該項目",
+    "nextFailed": "無法跳到下一項",
+    "prevFailed": "無法跳到上一項",
+    "playFailed": "無法播放該項目"
   },
   "subtitle": {
     "title": "字幕",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "更新 yt-dlp",
     "extracting": "擷取串流位址中…",
     "cancel": "取消",
-    "qualityLabel": "優先畫質"
+    "qualityLabel": "優先畫質",
+    "inputPlaceholder": "https://…  或  已掛載共用上的路徑",
+    "directTitle": "直連影片檔",
+    "directBody": "MP4、WebM、MKV、M4V、MOV——貼上任意 HTTP/HTTPS 連結",
+    "streamTitle": "直播 / 隨選串流",
+    "streamBody": "HLS（.m3u8）與 MPEG-DASH（.mpd），直播和隨選都支援",
+    "sitesTitle": "串流網站",
+    "networkTitle": "網路共用",
+    "networkBody": "貼上已掛載共用的路徑：Windows 上是 \\\\伺服器\\共用\\影片.mkv，其他系統是 /Volumes/… 或 /mnt/…。不支援 smb:// 與 nfs:// 連結——請先掛載。",
+    "drmTitle": "受 DRM 保護",
+    "drmBody": "Netflix、Disney+、愛奇藝 VIP——無法播放",
+    "ytDlpMissingPrefix": "找不到 yt-dlp。請從",
+    "ytDlpMissingSuffix": "安裝並把它放進 PATH。",
+    "proxyActive": "代理已啟用："
   },
   "context": {
     "openFile": "開啟檔案…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "本機檔案需要 OpenSubtitles API 金鑰 —— 請在上方「線上字幕」中填寫。串流媒體網址不需要金鑰。",
       "languages": "語言（逗號分隔，例如 en,zh-CN）",
       "languagesHint": "點擊「儲存」後生效。"
+    },
+    "onboarding": {
+      "section": "歡迎畫面",
+      "body": "首次啟動時的那一頁介紹——unflick 是什麼、幾個快速鍵，以及 CLI 與 MCP 外掛。",
+      "button": "再看一次"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "正在刪除……",
     "done": "已釋放 {size}",
     "failed": "沒能全部刪除 —— 詳見日誌"
+  },
+  "onboarding": {
+    "tagline": "為人類與 AI 打造的影片播放器",
+    "what": "幾乎什麼都能開——本機檔案、已掛載的網路共用、串流連結。解碼交給 mpv，編解碼器不再是你的問題。",
+    "openFile": "開啟檔案",
+    "orDrop": "……或把檔案拖到視窗任一處",
+    "keysTitle": "先記住這三個鍵",
+    "keyPlayPause": "播放 / 暫停",
+    "keySeek": "快轉",
+    "keyFullscreen": "全螢幕",
+    "agentTitle": "沒有視窗它照樣能跑",
+    "agentBody": "unflick 內建命令列工具與 MCP 伺服器。這個視窗能做的事，指令稿或 AI 助手同樣做得到。",
+    "agentClaude": "在 Claude Code 裡，兩行就夠：",
+    "copy": "複製",
+    "copied": "已複製",
+    "copyManual": "選取上面兩行，按 ⌘C / Ctrl+C",
+    "skip": "略過",
+    "start": "開始觀看"
+  },
+  "home": {
+    "firstStepsTitle": "還沒有看過任何東西",
+    "firstStepsBody": "開啟一個檔案，或把它拖到這個視窗。看過的內容會出現在這裡，沒看完的會帶著上次的進度回來。",
+    "firstStepsHeadless": "unflick 也能從終端機和 Claude Code 驅動。",
+    "whatIsUnflick": "unflick 是什麼？"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick 無法開啟 {scheme}:// 連結",
+    "titleNetwork": "這個連結載入不了",
+    "titleYtdlp": "這個連結需要 yt-dlp",
+    "titleDrm": "這部影片受 DRM 保護",
+    "titleUnreadable": "這個檔案開不了",
+    "hintSmbWindows": "先在檔案總管裡對應或開啟共用，然後播放 UNC 路徑（\\\\伺服器\\共用\\影片.mkv）。",
+    "hintSmbMac": "先在 Finder 裡連線到伺服器，然後播放 /Volumes 底下的路徑。",
+    "hintSmbLinux": "先掛載共用（mount -t cifs），然後播放掛載後的路徑。",
+    "hintNfsWindows": "用「NFS 用戶端」掛載匯出目錄，然後播放對應磁碟機的路徑。",
+    "hintNfsMac": "在 Finder 裡或用 mount_nfs 掛載匯出目錄，然後播放 /Volumes 底下的路徑。",
+    "hintNfsLinux": "先掛載匯出目錄（mount -t nfs），然後播放掛載後的路徑。",
+    "hintSchemeOther": "此版本不支援該通訊協定。請改用本機路徑、已掛載的共用，或 http(s) 連結。",
+    "hintNetwork": "檢查一下連結和網路連線。有些站台也會拒絕瀏覽器以外的用戶端。",
+    "hintYtdlp": "安裝 yt-dlp 並確認它在 PATH 中，然後重試這個連結。",
+    "hintDrm": "Netflix、Disney+ 等受 DRM 保護的服務只能在它們自己的 App 裡播放。",
+    "hintUnreadable": "unflick 讀不到它。確認檔案還在，而且你有開啟它的權限。",
+    "details": "詳細資訊",
+    "openAnother": "開啟其他檔案",
+    "dismiss": "關閉"
+  },
+  "toast": {
+    "screenshotSaved": "已儲存：{name}",
+    "screenshotFailed": "螢幕擷取失敗：{error}",
+    "queued": "正在播放 {name}——另有 {count} 個已排入佇列",
+    "dismiss": "關閉"
+  },
+  "whisper": {
+    "generating": "正在產生字幕……（whisper，可能需要幾分鐘）",
+    "generated": "字幕已產生並載入",
+    "failed": "字幕產生失敗：{error}"
   }
 }

@@ -8,6 +8,7 @@ import {
 } from "../../stores/settingsStore";
 import { LOCALES, LOCALE_NAMES } from "../../i18n/config";
 import { useStrings } from "../../i18n/utils";
+import { SHOW_ONBOARDING_EVENT } from "../../lib/onboardingEvent";
 import Toggle, { ToggleTrack } from "../ui/Toggle";
 import KeybindSettings from "./KeybindSettings";
 import MouseSettings from "./MouseSettings";
@@ -355,6 +356,27 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               <p className="mt-2 text-[10px] leading-relaxed text-white/30">
                 {t.settings.fileAssoc.hint}
               </p>
+            </div>
+
+            {/* Welcome screen — the only way back to the first-run card
+                from inside the window. Also `unflick settings set
+                onboarding_seen false`, which is the same key. */}
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {t.settings.onboarding.section}
+              </p>
+              <p className="mb-3 text-[11px] leading-relaxed text-white/55">
+                {t.settings.onboarding.body}
+              </p>
+              <button
+                className="rounded-lg border border-white/10 bg-white/4 px-4 py-2 text-[11px] font-medium text-white hover:border-white/20 hover:bg-white/8 transition"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent(SHOW_ONBOARDING_EVENT));
+                  onClose();
+                }}
+              >
+                {t.settings.onboarding.button}
+              </button>
             </div>
 
             {/* Screenshots */}

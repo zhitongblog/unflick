@@ -34,7 +34,8 @@
     "title": "Drop a video here",
     "subtitle": "or click to open a file",
     "openFile": "Open file",
-    "openUrl": "Open URL"
+    "openUrl": "Open URL",
+    "dropToPlay": "Drop to play"
   },
   "update": {
     "available": "is available",
@@ -51,7 +52,16 @@
     "scan": "Scan a directory",
     "empty": "Your library is empty. Scan a folder to get started.",
     "clearAll": "Clear all",
-    "add": "Add"
+    "add": "Add",
+    "emptyHint": "Scanning reads the folder and everything inside it. Files stay where they are.",
+    "noMatch": "Nothing in the library matches “{query}”.",
+    "clearSearch": "Clear search",
+    "errorTitle": "The library could not be read.",
+    "confirm": "Confirm?",
+    "confirmHint": "Click again to confirm",
+    "close": "Close (L)",
+    "items": "{count} items",
+    "itemsOne": "{count} item"
   },
   "playlist": {
     "title": "Playlist",
@@ -65,7 +75,17 @@
     "repeatOff": "Off",
     "repeatOne": "One",
     "repeatAll": "All",
-    "shuffle": "Shuffle"
+    "shuffle": "Shuffle",
+    "emptyTitle": "Nothing queued",
+    "emptyHint": "Add files, or drop several onto the window at once — the first plays and the rest queue here.",
+    "close": "Close (N)",
+    "items": "{count} items",
+    "itemsOne": "{count} item",
+    "addFailed": "Could not add that file to the playlist",
+    "removeFailed": "Could not remove that entry",
+    "nextFailed": "Could not skip to the next item",
+    "prevFailed": "Could not skip to the previous item",
+    "playFailed": "Could not play that entry"
   },
   "subtitle": {
     "title": "Subtitles",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "Update yt-dlp",
     "extracting": "Extracting stream…",
     "cancel": "Cancel",
-    "qualityLabel": "Preferred quality"
+    "qualityLabel": "Preferred quality",
+    "inputPlaceholder": "https://…  or  a path on a mounted share",
+    "directTitle": "Direct video files",
+    "directBody": "MP4, WebM, MKV, M4V, MOV — paste any HTTP/HTTPS link",
+    "streamTitle": "Live / VOD streams",
+    "streamBody": "HLS (.m3u8) and MPEG-DASH (.mpd), live and on demand",
+    "sitesTitle": "Streaming sites",
+    "networkTitle": "Network shares",
+    "networkBody": "Paste a path to a mounted share: \\\\server\\share\\film.mkv on Windows, /Volumes/… or /mnt/… elsewhere. smb:// and nfs:// URLs are not supported — mount first.",
+    "drmTitle": "DRM-protected",
+    "drmBody": "Netflix, Disney+, iQIYI VIP — cannot be played",
+    "ytDlpMissingPrefix": "yt-dlp not found. Install it from",
+    "ytDlpMissingSuffix": "and put it on your PATH.",
+    "proxyActive": "Proxy active:"
   },
   "context": {
     "openFile": "Open file…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "Files on disk need an OpenSubtitles API key — set one under Online Subtitles above. Streaming URLs work without it.",
       "languages": "Languages (comma-separated, e.g. en,zh-CN)",
       "languagesHint": "Hit Save to apply."
+    },
+    "onboarding": {
+      "section": "Welcome screen",
+      "body": "The one-screen introduction from first launch — what unflick is, the keys, and the CLI and MCP plugin.",
+      "button": "Show it again"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "Removing…",
     "done": "Freed {size}",
     "failed": "Could not remove everything — see the log"
+  },
+  "onboarding": {
+    "tagline": "A video player for humans and AI",
+    "what": "Open almost anything — files on disk, mounted network shares, streaming links. mpv does the decoding, so codecs are not your problem.",
+    "openFile": "Open a file",
+    "orDrop": "…or drop one anywhere in this window",
+    "keysTitle": "Three keys worth knowing",
+    "keyPlayPause": "Play / pause",
+    "keySeek": "Skip forward",
+    "keyFullscreen": "Fullscreen",
+    "agentTitle": "It runs without the window, too",
+    "agentBody": "A command-line driver and an MCP server ship with unflick. Anything this window can do, a script or an AI agent can do as well.",
+    "agentClaude": "In Claude Code, two lines:",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyManual": "Select the lines above and press ⌘C / Ctrl+C",
+    "skip": "Skip",
+    "start": "Start watching"
+  },
+  "home": {
+    "firstStepsTitle": "Nothing watched yet",
+    "firstStepsBody": "Open a file, or drop one on this window. What you watch shows up here, and anything unfinished comes back with its resume point.",
+    "firstStepsHeadless": "unflick also runs from a terminal and from Claude Code.",
+    "whatIsUnflick": "What is unflick?"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick cannot open {scheme}:// links",
+    "titleNetwork": "That link would not load",
+    "titleYtdlp": "This link needs yt-dlp",
+    "titleDrm": "This video is DRM-protected",
+    "titleUnreadable": "That file would not open",
+    "hintSmbWindows": "Map or open the share in Explorer, then play the UNC path (\\\\server\\share\\file.mkv).",
+    "hintSmbMac": "Connect to the server in Finder, then play the path under /Volumes.",
+    "hintSmbLinux": "Mount the share (mount -t cifs), then play the mounted path.",
+    "hintNfsWindows": "Mount the export with Client for NFS, then play the mapped drive path.",
+    "hintNfsMac": "Mount the export in Finder or with mount_nfs, then play the path under /Volumes.",
+    "hintNfsLinux": "Mount the export (mount -t nfs), then play the mounted path.",
+    "hintSchemeOther": "This build has no support for that protocol. Play a local path, a mounted share, or an http(s) link.",
+    "hintNetwork": "Check the link and your connection. Some hosts also refuse anything that is not a browser.",
+    "hintYtdlp": "Install yt-dlp and make sure it is on your PATH, then try the link again.",
+    "hintDrm": "Netflix, Disney+ and other DRM-protected services only play inside their own apps.",
+    "hintUnreadable": "unflick could not read it. Check the file is still there and that you are allowed to open it.",
+    "details": "Details",
+    "openAnother": "Open another file",
+    "dismiss": "Dismiss"
+  },
+  "toast": {
+    "screenshotSaved": "Saved: {name}",
+    "screenshotFailed": "Screenshot failed: {error}",
+    "queued": "Playing {name} — {count} more queued",
+    "dismiss": "Dismiss"
+  },
+  "whisper": {
+    "generating": "Generating subtitles… (whisper, this can take several minutes)",
+    "generated": "Subtitles generated and loaded",
+    "failed": "Subtitle generation failed: {error}"
   }
 }

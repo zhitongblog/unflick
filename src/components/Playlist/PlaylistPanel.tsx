@@ -15,10 +15,12 @@ function PlaylistEntry({
   item,
   onPlay,
   onRemove,
+  removeLabel,
 }: {
   item: PlaylistItem;
   onPlay: (index: number) => void;
   onRemove: (index: number) => void;
+  removeLabel: string;
 }) {
   const displayTitle = item.title || extractFileName(item.path);
 
@@ -58,7 +60,8 @@ function PlaylistEntry({
       <button
         className="flex-shrink-0 rounded p-1 text-white/15 opacity-0 transition-all hover:bg-white/6 hover:text-white/40 group-hover:opacity-100"
         onClick={() => onRemove(item.index)}
-        title="Remove"
+        title={removeLabel}
+        aria-label={removeLabel}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </button>
@@ -109,7 +112,14 @@ export default function PlaylistPanel() {
         await add(p);
       }
     } catch (e) {
+      // The picker failing is rare, and a plus button that does nothing at
+      // all is exactly what it looked like before.
       console.error("Failed to open file dialog:", e);
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: { kind: "error", message: t.playlist.addFailed },
+        }),
+      );
     }
   };
 
@@ -159,7 +169,7 @@ export default function PlaylistPanel() {
             <button
               className="rounded-lg p-1 text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
               onClick={togglePlaylist}
-              title="Close (N)"
+              title={t.playlist.close}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -180,18 +190,31 @@ export default function PlaylistPanel() {
                 <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
                 <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
               </svg>
-              <p className="text-[12px] text-white/25">{t.playlist.empty}</p>
+              <p className="text-[12px] text-white/35">{t.playlist.emptyTitle}</p>
+              <p className="px-5 text-[10.5px] leading-relaxed text-white/20">
+                {t.playlist.emptyHint}
+              </p>
               <button
                 onClick={handleAddFile}
                 className="rounded-lg bg-white/5 px-4 py-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/8 hover:text-white/60"
               >
                 {t.playlist.addFile}
               </button>
+              {/* Untranslated on purpose — it is a command, not a sentence. */}
+              <code className="select-text font-mono text-[10px] text-white/15">
+                unflick playlist add &lt;file&gt;
+              </code>
             </div>
           )}
 
           {!isLoading && items.map((item) => (
-            <PlaylistEntry key={item.index} item={item} onPlay={handlePlayAt} onRemove={remove} />
+            <PlaylistEntry
+              key={item.index}
+              item={item}
+              onPlay={handlePlayAt}
+              onRemove={remove}
+              removeLabel={t.playlist.removeEntry}
+            />
           ))}
         </div>
 
@@ -204,7 +227,10 @@ export default function PlaylistPanel() {
             style={{ borderTop: "1px solid var(--border-subtle)" }}
           >
             <p className="text-[10px] text-white/15 font-medium">
-              {items.length} item{items.length !== 1 ? "s" : ""}
+              {(items.length === 1 ? t.playlist.itemsOne : t.playlist.items).replace(
+                "{count}",
+                String(items.length),
+              )}
             </p>
             <div className="flex items-center gap-1">
               <button

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { getStrings } from "../i18n/utils";
 
 export interface PlaylistItem {
   index: number;
@@ -37,6 +38,11 @@ interface PlaylistState {
  * console-only, which was survivable while `play` could not fail — now that
  * a dead share or a moved file comes back as an error, silence would look
  * like the button doing nothing.
+ *
+ * The fallback is a finished, translated sentence rather than a log prefix.
+ * It used to be one of the "Failed to skip to next:" strings below, so a
+ * rejection that carried no message rendered a toast ending in a colon and
+ * saying nothing at all.
  */
 function reportError(fallback: string, e: unknown) {
   const message = typeof e === "string" ? e : e instanceof Error ? e.message : fallback;
@@ -111,7 +117,8 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
       await invoke("playlist_add", { path });
       await get().fetchPlaylist();
     } catch (e) {
-      console.error("Failed to add to playlist:", e);
+      // Adding a file that has since moved used to look like a dead button.
+      reportError(getStrings().playlist.addFailed, e);
     }
   },
 
@@ -120,7 +127,7 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
       await invoke("playlist_remove", { index });
       await get().fetchPlaylist();
     } catch (e) {
-      console.error("Failed to remove from playlist:", e);
+      reportError(getStrings().playlist.removeFailed, e);
     }
   },
 
@@ -129,7 +136,7 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
       await invoke("playlist_next");
       await get().fetchPlaylist();
     } catch (e) {
-      reportError("Failed to skip to next:", e);
+      reportError(getStrings().playlist.nextFailed, e);
     }
   },
 
@@ -138,7 +145,7 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
       await invoke("playlist_prev");
       await get().fetchPlaylist();
     } catch (e) {
-      reportError("Failed to skip to prev:", e);
+      reportError(getStrings().playlist.prevFailed, e);
     }
   },
 
@@ -156,7 +163,7 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
       await invoke("playlist_play_index", { index });
       await get().fetchPlaylist();
     } catch (e) {
-      reportError("Failed to play at index:", e);
+      reportError(getStrings().playlist.playFailed, e);
     }
   },
 }));

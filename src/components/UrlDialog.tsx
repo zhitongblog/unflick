@@ -22,21 +22,13 @@ function addRecentUrl(url: string) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
-const SUPPORTED_DIRECT = "MP4, WebM, MKV, M4V, MOV — paste any HTTP/HTTPS link";
-const SUPPORTED_STREAMING = "HLS (.m3u8), MPEG-DASH (.mpd) live and VOD streams";
 // Pull the human-readable list from the canonical regex table so we never
 // drift between "what we recognise" and "what we tell users we recognise".
 // We append "+ 1500 more via yt-dlp" because yt-dlp's coverage is much
-// broader than our pretty-name list.
+// broader than our pretty-name list. Site names are proper nouns, so this
+// one line stays out of i18n while everything around it went in.
 const SUPPORTED_EXTRACT =
   STREAMING_SITES.map((s) => s.name).join(", ") + " + 1500 more (via yt-dlp)";
-const UNSUPPORTED = "Netflix, Disney+, iQIYI VIP — DRM-protected, cannot be played";
-// The box takes a path as readily as a URL, which is not obvious from a
-// field labelled "URL" — and a share is the one case where what people
-// naturally type (smb://) is the one form that does not work.
-const SUPPORTED_NETWORK =
-  String.raw`Paste a path to a mounted share: \\server\share\film.mkv on Windows, ` +
-  "/Volumes/… or /mnt/… elsewhere. smb:// and nfs:// URLs are not supported — mount first.";
 
 export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("");
@@ -76,28 +68,28 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const [played, setPlayed] = useState(false);
-
-  const handlePlay = () => {
+  /**
+   * Play, then decide whether to close — after `play` has settled, not
+   * before.
+   *
+   * The old version fired `play` and left the closing to an effect that ran
+   * on `[played, extracting, extractError, openError]`. For anything that
+   * does not go through yt-dlp — a share path, a direct .mp4, an smb:// URL
+   * — `extracting` is never set, so the first render after the click already
+   * satisfied the condition and closed the dialog before the failure came
+   * back. The inline error below was unreachable in exactly the case its own
+   * comment cites.
+   */
+  const handlePlay = async () => {
     const trimmed = url.trim();
     if (!trimmed) return;
     addRecentUrl(trimmed);
-    setPlayed(true);
     // Pass the dropdown's current value as a one-off override. "auto" is
     // forwarded as-is and resolves to "use yt-dlp default" downstream.
-    play(trimmed, quality);
-    // Don't close immediately — extraction may take a moment and we want to
-    // surface any error inline. Close once extraction completes successfully.
+    await play(trimmed, quality);
+    const settled = usePlayerStore.getState();
+    if (!settled.openError && !settled.extractError) onClose();
   };
-
-  // Close only after the user clicked Play AND extraction completed without
-  // error (or there was no extraction needed). This prevents the dialog from
-  // auto-closing the moment it opens while a video is already playing.
-  useEffect(() => {
-    if (played && extracting === null && !extractError && !openError) {
-      onClose();
-    }
-  }, [played, extracting, extractError, openError, onClose]);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
@@ -136,8 +128,8 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handlePlay(); }}
-              placeholder="https://...  or  a path on a mounted share"
+              onKeyDown={(e) => { if (e.key === "Enter") void handlePlay(); }}
+              placeholder={t.urlDialog.inputPlaceholder}
               disabled={extracting !== null}
               className="w-full rounded-lg border border-white/6 bg-white/4 px-3 py-2.5 text-[12px] text-white/70 outline-none transition-colors placeholder:text-white/15 focus:border-brand-purple/40 disabled:opacity-50"
             />
@@ -174,7 +166,6 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
                 className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10.5px] font-medium text-white/60 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white/85"
                 onClick={async () => {
                   try { await invoke("cancel_url_extraction"); } catch { /* ignore */ }
-                  setPlayed(false);
                   onClose();
                 }}
               >
@@ -202,39 +193,39 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
             </summary>
             <div className="mt-2 space-y-2 rounded-lg border border-white/6 bg-white/3 p-3 text-[10.5px] leading-relaxed">
               <div>
-                <span className="text-emerald-300/90">✓ Direct video files</span>
-                <p className="text-white/30 mt-0.5">{SUPPORTED_DIRECT}</p>
+                <span className="text-emerald-300/90">✓ {t.urlDialog.directTitle}</span>
+                <p className="text-white/30 mt-0.5">{t.urlDialog.directBody}</p>
               </div>
               <div>
-                <span className="text-emerald-300/90">✓ Live/VOD streams</span>
-                <p className="text-white/30 mt-0.5">{SUPPORTED_STREAMING}</p>
+                <span className="text-emerald-300/90">✓ {t.urlDialog.streamTitle}</span>
+                <p className="text-white/30 mt-0.5">{t.urlDialog.streamBody}</p>
               </div>
               <div>
                 <span className={ytDlpAvailable ? "text-emerald-300/90" : "text-amber-300/90"}>
-                  {ytDlpAvailable ? "✓" : "⚠"} Streaming sites
+                  {ytDlpAvailable ? "✓" : "⚠"} {t.urlDialog.sitesTitle}
                 </span>
                 <p className="text-white/30 mt-0.5">{SUPPORTED_EXTRACT}</p>
                 {ytDlpAvailable === false && (
                   <p className="mt-1 text-amber-300/70">
-                    yt-dlp not found. Install from{" "}
+                    {t.urlDialog.ytDlpMissingPrefix}{" "}
                     <a href="https://github.com/yt-dlp/yt-dlp/releases" target="_blank" rel="noreferrer" className="underline hover:text-amber-200">
                       github.com/yt-dlp/yt-dlp
                     </a>
-                    {" "}and place yt-dlp.exe on your PATH.
+                    {" "}{t.urlDialog.ytDlpMissingSuffix}
                   </p>
                 )}
               </div>
               <div>
-                <span className="text-emerald-300/90">✓ Network shares</span>
-                <p className="text-white/30 mt-0.5">{SUPPORTED_NETWORK}</p>
+                <span className="text-emerald-300/90">✓ {t.urlDialog.networkTitle}</span>
+                <p className="text-white/30 mt-0.5">{t.urlDialog.networkBody}</p>
               </div>
               <div>
-                <span className="text-red-400/80">✗ DRM-protected</span>
-                <p className="text-white/30 mt-0.5">{UNSUPPORTED}</p>
+                <span className="text-red-400/80">✗ {t.urlDialog.drmTitle}</span>
+                <p className="text-white/30 mt-0.5">{t.urlDialog.drmBody}</p>
               </div>
               {proxy && (
                 <div className="mt-3 pt-2 border-t border-white/6 text-white/35">
-                  <span className="text-brand-purple/80">Proxy active:</span> {proxy}
+                  <span className="text-brand-purple/80">{t.urlDialog.proxyActive}</span> {proxy}
                 </div>
               )}
             </div>
@@ -261,7 +252,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
           <button
             className="w-full rounded-xl py-2.5 text-[12px] font-semibold text-white transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ background: "linear-gradient(135deg, #7C3AED, #9333EA, #DB2777)" }}
-            onClick={handlePlay}
+            onClick={() => void handlePlay()}
             disabled={!url.trim() || extracting !== null}
           >
             {extracting ? t.urlDialog.resolving : t.urlDialog.play}

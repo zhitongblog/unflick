@@ -34,7 +34,8 @@
     "title": "把视频拖到这里",
     "subtitle": "或点击打开文件",
     "openFile": "打开文件",
-    "openUrl": "打开 URL"
+    "openUrl": "打开 URL",
+    "dropToPlay": "松手即播放"
   },
   "update": {
     "available": "可用",
@@ -51,7 +52,16 @@
     "scan": "扫描目录",
     "empty": "媒体库还是空的。扫描一个文件夹开始使用。",
     "clearAll": "全部清空",
-    "add": "添加"
+    "add": "添加",
+    "emptyHint": "扫描会读取该文件夹及其全部子目录。文件不会被移动。",
+    "noMatch": "媒体库里没有匹配“{query}”的内容。",
+    "clearSearch": "清除搜索",
+    "errorTitle": "媒体库读取失败。",
+    "confirm": "确认？",
+    "confirmHint": "再点一次确认",
+    "close": "关闭（L）",
+    "items": "{count} 项",
+    "itemsOne": "{count} 项"
   },
   "playlist": {
     "title": "播放列表",
@@ -65,7 +75,17 @@
     "repeatOff": "关闭",
     "repeatOne": "单个",
     "repeatAll": "全部",
-    "shuffle": "随机"
+    "shuffle": "随机",
+    "emptyTitle": "队列是空的",
+    "emptyHint": "添加文件，或一次拖入多个——第一个开始播放，其余排进这里。",
+    "close": "关闭（N）",
+    "items": "{count} 项",
+    "itemsOne": "{count} 项",
+    "addFailed": "无法把该文件加入播放列表",
+    "removeFailed": "无法移除该条目",
+    "nextFailed": "无法跳到下一项",
+    "prevFailed": "无法跳到上一项",
+    "playFailed": "无法播放该条目"
   },
   "subtitle": {
     "title": "字幕",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "更新 yt-dlp",
     "extracting": "提取流地址中…",
     "cancel": "取消",
-    "qualityLabel": "首选画质"
+    "qualityLabel": "首选画质",
+    "inputPlaceholder": "https://…  或  已挂载共享上的路径",
+    "directTitle": "直链视频文件",
+    "directBody": "MP4、WebM、MKV、M4V、MOV——粘贴任意 HTTP/HTTPS 链接",
+    "streamTitle": "直播 / 点播流",
+    "streamBody": "HLS（.m3u8）与 MPEG-DASH（.mpd），直播和点播都支持",
+    "sitesTitle": "流媒体站点",
+    "networkTitle": "网络共享",
+    "networkBody": "粘贴已挂载共享的路径：Windows 上是 \\\\服务器\\共享\\影片.mkv，其他系统是 /Volumes/… 或 /mnt/…。不支持 smb:// 和 nfs:// 链接——请先挂载。",
+    "drmTitle": "受 DRM 保护",
+    "drmBody": "Netflix、Disney+、爱奇艺 VIP——无法播放",
+    "ytDlpMissingPrefix": "未找到 yt-dlp。请从",
+    "ytDlpMissingSuffix": "安装并把它放进 PATH。",
+    "proxyActive": "代理已启用："
   },
   "context": {
     "openFile": "打开文件…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "本地文件需要 OpenSubtitles API 密钥 —— 请在上方“在线字幕”中填写。流媒体地址无需密钥。",
       "languages": "语言（逗号分隔，例如 en,zh-CN）",
       "languagesHint": "点击“保存”后生效。"
+    },
+    "onboarding": {
+      "section": "欢迎界面",
+      "body": "首次启动时那一屏介绍——unflick 是什么、几个快捷键，以及 CLI 和 MCP 插件。",
+      "button": "再看一次"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "正在删除……",
     "done": "已释放 {size}",
     "failed": "没能全部删除 —— 详见日志"
+  },
+  "onboarding": {
+    "tagline": "为人类和 AI 打造的视频播放器",
+    "what": "几乎什么都能打开——本地文件、已挂载的网络共享、串流链接。解码交给 mpv，编解码器不再是你的问题。",
+    "openFile": "打开文件",
+    "orDrop": "……或把文件拖到窗口任意位置",
+    "keysTitle": "先记住这三个键",
+    "keyPlayPause": "播放 / 暂停",
+    "keySeek": "快进",
+    "keyFullscreen": "全屏",
+    "agentTitle": "没有窗口时它照样能跑",
+    "agentBody": "unflick 自带命令行工具和 MCP 服务器。这个窗口能做的事，脚本或 AI 助手同样能做。",
+    "agentClaude": "在 Claude Code 里，两行就够：",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyManual": "选中上面两行，按 ⌘C / Ctrl+C",
+    "skip": "跳过",
+    "start": "开始观看"
+  },
+  "home": {
+    "firstStepsTitle": "还没有看过任何东西",
+    "firstStepsBody": "打开一个文件，或把它拖到这个窗口。看过的内容会出现在这里，没看完的会带着上次的进度回来。",
+    "firstStepsHeadless": "unflick 也可以从终端和 Claude Code 里驱动。",
+    "whatIsUnflick": "unflick 是什么？"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick 无法打开 {scheme}:// 链接",
+    "titleNetwork": "这个链接加载不了",
+    "titleYtdlp": "这个链接需要 yt-dlp",
+    "titleDrm": "这个视频受 DRM 保护",
+    "titleUnreadable": "这个文件打不开",
+    "hintSmbWindows": "先在资源管理器里映射或打开共享，然后播放 UNC 路径（\\\\服务器\\共享\\影片.mkv）。",
+    "hintSmbMac": "先在访达里连接服务器，然后播放 /Volumes 下的路径。",
+    "hintSmbLinux": "先挂载共享（mount -t cifs），然后播放挂载后的路径。",
+    "hintNfsWindows": "用“NFS 客户端”挂载导出目录，然后播放映射盘符下的路径。",
+    "hintNfsMac": "在访达里或用 mount_nfs 挂载导出目录，然后播放 /Volumes 下的路径。",
+    "hintNfsLinux": "先挂载导出目录（mount -t nfs），然后播放挂载后的路径。",
+    "hintSchemeOther": "此版本不支持该协议。请改用本地路径、已挂载的共享，或 http(s) 链接。",
+    "hintNetwork": "检查一下链接和网络连接。有些站点也会拒绝浏览器以外的客户端。",
+    "hintYtdlp": "安装 yt-dlp 并确认它在 PATH 中，然后重试这个链接。",
+    "hintDrm": "Netflix、Disney+ 等受 DRM 保护的服务只能在它们自己的应用里播放。",
+    "hintUnreadable": "unflick 读不到它。确认文件还在，并且你有打开它的权限。",
+    "details": "详细信息",
+    "openAnother": "打开另一个文件",
+    "dismiss": "关闭"
+  },
+  "toast": {
+    "screenshotSaved": "已保存：{name}",
+    "screenshotFailed": "截图失败：{error}",
+    "queued": "正在播放 {name}——另有 {count} 个已排队",
+    "dismiss": "关闭"
+  },
+  "whisper": {
+    "generating": "正在生成字幕……（whisper，可能需要几分钟）",
+    "generated": "字幕已生成并加载",
+    "failed": "字幕生成失败：{error}"
   }
 }

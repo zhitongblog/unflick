@@ -15,6 +15,9 @@ import OnlineSubtitles from "./components/OnlineSubtitles";
 import { FIND_SUBTITLES_EVENT } from "./lib/subtitleSearch";
 import RecentFiles from "./components/RecentFiles";
 import ResumeCard from "./components/ResumeCard";
+import FirstStepsCard from "./components/Home/FirstStepsCard";
+import OpenErrorCard from "./components/OpenErrorCard";
+import WelcomeCard from "./components/Onboarding/WelcomeCard";
 import SettingsPanel from "./components/Settings/SettingsPanel";
 import { usePlayerStore, type BackendStatus } from "./stores/playerStore";
 import { useKeybindStore } from "./stores/keybindStore";
@@ -27,7 +30,12 @@ import { checkForUpdate, type UpdateResult } from "./lib/checkUpdate";
 import { formatDelay, formatSpeed, formatTime } from "./lib/format";
 import { eventToKey } from "./lib/keys";
 import { createGestureTracker, createWheelAccumulator } from "./lib/gesture";
-import { useStrings } from "./i18n/utils";
+import { shouldShowOnboarding } from "./lib/onboarding";
+import { SHOW_ONBOARDING_EVENT } from "./lib/onboardingEvent";
+import { getStrings, useStrings } from "./i18n/utils";
+
+/** Either path separator, so a Windows path yields its file name too. */
+const SEP_RE = /[\\/]/;
 
 /**
  * Fire a transient toast through the app's toast bus. Hotkeys that change
@@ -71,6 +79,8 @@ function App() {
   const { showLibrary, toggleLibrary } = useLibraryStore();
   const { showPlaylist, togglePlaylist } = usePlaylistStore();
   const { showSettings, toggleSettings, loadSettings, theme } = useSettingsStore();
+  const settingsLoaded = useSettingsStore((s) => s.settingsLoaded);
+  const onboardingSeen = useSettingsStore((s) => s.onboardingSeen);
   const musicModeAuto = useSettingsStore((s) => s.musicModeAuto);
   const incognito = useIncognitoStore((s) => s.enabled);
   const toggleIncognito = useIncognitoStore((s) => s.toggle);
@@ -92,6 +102,24 @@ function App() {
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [showOnlineSubtitles, setShowOnlineSubtitles] = useState(false);
+  /**
+   * Dismissed in this run. Separate from the persisted flag because the
+   * write can fail, and a welcome screen that comes back ten seconds after
+   * you closed it is worse than one that shows up again next launch.
+   */
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+
+  // Asked for again — from the idle screen's "What is unflick?" or the
+  // Settings row. Both clear the persisted flag as well, so the gate below
+  // lets it back on screen.
+  useEffect(() => {
+    const reopen = () => {
+      setOnboardingDismissed(false);
+      void useSettingsStore.getState().resetOnboarding();
+    };
+    window.addEventListener(SHOW_ONBOARDING_EVENT, reopen);
+    return () => window.removeEventListener(SHOW_ONBOARDING_EVENT, reopen);
+  }, []);
 
   // Opened from the subtitle menu (React popover on macOS/Linux, native menu
   // on Windows) - see lib/subtitleSearch.ts for why this is an event.
@@ -457,6 +485,19 @@ function App() {
     if (path) play(path);
   }, [play]);
 
+  const showOnboarding = shouldShowOnboarding({
+    settingsLoaded,
+    onboardingSeen,
+    dismissedThisSession: onboardingDismissed,
+    playerState: state,
+    modalOpen: showSettings || showUrlDialog || showClipDialog || showOnlineSubtitles,
+  });
+
+  const dismissOnboarding = useCallback(() => {
+    setOnboardingDismissed(true);
+    useSettingsStore.getState().markOnboardingSeen();
+  }, []);
+
   const handleAddFilesToPlaylist = useCallback(async () => {
     const result = await invoke<{ paths: string[] }>("open_files_dialog");
     if (!result.paths.length) return;
@@ -493,7 +534,10 @@ function App() {
         await invoke("player_screenshot", { output: fullPath });
         window.dispatchEvent(
           new CustomEvent("unflick:toast", {
-            detail: { kind: "success", message: `Saved: ${defaultName}` },
+            detail: {
+              kind: "success",
+              message: getStrings().toast.screenshotSaved.replace("{name}", defaultName),
+            },
           }),
         );
         return;
@@ -517,14 +561,20 @@ function App() {
         });
         window.dispatchEvent(
           new CustomEvent("unflick:toast", {
-            detail: { kind: "success", message: `Saved: ${resp.path}` },
+            detail: {
+              kind: "success",
+              message: getStrings().toast.screenshotSaved.replace("{name}", resp.path),
+            },
           }),
         );
       } catch (e) {
         console.error("linux screenshot failed:", e);
         window.dispatchEvent(
           new CustomEvent("unflick:toast", {
-            detail: { kind: "error", message: `Screenshot failed: ${e}` },
+            detail: {
+              kind: "error",
+              message: getStrings().toast.screenshotFailed.replace("{error}", String(e)),
+            },
           }),
         );
       }
@@ -763,6 +813,11 @@ function App() {
         return;
       }
 
+      // The welcome card owns the screen while it is up, including Escape,
+      // which it handles itself. Letting a bare `f` or `l` through would
+      // fullscreen the window or slide out the library behind it.
+      if (showOnboarding) return;
+
       // Escape stays hardcoded: it means "dismiss what's open", which is a
       // UI convention rather than a player action. Rebinding it would leave
       // dialogs with no way out.
@@ -786,7 +841,7 @@ function App() {
       e.preventDefault();
       run();
     },
-    [actions, showClipDialog, showUrlDialog, showOnlineSubtitles],
+    [actions, showClipDialog, showUrlDialog, showOnlineSubtitles, showOnboarding],
   );
 
   // Initialize mpv player on mount and load persisted settings
@@ -828,7 +883,11 @@ function App() {
       .then((opened) => {
         if (!opened) return;
         if (opened.error) {
-          usePlayerStore.setState({ openError: opened.error, state: "stopped" });
+          usePlayerStore.setState({
+            openError: opened.error,
+            openErrorTarget: opened.path,
+            state: "stopped",
+          });
           window.dispatchEvent(
             new CustomEvent("unflick:toast", {
               detail: { kind: "error", message: opened.error },
@@ -924,17 +983,20 @@ useEffect(() => {
   }, [captureScreenshot]);
 
   // Toast bus — any component can dispatch `unflick:toast` with a payload
-  // and we'll render it bottom-center for ~2.5s. Used for silent screenshot
-  // confirmation today; reusable for other quiet-action feedback later.
+  // and we'll render it bottom-center. A confirmation has been read by the
+  // time it fades; a failure has not. 2.5s was long enough for "Saved:
+  // frame.png" and far too short for a path that would not open, so errors
+  // get 6s and a click to close.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ kind?: "success" | "error"; message: string }>).detail;
       if (!detail?.message) return;
       const id = Date.now();
-      setToast({ id, kind: detail.kind ?? "success", message: detail.message });
+      const kind = detail.kind ?? "success";
+      setToast({ id, kind, message: detail.message });
       setTimeout(() => {
         setToast((cur) => (cur && cur.id === id ? null : cur));
-      }, 2500);
+      }, kind === "error" ? 6000 : 2500);
     };
     window.addEventListener("unflick:toast", handler);
     return () => window.removeEventListener("unflick:toast", handler);
@@ -1034,8 +1096,24 @@ useEffect(() => {
       } else if (event.payload.type === "drop") {
         setIsDragging(false);
         const paths = event.payload.paths;
-        if (paths.length > 0) {
-          play(paths[0]);
+        if (paths.length === 0) return;
+        play(paths[0]);
+        // Dropping a season's worth of episodes used to play the first and
+        // discard the other eleven without a word. Queue them, and say so —
+        // silence here reads as files that vanished.
+        if (paths.length > 1) {
+          const { add } = usePlaylistStore.getState();
+          void (async () => {
+            for (const extra of paths.slice(1)) {
+              await add(extra);
+            }
+          })();
+          const name = paths[0].split(SEP_RE).pop() ?? paths[0];
+          showToast(
+            getStrings()
+              .toast.queued.replace("{name}", name)
+              .replace("{count}", String(paths.length - 1)),
+          );
         }
       }
     });
@@ -1211,7 +1289,7 @@ useEffect(() => {
             </button>
             <button
               type="button"
-              aria-label="Dismiss"
+              aria-label={t.toast.dismiss}
               onClick={() => {
                 if (updateInfo.latest) {
                   localStorage.setItem("update-dismissed-version", updateInfo.latest);
@@ -1250,27 +1328,29 @@ useEffect(() => {
             {genStatus.kind === "running" && (
               <>
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                <span>Generating subtitles… (whisper, may take several minutes)</span>
+                <span>{t.whisper.generating}</span>
               </>
             )}
             {genStatus.kind === "success" && (
               <>
                 <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 0 1 1.4-1.4L8.5 12 15.3 5.3a1 1 0 0 1 1.4 0z"/></svg>
-                <span>Subtitles generated and loaded</span>
+                <span>{t.whisper.generated}</span>
               </>
             )}
             {genStatus.kind === "error" && (
               <>
                 <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 4v5h2V6H9zm0 7v2h2v-2H9z"/></svg>
                 <span className="truncate">
-                  Subtitle generation failed:{" "}
-                  {genStatus.message.length > 100
-                    ? genStatus.message.slice(0, 100) + "…"
-                    : genStatus.message}
+                  {t.whisper.failed.replace(
+                    "{error}",
+                    genStatus.message.length > 100
+                      ? genStatus.message.slice(0, 100) + "…"
+                      : genStatus.message,
+                  )}
                 </span>
                 <button
                   type="button"
-                  aria-label="Dismiss"
+                  aria-label={t.toast.dismiss}
                   onClick={() => setGenStatus(null)}
                   className="ml-auto text-white/70 hover:text-white"
                 >
@@ -1312,7 +1392,7 @@ useEffect(() => {
             </button>
             <button
               type="button"
-              aria-label="Dismiss"
+              aria-label={t.toast.dismiss}
               onClick={() => {
                 localStorage.setItem("default-prompt-dismissed", "1");
                 setShowDefaultPrompt(false);
@@ -1414,7 +1494,7 @@ useEffect(() => {
             >
               <div className="gradient-border rounded-2xl px-12 py-8">
                 <p className="idle-title text-xl font-bold">
-                  Drop to play
+                  {t.dropZone.dropToPlay}
                 </p>
               </div>
             </motion.div>
@@ -1481,16 +1561,29 @@ useEffect(() => {
               <p className="idle-fade-in-delay text-[13px] font-normal tracking-wide text-white/25">
                 {t.dropZone.title} · {t.dropZone.subtitle}
               </p>
-              <button
-                onClick={handleOpenFile}
-                className="idle-open-btn idle-fade-in-delay-2 mt-1 rounded-xl px-8 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 active:scale-95"
-                style={{ background: "linear-gradient(135deg, #7C3AED, #9333EA, #DB2777)" }}
-              >
-                {t.dropZone.openFile}
-              </button>
+              <div className="idle-fade-in-delay-2 mt-1 flex items-center gap-2">
+                <button
+                  onClick={handleOpenFile}
+                  className="idle-open-btn rounded-xl px-8 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #9333EA, #DB2777)" }}
+                >
+                  {t.dropZone.openFile}
+                </button>
+                {/* `dropZone.openUrl` has existed in all eight locales since
+                    the dialog shipped and was referenced nowhere: the dialog
+                    was reachable only by Mod+U or the right-click menu. */}
+                <button
+                  onClick={() => setShowUrlDialog(true)}
+                  className="rounded-xl border border-white/10 bg-white/4 px-5 py-2.5 text-[13px] font-medium text-white/50 transition-colors hover:border-white/20 hover:bg-white/8 hover:text-white/80"
+                >
+                  {t.dropZone.openUrl}
+                </button>
+              </div>
 
+              <OpenErrorCard onOpenFile={handleOpenFile} />
               <ResumeCard />
               <RecentFiles />
+              <FirstStepsCard />
             </div>
           </div>
         )}
@@ -1533,6 +1626,29 @@ useEffect(() => {
         <SettingsPanel onClose={toggleSettings} />
       )}
 
+      {/* First run. The gate is in lib/onboarding.ts — every clause in it is
+          a way this card can be wrong that is cheap to assert and expensive
+          to notice.
+
+          Deliberately not wrapped in AnimatePresence. With the framer-motion
+          this project pins, an AnimatePresence child runs its exit animation
+          and is then never removed from the DOM — reproducible in a thirty-
+          line page with no app code in it, and visible here today in the
+          update banner, which keeps its layout height after being dismissed.
+          Cosmetic for a banner; not cosmetic for a full-screen `inset-0`
+          overlay, which would go invisible and swallow every click in the
+          window. So this one enters with an animation and leaves without
+          one. */}
+      {showOnboarding && (
+        <WelcomeCard
+          onOpenFile={() => {
+            dismissOnboarding();
+            void handleOpenFile();
+          }}
+          onDismiss={dismissOnboarding}
+        />
+      )}
+
       {/* Toast — bottom-center, auto-dismiss. Used for silent-action feedback
           (currently silent screenshot confirmation). */}
       <AnimatePresence>
@@ -1545,11 +1661,17 @@ useEffect(() => {
             transition={{ duration: 0.18 }}
             className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-50"
           >
-            <div className={`pointer-events-auto rounded-xl border px-4 py-2.5 text-sm font-medium shadow-2xl backdrop-blur-md ${
-              toast.kind === "error"
-                ? "border-red-500/30 bg-red-950/70 text-red-100"
-                : "border-white/10 bg-zinc-900/90 text-white"
-            }`}>
+            <div
+              role="button"
+              tabIndex={0}
+              title={t.toast.dismiss}
+              onClick={() => setToast(null)}
+              className={`pointer-events-auto cursor-pointer rounded-xl border px-4 py-2.5 text-sm font-medium shadow-2xl backdrop-blur-md ${
+                toast.kind === "error"
+                  ? "border-red-500/30 bg-red-950/70 text-red-100"
+                  : "border-white/10 bg-zinc-900/90 text-white"
+              }`}
+            >
               {toast.message}
             </div>
           </motion.div>

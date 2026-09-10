@@ -34,7 +34,8 @@
     "title": "ここに動画をドロップ",
     "subtitle": "またはクリックしてファイルを選択",
     "openFile": "ファイルを開く",
-    "openUrl": "URL を開く"
+    "openUrl": "URL を開く",
+    "dropToPlay": "ドロップで再生"
   },
   "update": {
     "available": "が利用可能",
@@ -51,7 +52,16 @@
     "scan": "ディレクトリをスキャン",
     "empty": "ライブラリは空です。フォルダをスキャンして始めましょう。",
     "clearAll": "すべてクリア",
-    "add": "追加"
+    "add": "追加",
+    "emptyHint": "スキャンはそのフォルダーと中身をすべて読み取ります。ファイルは移動しません。",
+    "noMatch": "ライブラリに「{query}」に一致するものはありません。",
+    "clearSearch": "検索をクリア",
+    "errorTitle": "ライブラリを読み込めませんでした。",
+    "confirm": "本当に？",
+    "confirmHint": "もう一度クリックで確定",
+    "close": "閉じる（L）",
+    "items": "{count} 件",
+    "itemsOne": "{count} 件"
   },
   "playlist": {
     "title": "プレイリスト",
@@ -65,7 +75,17 @@
     "repeatOff": "オフ",
     "repeatOne": "1件",
     "repeatAll": "すべて",
-    "shuffle": "シャッフル"
+    "shuffle": "シャッフル",
+    "emptyTitle": "キューは空です",
+    "emptyHint": "ファイルを追加するか、まとめてウィンドウにドロップしてください。最初の 1 つが再生され、残りがここに並びます。",
+    "close": "閉じる（N）",
+    "items": "{count} 件",
+    "itemsOne": "{count} 件",
+    "addFailed": "そのファイルをプレイリストに追加できませんでした",
+    "removeFailed": "その項目を削除できませんでした",
+    "nextFailed": "次の項目に進めませんでした",
+    "prevFailed": "前の項目に戻れませんでした",
+    "playFailed": "その項目を再生できませんでした"
   },
   "subtitle": {
     "title": "字幕",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "yt-dlp を更新",
     "extracting": "ストリーム URL を取得中…",
     "cancel": "キャンセル",
-    "qualityLabel": "優先画質"
+    "qualityLabel": "優先画質",
+    "inputPlaceholder": "https://…  または  マウント済み共有上のパス",
+    "directTitle": "動画ファイルへの直リンク",
+    "directBody": "MP4、WebM、MKV、M4V、MOV — HTTP/HTTPS のリンクをそのまま貼り付け",
+    "streamTitle": "ライブ / VOD ストリーム",
+    "streamBody": "HLS（.m3u8）と MPEG-DASH（.mpd）、ライブもオンデマンドも",
+    "sitesTitle": "動画サイト",
+    "networkTitle": "ネットワーク共有",
+    "networkBody": "マウント済み共有のパスを貼り付けてください。Windows なら \\\\サーバー\\共有\\映画.mkv、それ以外は /Volumes/… や /mnt/… です。smb:// と nfs:// のリンクには対応していません — 先にマウントしてください。",
+    "drmTitle": "DRM 保護あり",
+    "drmBody": "Netflix、Disney+、iQIYI VIP — 再生できません",
+    "ytDlpMissingPrefix": "yt-dlp が見つかりません。",
+    "ytDlpMissingSuffix": "からインストールし、PATH に置いてください。",
+    "proxyActive": "プロキシ有効："
   },
   "context": {
     "openFile": "ファイルを開く…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "ローカルファイルには OpenSubtitles の API キーが必要です — 上の「オンライン字幕」で設定してください。ストリーミング URL はキーなしで動作します。",
       "languages": "言語（カンマ区切り、例: en,zh-CN）",
       "languagesHint": "「保存」を押すと反映されます。"
+    },
+    "onboarding": {
+      "section": "ようこそ画面",
+      "body": "初回起動時に表示される 1 画面の紹介 — unflick とは何か、キー操作、そして CLI と MCP プラグイン。",
+      "button": "もう一度表示"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "削除中……",
     "done": "{size} を解放しました",
     "failed": "すべては削除できませんでした — ログを確認してください"
+  },
+  "onboarding": {
+    "tagline": "人と AI のための動画プレーヤー",
+    "what": "ほぼ何でも開けます — ローカルのファイル、マウント済みのネットワーク共有、ストリーミングのリンク。デコードは mpv が担当するので、コーデックで悩むことはありません。",
+    "openFile": "ファイルを開く",
+    "orDrop": "…またはウィンドウのどこかにドロップ",
+    "keysTitle": "まず覚える 3 つのキー",
+    "keyPlayPause": "再生 / 一時停止",
+    "keySeek": "早送り",
+    "keyFullscreen": "全画面",
+    "agentTitle": "ウィンドウがなくても動きます",
+    "agentBody": "unflick にはコマンドライン版と MCP サーバーが同梱されています。このウィンドウでできることは、スクリプトや AI エージェントからも同じようにできます。",
+    "agentClaude": "Claude Code なら 2 行だけ：",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "copyManual": "上の 2 行を選択して ⌘C / Ctrl+C を押してください",
+    "skip": "スキップ",
+    "start": "見はじめる"
+  },
+  "home": {
+    "firstStepsTitle": "まだ何も再生していません",
+    "firstStepsBody": "ファイルを開くか、このウィンドウにドロップしてください。再生したものはここに並び、途中のものは続きから開けます。",
+    "firstStepsHeadless": "unflick はターミナルからも Claude Code からも操作できます。",
+    "whatIsUnflick": "unflick とは？"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick は {scheme}:// のリンクを開けません",
+    "titleNetwork": "このリンクを読み込めませんでした",
+    "titleYtdlp": "このリンクには yt-dlp が必要です",
+    "titleDrm": "この動画は DRM で保護されています",
+    "titleUnreadable": "このファイルを開けませんでした",
+    "hintSmbWindows": "エクスプローラーで共有を割り当てるか開いてから、UNC パス（\\\\サーバー\\共有\\映画.mkv）を再生してください。",
+    "hintSmbMac": "Finder でサーバーに接続してから、/Volumes 以下のパスを再生してください。",
+    "hintSmbLinux": "共有をマウント（mount -t cifs）してから、マウント先のパスを再生してください。",
+    "hintNfsWindows": "NFS 用クライアントでエクスポートをマウントし、割り当てたドライブのパスを再生してください。",
+    "hintNfsMac": "Finder か mount_nfs でエクスポートをマウントし、/Volumes 以下のパスを再生してください。",
+    "hintNfsLinux": "エクスポートをマウント（mount -t nfs）してから、マウント先のパスを再生してください。",
+    "hintSchemeOther": "このビルドはそのプロトコルに対応していません。ローカルのパス、マウント済みの共有、または http(s) のリンクをお使いください。",
+    "hintNetwork": "リンクと接続を確認してください。ブラウザー以外を拒否するサイトもあります。",
+    "hintYtdlp": "yt-dlp をインストールし、PATH に入っていることを確認してから、もう一度お試しください。",
+    "hintDrm": "Netflix や Disney+ など DRM で保護されたサービスは、それぞれの公式アプリでしか再生できません。",
+    "hintUnreadable": "unflick から読み取れませんでした。ファイルがまだあるか、開く権限があるかを確認してください。",
+    "details": "詳細",
+    "openAnother": "別のファイルを開く",
+    "dismiss": "閉じる"
+  },
+  "toast": {
+    "screenshotSaved": "保存しました：{name}",
+    "screenshotFailed": "スクリーンショットに失敗しました：{error}",
+    "queued": "{name} を再生中 — 他に {count} 件をキューに追加しました",
+    "dismiss": "閉じる"
+  },
+  "whisper": {
+    "generating": "字幕を生成しています…（whisper、数分かかることがあります）",
+    "generated": "字幕を生成して読み込みました",
+    "failed": "字幕の生成に失敗しました：{error}"
   }
 }

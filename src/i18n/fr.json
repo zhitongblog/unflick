@@ -34,7 +34,8 @@
     "title": "Dépose une vidéo ici",
     "subtitle": "ou clique pour ouvrir un fichier",
     "openFile": "Ouvrir un fichier",
-    "openUrl": "Ouvrir une URL"
+    "openUrl": "Ouvrir une URL",
+    "dropToPlay": "Déposez pour lire"
   },
   "update": {
     "available": "est disponible",
@@ -51,7 +52,16 @@
     "scan": "Scanner un dossier",
     "empty": "Ta bibliothèque est vide. Scanne un dossier pour commencer.",
     "clearAll": "Tout effacer",
-    "add": "Ajouter"
+    "add": "Ajouter",
+    "emptyHint": "L'analyse lit le dossier et tout ce qu'il contient. Les fichiers ne bougent pas.",
+    "noMatch": "Rien dans la bibliothèque ne correspond à « {query} ».",
+    "clearSearch": "Effacer la recherche",
+    "errorTitle": "La bibliothèque n'a pas pu être lue.",
+    "confirm": "Confirmer ?",
+    "confirmHint": "Cliquez à nouveau pour confirmer",
+    "close": "Fermer (L)",
+    "items": "{count} éléments",
+    "itemsOne": "{count} élément"
   },
   "playlist": {
     "title": "Playlist",
@@ -65,7 +75,17 @@
     "repeatOff": "Désactivé",
     "repeatOne": "Un",
     "repeatAll": "Tout",
-    "shuffle": "Aléatoire"
+    "shuffle": "Aléatoire",
+    "emptyTitle": "File d'attente vide",
+    "emptyHint": "Ajoutez des fichiers, ou déposez-en plusieurs d'un coup sur la fenêtre : le premier est lu, les autres attendent ici.",
+    "close": "Fermer (N)",
+    "items": "{count} éléments",
+    "itemsOne": "{count} élément",
+    "addFailed": "Impossible d'ajouter ce fichier à la liste de lecture",
+    "removeFailed": "Impossible de retirer cet élément",
+    "nextFailed": "Impossible de passer à l'élément suivant",
+    "prevFailed": "Impossible de revenir à l'élément précédent",
+    "playFailed": "Impossible de lire cet élément"
   },
   "subtitle": {
     "title": "Sous-titres",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "Mettre à jour yt-dlp",
     "extracting": "Extraction de l'URL du flux…",
     "cancel": "Annuler",
-    "qualityLabel": "Qualité préférée"
+    "qualityLabel": "Qualité préférée",
+    "inputPlaceholder": "https://…  ou  un chemin sur un partage monté",
+    "directTitle": "Fichiers vidéo directs",
+    "directBody": "MP4, WebM, MKV, M4V, MOV — collez n'importe quel lien HTTP/HTTPS",
+    "streamTitle": "Flux live / VOD",
+    "streamBody": "HLS (.m3u8) et MPEG-DASH (.mpd), en direct comme à la demande",
+    "sitesTitle": "Sites de streaming",
+    "networkTitle": "Partages réseau",
+    "networkBody": "Collez le chemin d'un partage monté : \\\\serveur\\partage\\film.mkv sous Windows, /Volumes/… ou /mnt/… ailleurs. Les URL smb:// et nfs:// ne sont pas prises en charge — montez d'abord.",
+    "drmTitle": "Protégé par DRM",
+    "drmBody": "Netflix, Disney+, iQIYI VIP — lecture impossible",
+    "ytDlpMissingPrefix": "yt-dlp introuvable. Installez-le depuis",
+    "ytDlpMissingSuffix": "et placez-le dans votre PATH.",
+    "proxyActive": "Proxy actif :"
   },
   "context": {
     "openFile": "Ouvrir un fichier…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "Les fichiers locaux nécessitent une clé d'API OpenSubtitles — renseignez-la dans « Sous-titres en ligne » ci-dessus. Les URL de streaming fonctionnent sans.",
       "languages": "Langues (séparées par des virgules, ex. en,zh-CN)",
       "languagesHint": "Cliquez sur Enregistrer pour appliquer."
+    },
+    "onboarding": {
+      "section": "Écran d'accueil",
+      "body": "La présentation d'une page affichée au premier lancement — ce qu'est unflick, les touches, et l'extension CLI et MCP.",
+      "button": "L'afficher à nouveau"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "Suppression…",
     "done": "{size} libérés",
     "failed": "Suppression incomplète — voir le journal"
+  },
+  "onboarding": {
+    "tagline": "Un lecteur vidéo pour les humains et les IA",
+    "what": "Ouvre à peu près tout — fichiers locaux, partages réseau montés, liens de streaming. Le décodage est confié à mpv : les codecs ne sont plus votre problème.",
+    "openFile": "Ouvrir un fichier",
+    "orDrop": "…ou déposez-en un n'importe où dans cette fenêtre",
+    "keysTitle": "Trois touches à retenir",
+    "keyPlayPause": "Lecture / pause",
+    "keySeek": "Avancer",
+    "keyFullscreen": "Plein écran",
+    "agentTitle": "Il tourne aussi sans fenêtre",
+    "agentBody": "unflick est livré avec un outil en ligne de commande et un serveur MCP. Tout ce que fait cette fenêtre, un script ou un agent IA peut le faire aussi.",
+    "agentClaude": "Dans Claude Code, deux lignes suffisent :",
+    "copy": "Copier",
+    "copied": "Copié",
+    "copyManual": "Sélectionnez les lignes ci-dessus et appuyez sur ⌘C / Ctrl+C",
+    "skip": "Passer",
+    "start": "Commencer à regarder"
+  },
+  "home": {
+    "firstStepsTitle": "Rien de regardé pour l'instant",
+    "firstStepsBody": "Ouvrez un fichier, ou déposez-en un sur cette fenêtre. Ce que vous regardez apparaît ici, et ce qui n'est pas fini revient avec son point de reprise.",
+    "firstStepsHeadless": "unflick se pilote aussi depuis un terminal et depuis Claude Code.",
+    "whatIsUnflick": "Qu'est-ce qu'unflick ?"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick ne peut pas ouvrir les liens {scheme}://",
+    "titleNetwork": "Ce lien n'a pas pu être chargé",
+    "titleYtdlp": "Ce lien nécessite yt-dlp",
+    "titleDrm": "Cette vidéo est protégée par DRM",
+    "titleUnreadable": "Ce fichier n'a pas pu être ouvert",
+    "hintSmbWindows": "Connectez ou ouvrez le partage dans l'Explorateur, puis lisez le chemin UNC (\\\\serveur\\partage\\film.mkv).",
+    "hintSmbMac": "Connectez-vous au serveur dans le Finder, puis lisez le chemin sous /Volumes.",
+    "hintSmbLinux": "Montez le partage (mount -t cifs), puis lisez le chemin monté.",
+    "hintNfsWindows": "Montez l'export avec le client NFS, puis lisez le chemin du lecteur mappé.",
+    "hintNfsMac": "Montez l'export dans le Finder ou avec mount_nfs, puis lisez le chemin sous /Volumes.",
+    "hintNfsLinux": "Montez l'export (mount -t nfs), puis lisez le chemin monté.",
+    "hintSchemeOther": "Cette version ne gère pas ce protocole. Utilisez un chemin local, un partage monté ou un lien http(s).",
+    "hintNetwork": "Vérifiez le lien et votre connexion. Certains hôtes refusent aussi tout ce qui n'est pas un navigateur.",
+    "hintYtdlp": "Installez yt-dlp, vérifiez qu'il est dans le PATH, puis réessayez ce lien.",
+    "hintDrm": "Netflix, Disney+ et les autres services protégés par DRM ne se lisent que dans leurs propres applications.",
+    "hintUnreadable": "unflick n'a pas pu le lire. Vérifiez que le fichier est toujours là et que vous avez le droit de l'ouvrir.",
+    "details": "Détails",
+    "openAnother": "Ouvrir un autre fichier",
+    "dismiss": "Fermer"
+  },
+  "toast": {
+    "screenshotSaved": "Enregistré : {name}",
+    "screenshotFailed": "Échec de la capture : {error}",
+    "queued": "Lecture de {name} — {count} autres en file d'attente",
+    "dismiss": "Fermer"
+  },
+  "whisper": {
+    "generating": "Génération des sous-titres… (whisper, cela peut prendre plusieurs minutes)",
+    "generated": "Sous-titres générés et chargés",
+    "failed": "Échec de la génération des sous-titres : {error}"
   }
 }

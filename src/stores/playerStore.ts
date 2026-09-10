@@ -99,6 +99,12 @@ interface PlayerState {
    * network being reachable.
    */
   openError: string | null;
+  /**
+   * What we were trying to open when `openError` was set. The message alone
+   * cannot always say — mpv reports the resolved stream URL, not the page
+   * link the user typed — and the advice worth giving depends on the scheme.
+   */
+  openErrorTarget: string | null;
   subtitles: SubtitleTrack[];
 
   /** Chapters of the current file. Empty for files without any. */
@@ -268,6 +274,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   extracting: null,
   extractError: null,
   openError: null,
+  openErrorTarget: null,
   nowPlaying: null,
   subtitles: [],
   chapters: [],
@@ -277,7 +284,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   audioDelay: 0,
 
   clearExtractError: () => set({ extractError: null }),
-  clearOpenError: () => set({ openError: null }),
+  clearOpenError: () => set({ openError: null, openErrorTarget: null }),
 
   ingestStatus: (s) => {
     const previousFile = get().file;
@@ -413,7 +420,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // — resume point, history, mpv load. What is left is the part that lives
   // on this side: reflect it in the UI and pull in sidecar subtitles.
   adoptStartupFile: async (file: string) => {
-    set({ state: "playing", file, openError: null, extractError: null });
+    set({ state: "playing", file, openError: null, openErrorTarget: null, extractError: null });
     await attachSidecars(file, get().refreshSubtitles, () => get().subtitles);
   },
 
@@ -422,7 +429,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     qualityOverride?: string | null,
     startAt?: number | null,
   ) => {
-    set({ extractError: null, openError: null });
+    set({ extractError: null, openError: null, openErrorTarget: null });
 
     // URLs that aren't direct media files go through yt-dlp. We attempt
     // extraction even on hosts we don't recognise — yt-dlp supports
@@ -455,6 +462,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       } catch (err) {
         set({
           extracting: null,
+          openErrorTarget: file,
           extractError:
             typeof err === "string"
               ? err
@@ -499,7 +507,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const message =
         typeof e === "string" ? e : e instanceof Error ? e.message : "Could not open this file";
       console.error("player_play failed:", e);
-      set({ openError: message, state: "stopped" });
+      set({ openError: message, openErrorTarget: file, state: "stopped" });
       window.dispatchEvent(
         new CustomEvent("unflick:toast", { detail: { kind: "error", message } }),
       );

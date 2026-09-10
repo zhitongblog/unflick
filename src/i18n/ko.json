@@ -34,7 +34,8 @@
     "title": "여기에 영상을 드롭하세요",
     "subtitle": "또는 클릭하여 파일 열기",
     "openFile": "파일 열기",
-    "openUrl": "URL 열기"
+    "openUrl": "URL 열기",
+    "dropToPlay": "놓으면 재생"
   },
   "update": {
     "available": "사용 가능",
@@ -51,7 +52,16 @@
     "scan": "디렉토리 스캔",
     "empty": "라이브러리가 비어 있습니다. 폴더를 스캔하여 시작하세요.",
     "clearAll": "모두 지우기",
-    "add": "추가"
+    "add": "추가",
+    "emptyHint": "검색은 해당 폴더와 그 안의 모든 것을 읽습니다. 파일은 옮기지 않습니다.",
+    "noMatch": "라이브러리에 “{query}”와(과) 일치하는 항목이 없습니다.",
+    "clearSearch": "검색 지우기",
+    "errorTitle": "라이브러리를 읽지 못했습니다.",
+    "confirm": "확인할까요?",
+    "confirmHint": "한 번 더 누르면 실행됩니다",
+    "close": "닫기 (L)",
+    "items": "{count}개",
+    "itemsOne": "{count}개"
   },
   "playlist": {
     "title": "재생목록",
@@ -65,7 +75,17 @@
     "repeatOff": "끄기",
     "repeatOne": "한 개",
     "repeatAll": "전체",
-    "shuffle": "셔플"
+    "shuffle": "셔플",
+    "emptyTitle": "대기열이 비어 있습니다",
+    "emptyHint": "파일을 추가하거나 여러 개를 한 번에 창에 놓으세요. 첫 번째가 재생되고 나머지가 여기에 쌓입니다.",
+    "close": "닫기 (N)",
+    "items": "{count}개",
+    "itemsOne": "{count}개",
+    "addFailed": "그 파일을 재생목록에 추가하지 못했습니다",
+    "removeFailed": "그 항목을 제거하지 못했습니다",
+    "nextFailed": "다음 항목으로 넘어가지 못했습니다",
+    "prevFailed": "이전 항목으로 돌아가지 못했습니다",
+    "playFailed": "그 항목을 재생하지 못했습니다"
   },
   "subtitle": {
     "title": "자막",
@@ -122,7 +142,20 @@
     "ytDlpUpdate": "yt-dlp 업데이트",
     "extracting": "스트림 URL 추출 중…",
     "cancel": "취소",
-    "qualityLabel": "선호 화질"
+    "qualityLabel": "선호 화질",
+    "inputPlaceholder": "https://…  또는  마운트된 공유의 경로",
+    "directTitle": "동영상 파일 직접 링크",
+    "directBody": "MP4, WebM, MKV, M4V, MOV — HTTP/HTTPS 링크를 그대로 붙여넣으세요",
+    "streamTitle": "라이브 / VOD 스트림",
+    "streamBody": "HLS(.m3u8)와 MPEG-DASH(.mpd), 라이브와 주문형 모두",
+    "sitesTitle": "스트리밍 사이트",
+    "networkTitle": "네트워크 공유",
+    "networkBody": "마운트된 공유의 경로를 붙여넣으세요. Windows는 \\\\서버\\공유\\영화.mkv, 그 밖에는 /Volumes/… 또는 /mnt/…. smb:// 와 nfs:// 링크는 지원하지 않습니다 — 먼저 마운트하세요.",
+    "drmTitle": "DRM 보호됨",
+    "drmBody": "Netflix, Disney+, iQIYI VIP — 재생할 수 없습니다",
+    "ytDlpMissingPrefix": "yt-dlp를 찾지 못했습니다. 여기에서 설치하세요:",
+    "ytDlpMissingSuffix": "그리고 PATH에 두세요.",
+    "proxyActive": "프록시 사용 중:"
   },
   "context": {
     "openFile": "파일 열기…",
@@ -213,6 +246,11 @@
       "autoDownloadNeedsKey": "로컬 파일에는 OpenSubtitles API 키가 필요합니다 — 위의 온라인 자막에서 설정하세요. 스트리밍 URL은 키 없이도 동작합니다.",
       "languages": "언어 (쉼표로 구분, 예: en,zh-CN)",
       "languagesHint": "저장을 눌러야 적용됩니다."
+    },
+    "onboarding": {
+      "section": "환영 화면",
+      "body": "첫 실행 때 보이는 한 화면짜리 소개 — unflick이 무엇인지, 단축키, 그리고 CLI와 MCP 플러그인.",
+      "button": "다시 보기"
     }
   },
   "hotkeys": {
@@ -294,5 +332,61 @@
     "working": "삭제 중……",
     "done": "{size} 확보",
     "failed": "전부 삭제하지 못했습니다 — 로그를 확인하세요"
+  },
+  "onboarding": {
+    "tagline": "사람과 AI를 위한 동영상 플레이어",
+    "what": "거의 무엇이든 엽니다 — 로컬 파일, 마운트된 네트워크 공유, 스트리밍 링크. 디코딩은 mpv가 맡으니 코덱은 신경 쓰지 않아도 됩니다.",
+    "openFile": "파일 열기",
+    "orDrop": "…또는 이 창 아무 곳에나 끌어다 놓으세요",
+    "keysTitle": "먼저 알아둘 세 가지 키",
+    "keyPlayPause": "재생 / 일시정지",
+    "keySeek": "앞으로 건너뛰기",
+    "keyFullscreen": "전체 화면",
+    "agentTitle": "창 없이도 돌아갑니다",
+    "agentBody": "unflick에는 명령줄 도구와 MCP 서버가 함께 들어 있습니다. 이 창에서 되는 일은 스크립트나 AI 에이전트로도 똑같이 됩니다.",
+    "agentClaude": "Claude Code에서는 두 줄이면 됩니다:",
+    "copy": "복사",
+    "copied": "복사됨",
+    "copyManual": "위 두 줄을 선택하고 ⌘C / Ctrl+C를 누르세요",
+    "skip": "건너뛰기",
+    "start": "보기 시작"
+  },
+  "home": {
+    "firstStepsTitle": "아직 본 것이 없습니다",
+    "firstStepsBody": "파일을 열거나 이 창에 끌어다 놓으세요. 본 것은 여기에 쌓이고, 끝까지 보지 않은 것은 이어보기 지점과 함께 돌아옵니다.",
+    "firstStepsHeadless": "unflick은 터미널과 Claude Code에서도 조작할 수 있습니다.",
+    "whatIsUnflick": "unflick이란?"
+  },
+  "openError": {
+    "titleUnsupportedScheme": "unflick은 {scheme}:// 링크를 열 수 없습니다",
+    "titleNetwork": "이 링크를 불러오지 못했습니다",
+    "titleYtdlp": "이 링크에는 yt-dlp가 필요합니다",
+    "titleDrm": "이 영상은 DRM으로 보호되어 있습니다",
+    "titleUnreadable": "이 파일을 열지 못했습니다",
+    "hintSmbWindows": "탐색기에서 공유를 연결하거나 연 다음 UNC 경로(\\\\서버\\공유\\영화.mkv)를 재생하세요.",
+    "hintSmbMac": "Finder에서 서버에 연결한 다음 /Volumes 아래 경로를 재생하세요.",
+    "hintSmbLinux": "공유를 마운트(mount -t cifs)한 다음 마운트된 경로를 재생하세요.",
+    "hintNfsWindows": "NFS 클라이언트로 내보내기를 마운트한 다음 매핑된 드라이브 경로를 재생하세요.",
+    "hintNfsMac": "Finder나 mount_nfs로 내보내기를 마운트한 다음 /Volumes 아래 경로를 재생하세요.",
+    "hintNfsLinux": "내보내기를 마운트(mount -t nfs)한 다음 마운트된 경로를 재생하세요.",
+    "hintSchemeOther": "이 빌드는 해당 프로토콜을 지원하지 않습니다. 로컬 경로, 마운트된 공유, 또는 http(s) 링크를 사용하세요.",
+    "hintNetwork": "링크와 네트워크 연결을 확인하세요. 브라우저가 아닌 클라이언트를 거부하는 사이트도 있습니다.",
+    "hintYtdlp": "yt-dlp를 설치하고 PATH에 있는지 확인한 뒤 다시 시도하세요.",
+    "hintDrm": "Netflix, Disney+ 등 DRM으로 보호된 서비스는 각자의 앱에서만 재생됩니다.",
+    "hintUnreadable": "unflick이 읽지 못했습니다. 파일이 그대로 있는지, 열 권한이 있는지 확인하세요.",
+    "details": "자세히",
+    "openAnother": "다른 파일 열기",
+    "dismiss": "닫기"
+  },
+  "toast": {
+    "screenshotSaved": "저장됨: {name}",
+    "screenshotFailed": "스크린샷 실패: {error}",
+    "queued": "{name} 재생 중 — {count}개를 대기열에 추가했습니다",
+    "dismiss": "닫기"
+  },
+  "whisper": {
+    "generating": "자막을 만드는 중… (whisper, 몇 분 걸릴 수 있습니다)",
+    "generated": "자막을 만들어 불러왔습니다",
+    "failed": "자막 생성 실패: {error}"
   }
 }

@@ -35,6 +35,20 @@ export type CookiesBrowser =
 
 interface SettingsState {
   showSettings: boolean;
+  /**
+   * settings.json has been read at least once. The welcome screen gates on
+   * this: `onboardingSeen` defaults to false, so without it the card renders
+   * for one frame on every launch of a machine that dismissed it long ago.
+   */
+  settingsLoaded: boolean;
+  /**
+   * Whether the first-run screen has been shown. Persisted as the top-level
+   * `onboarding_seen` key rather than in localStorage, so `unflick settings
+   * get --key onboarding_seen` and the MCP `settings_get` tool can both see
+   * it — a first-run flag an agent cannot read or reset is a flag that only
+   * half exists. An absent key means "not yet shown".
+   */
+  onboardingSeen: boolean;
   whisperMode: "off" | "local" | "api";
   whisperModelPath: string | null;
   whisperBinaryPath: string | null;
@@ -97,6 +111,10 @@ interface SettingsState {
   setAutoDownloadSubtitles: (v: boolean) => void;
   setSubtitleLanguages: (langs: string[]) => void;
   setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void;
+  /** Close the welcome screen for good, here and in settings.json. */
+  markOnboardingSeen: () => void;
+  /** Re-arm the welcome screen. Same effect as `unflick settings set onboarding_seen false`. */
+  resetOnboarding: () => Promise<void>;
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
 }
@@ -170,6 +188,8 @@ function readSubtitleStyle(raw: unknown): SubtitleStyle | null {
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   showSettings: false,
+  settingsLoaded: false,
+  onboardingSeen: false,
   whisperMode: "off",
   whisperModelPath: null,
   whisperBinaryPath: null,
@@ -213,6 +233,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setSubtitleLanguages: (langs) => set({ subtitleLanguages: langs }),
   setSubtitleStyle: (patch) =>
     set((s) => ({ subtitleStyle: { ...s.subtitleStyle, ...patch } })),
+
+  markOnboardingSeen: () => {
+    // Local first: the card has to close now, and stay closed for this run,
+    // whatever the disk says. The write is the part that can fail.
+    set({ onboardingSeen: true });
+    invoke("settings_set_key", { key: "onboarding_seen", value: true }).catch((e) => {
+      // Costs one extra welcome screen next launch. A red toast about the
+      // welcome screen would be a worse outcome than the thing it reports.
+      console.error("could not persist onboarding_seen:", e);
+    });
+  },
+
+  resetOnboarding: async () => {
+    set({ onboardingSeen: false });
+    try {
+      await invoke("settings_set_key", { key: "onboarding_seen", value: false });
+    } catch (e) {
+      console.error("could not reset onboarding_seen:", e);
+    }
+  },
 
   loadSettings: async () => {
     try {
@@ -291,10 +331,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         if (style) {
           updates.subtitleStyle = style;
         }
+        if (typeof data["onboarding_seen"] === "boolean") {
+          updates.onboardingSeen = data["onboarding_seen"] as boolean;
+        }
         set(updates);
       }
     } catch {
       // Settings file doesn't exist yet — use defaults
+    } finally {
+      // Marked loaded even on failure: a settings.json we cannot read is
+      // still an answer, and leaving this false would hide the welcome
+      // screen from exactly the fresh install it exists for.
+      set({ settingsLoaded: true });
     }
   },
 
