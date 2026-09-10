@@ -273,6 +273,17 @@ pub fn run(allow_dev: bool) {
             let window_host = Arc::new(gui::window::TauriWindowHost::new(app.handle().clone()));
             app.manage(Arc::clone(&window_host));
 
+            // ─── Track A part 2 — GUI self-test bridge ─────────────────
+            // Built and managed whether or not `--allow-dev` was passed.
+            // The single gate check in `core::daemon` is the only thing
+            // between it and a caller, and putting a second one here would
+            // give the same decision two homes — one of which would
+            // eventually be wrong. `app.manage` is what lets `dev_report`
+            // (an ordinary Tauri command, called by the program we eval)
+            // find the channel the caller is waiting on.
+            let dev_host = Arc::new(gui::dev::TauriDevHost::new(app.handle().clone()));
+            app.manage(Arc::clone(&dev_host));
+
             // ── Embedded control server ────────────────────────────────────
             // Host the same TCP command surface the headless daemon serves,
             // but against *this* window's player. Without it, `unflick pause`
@@ -283,6 +294,8 @@ pub fn run(allow_dev: bool) {
                 app.state::<GuiPlayer>(),
                 window_host,
                 allow_dev,
+                // Track A part 2 — the window that answers `dev_*`.
+                dev_host,
             );
 
             // Timeline previews accumulate on disk as people watch things.
@@ -310,6 +323,9 @@ pub fn run(allow_dev: bool) {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            // Track A part 2 — how a program we evaluated in the window
+            // hands its answer back. Not called by the frontend.
+            gui::dev::dev_report,
             commands::player_init,
             commands::consume_pending_file,
             commands::boot_mark,
@@ -557,6 +573,8 @@ fn spawn_embedded_control_server(
     window_host: Arc<gui::window::TauriWindowHost>,
     // Track A — whether `dev_*` is answered at all. See `core::dev`.
     allow_dev: bool,
+    // Track A part 2 — and the webview that answers them when it is.
+    dev_host: Arc<gui::dev::TauriDevHost>,
 ) {
     let Some(player) = state.render_player.get().cloned() else {
         eprintln!("[unflick] control server: no render player, skipping");
@@ -589,13 +607,12 @@ fn spawn_embedded_control_server(
             window: Some(Arc::clone(&window_host) as Arc<dyn core::window::WindowHost>),
             events: Some(window_host as Arc<dyn core::events::EventSink>),
             // ─── Track A — GUI self-test bridge ───────────────────────
-            // The gate is armed here; the webview host that satisfies it
-            // is the other half of this track. Until that lands, an armed
-            // GUI answers `dev_*` with "no window" — the honest answer for
-            // a context that has no `DevHost`, and the same one the
-            // headless daemon gives.
+            // The gate is armed here; the webview that satisfies it is
+            // `gui::dev::TauriDevHost`, built above. A headless daemon
+            // still leaves this `None` and still answers "no window",
+            // which is the truth there and always will be.
             allow_dev,
-            dev: None,
+            dev: Some(dev_host as Arc<dyn core::dev::DevHost>),
         });
 
         // Keep the resume point true as playback moves. Started before the

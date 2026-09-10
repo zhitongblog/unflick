@@ -17,6 +17,18 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "unflick"
 path = "src/main.rs"
 
+# ─── Track A part 2 — GUI self-test bridge ────────────────────────────
+# Tauri decides at compile time whether the webview loads `frontendDist`
+# (the built `dist/`) or `devUrl` (a vite server on :1420), and the switch
+# is this feature: `tauri-macros` sets `dev = cfg!(not(feature =
+# "custom-protocol"))`. Without it declared there was no way to compile a
+# binary that serves its own frontend, so a `cargo build` GUI came up on
+# about:blank unless `pnpm dev` happened to be running — which is exactly
+# what `tests/gui_dev.rs` cannot depend on. Declaring it changes nothing
+# for builds that do not ask for it.
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -52,15 +64,29 @@ if-addrs = "0.13"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
+# Track A part 2 — `dev capture` on Windows. ICoreWebView2::CapturePreview
+# hands back PNG directly; PrintWindow would hand back a raw BGRA DIB with
+# no encoder in this tree to turn it into anything, and would capture the
+# same layer anyway (mpv draws on a separate top-level WS_POPUP). Both
+# crates are already in Cargo.lock at these versions via tauri.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Cocoa bridge for the embedded NSView + click-through hit-test override.
 # objc2 is the modern, safety-checked replacement for objc/cocoa.
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread", "NSString", "NSValue"] }
-objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread", "NSString", "NSValue", "NSData", "NSDictionary", "NSError"] }
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphics"] }
 core-foundation = "0.10"
 core-graphics = "0.24"
+# Track A part 2 — `dev capture` on macOS. WKWebView's own snapshot API,
+# rather than a window grab: CGWindowListCreateImage needs the Screen
+# Recording permission, which is a dialog no unattended agent can click.
+# Both crates are already in Cargo.lock at these versions as transitive
+# tauri dependencies, so promoting them to direct deps changes no build.
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
+block2 = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Linux uses raw_window_handle (already a workspace dep) to fish the
@@ -75,3 +101,10 @@ core-graphics = "0.24"
 # version Tauri 2.10 / webkit2gtk-4.1 already pulls in transitively
 # so we don't double-link.
 gtk = "0.18"
+# Track A part 2 — `dev capture` on Linux. The webview's own snapshot,
+# for the same reason as on the other two platforms: it means the same
+# thing everywhere and needs nothing from the compositor. `cairo-rs/png`
+# is what turns the returned surface into bytes; the feature only switches
+# on cairo's own PNG entry points, which every cairo build has.
+webkit2gtk = "2.0"
+cairo-rs = { version = "0.18", features = ["png"] }

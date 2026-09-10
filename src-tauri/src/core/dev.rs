@@ -62,6 +62,18 @@ pub const VERBS: [&str; 6] = ["eval", "click", "text", "snapshot", "capture", "w
 /// opaque "undefined is not a function" from inside a webview.
 pub const PROBE_ENTRY_POINTS: [&str; 4] = ["click", "text", "snapshot", "waitFor"];
 
+/// The probe itself.
+///
+/// Prepended to every program a [`DevHost`] evaluates, so `click`, `text`,
+/// `snapshot` and `wait` are one file that runs unchanged on WKWebView,
+/// WebView2 and WebKitGTK. It lives here rather than in `gui/` because what
+/// those four verbs *mean* is core's business; only running it is the
+/// window's.
+///
+/// It defines `globalThis.__unflickDev` idempotently, so re-sending it on
+/// every call costs a parse and nothing else.
+pub const PROBE_JS: &str = include_str!("dev_probe.js");
+
 /// Shortest timeout worth honouring, in seconds. Below this the round trip
 /// itself is the whole budget and every call would fail.
 const MIN_TIMEOUT: f64 = 0.1;
@@ -85,14 +97,23 @@ const READ_TIMEOUT: f64 = 5.0;
 /// to produce one.
 const CAPTURE_TIMEOUT: f64 = 10.0;
 
-/// Extra time the Rust side allows on top of a timeout the JavaScript is
-/// itself counting down.
+/// How long to wait between looks, for the two verbs that wait.
 ///
-/// `click` and `wait` poll inside the webview. If the socket gave up at
-/// exactly the same instant, every genuine timeout would come back as the
-/// transport's opaque failure instead of the probe's own message naming the
-/// selector — the useful half of the answer lost to a race with itself.
-const POLL_SLACK: f64 = 2.0;
+/// The polling is here and not in the page, and that is measured rather
+/// than stylistic. The obvious design is one eval carrying a `setTimeout`
+/// loop and one answer at the end of it; it does not work. WebKit stops a
+/// hidden page's timers a few seconds after it is hidden — on macOS 26,
+/// ticks at 50 ms for about three seconds and then nothing, ever — and a
+/// window that is covered, minimised, on another Space or behind a locked
+/// screen is hidden. That is exactly the unattended case this surface
+/// exists for, so `click` and `wait` would hang precisely when they were
+/// needed. Chromium and WebKitGTK throttle background pages too; polling
+/// from out here is immune to all of it by construction, the same way one
+/// probe file makes a platform-specific snapshot bug impossible.
+///
+/// Every look is also a fresh eval, which is not incidental: it is the
+/// only thing that runs script in a page nothing else is waking.
+const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 const DEFAULT_DEPTH: u32 = 12;
 /// A tree deeper than this is a DOM dump, not a snapshot. React apps nest,
@@ -263,22 +284,19 @@ pub fn run(host: &dyn DevHost, request: Request) -> CommandResult {
             selector,
             index,
             timeout,
-        } => {
-            let call = probe_call(
-                "click",
-                json!({
-                    "selector": selector,
-                    "index": index,
-                    "timeoutMs": timeout.as_millis() as u64,
-                }),
-            );
-            probe_result(host.eval(&call, timeout + slack()), |data| {
+        } => poll(
+            host,
+            "click",
+            json!({ "selector": selector, "index": index }),
+            timeout,
+            |data, _| {
                 data.get("clicked")
                     .and_then(|v| v.as_str())
                     .map(|s| format!("clicked {}", s))
-                    .unwrap_or_else(|| format!("clicked {}", selector))
-            })
-        }
+                    .unwrap_or_else(|| "clicked".to_string())
+            },
+            |why, waited| format!("{} after {} ms", why, waited),
+        ),
         Request::Text { selector } => {
             let call = probe_call("text", json!({ "selector": selector }));
             probe_result(host.eval(&call, read_timeout()), |data| {
@@ -309,22 +327,21 @@ pub fn run(host: &dyn DevHost, request: Request) -> CommandResult {
             gone,
             timeout,
         } => {
-            let call = probe_call(
+            let name = selector.clone();
+            poll(
+                host,
                 "waitFor",
-                json!({
-                    "selector": selector,
-                    "gone": gone,
-                    "timeoutMs": timeout.as_millis() as u64,
-                }),
-            );
-            probe_result(host.eval(&call, timeout + slack()), |data| {
-                let ms = data.get("waited_ms").and_then(|v| v.as_u64()).unwrap_or(0);
-                if gone {
-                    format!("{} left the page after {} ms", selector, ms)
-                } else {
-                    format!("{} appeared after {} ms", selector, ms)
-                }
-            })
+                json!({ "selector": selector, "gone": gone }),
+                timeout,
+                move |_, waited| {
+                    if gone {
+                        format!("{} left the page after {} ms", name, waited)
+                    } else {
+                        format!("{} appeared after {} ms", name, waited)
+                    }
+                },
+                |why, waited| format!("{} after {} ms", why, waited),
+            )
         }
         Request::Capture { max_edge, output } => capture(host, max_edge, output),
     }
@@ -397,12 +414,71 @@ fn probe_call(entry: &str, args: Value) -> String {
     format!("return __unflickDev.{}({});", entry, args)
 }
 
-fn slack() -> Duration {
-    Duration::from_secs_f64(POLL_SLACK)
-}
-
 fn read_timeout() -> Duration {
     Duration::from_secs_f64(READ_TIMEOUT)
+}
+
+/// Run a probe entry point over and over until it says it is done.
+///
+/// Three kinds of answer, and the difference between them is the whole
+/// point of polling from out here:
+///
+///   * `{ok: false, error}` — the caller's mistake. A string that is not a
+///     selector, a selector that matches several things. Refused at once,
+///     because looking again cannot change it.
+///   * `{ok: true, done: false, why}` — not yet. A panel still opening, an
+///     element still covered by the dialog that is fading out. Looked at
+///     again, and `why` becomes the message if the deadline arrives first.
+///   * `{ok: true, done: true, …}` — it happened.
+///
+/// A failed *eval* is also "not yet", and that is deliberate: an eval
+/// issued while the page is still loading has its callback dropped by the
+/// navigation that replaces it, so the first look at a window that has
+/// only just opened routinely times out. Retrying is what makes `unflick
+/// dev wait body` mean what its name says instead of being the thing you
+/// have to have run already.
+fn poll(
+    host: &dyn DevHost,
+    entry: &str,
+    args: Value,
+    timeout: Duration,
+    summarise: impl Fn(&Value, u64) -> String,
+    give_up: impl Fn(&str, u64) -> String,
+) -> CommandResult {
+    let call = probe_call(entry, args);
+    let started = std::time::Instant::now();
+    let deadline = started + timeout;
+    let mut why = "the window never answered".to_string();
+
+    loop {
+        match host.eval(&call, read_timeout()) {
+            Ok(value) => {
+                if value.get("ok").and_then(|v| v.as_bool()) == Some(false) {
+                    return CommandResult::err(
+                        value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("the page refused the command without saying why")
+                            .to_string(),
+                    );
+                }
+                let waited = started.elapsed().as_millis() as u64;
+                if value.get("done").and_then(|v| v.as_bool()) == Some(true) {
+                    let message = summarise(&value, waited);
+                    return CommandResult::ok_with_data(message, value);
+                }
+                if let Some(reason) = value.get("why").and_then(|v| v.as_str()) {
+                    why = reason.to_string();
+                }
+            }
+            Err(e) => why = e,
+        }
+
+        if std::time::Instant::now() >= deadline {
+            return CommandResult::err(give_up(&why, started.elapsed().as_millis() as u64));
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
 }
 
 /// Turn a probe answer into a command result.
@@ -583,11 +659,140 @@ mod tests {
     }
 
     #[test]
+    fn the_probe_defines_every_entry_point_dispatch_calls() {
+        // A rename on one side only would otherwise surface as an opaque
+        // "undefined is not a function" from inside a webview, on whichever
+        // platform someone happened to run next.
+        for entry in PROBE_ENTRY_POINTS {
+            assert!(
+                PROBE_JS.contains(&format!("{}: {}", entry, entry)),
+                "the probe does not export {}",
+                entry
+            );
+            assert!(
+                PROBE_JS.contains(&format!("function {}(", entry)),
+                "the probe does not define {}",
+                entry
+            );
+        }
+    }
+
+    #[test]
     fn the_gate_message_does_not_leak_whether_a_window_exists() {
         // A locked-down instance must not answer "no window" — that is an
         // answer about the machine, given to a caller who was refused.
         assert!(!GATE_MESSAGE.contains("no window"));
         assert!(GATE_MESSAGE.contains("--allow-dev"));
+    }
+
+    /// A host that answers from a script, one line per look, repeating the
+    /// last line forever — which is what a page that is simply never going
+    /// to become ready actually does.
+    struct Scripted(std::sync::Mutex<std::collections::VecDeque<Result<Value, String>>>);
+
+    impl Scripted {
+        fn new(answers: Vec<Result<Value, String>>) -> Self {
+            Self(std::sync::Mutex::new(answers.into_iter().collect()))
+        }
+    }
+
+    impl DevHost for Scripted {
+        fn eval(&self, _js: &str, _timeout: Duration) -> Result<Value, String> {
+            let mut answers = self.0.lock().unwrap();
+            if answers.len() > 1 {
+                answers.pop_front().unwrap()
+            } else {
+                answers.front().cloned().unwrap()
+            }
+        }
+        fn capture(&self, _timeout: Duration) -> Result<Shot, String> {
+            Err("no pixels in a test".into())
+        }
+    }
+
+    #[test]
+    fn waiting_keeps_looking_until_the_page_is_ready() {
+        // The reason `wait` exists at all: the first look is routinely too
+        // early, and the second or third is not.
+        let host = Scripted::new(vec![
+            Ok(json!({ "ok": true, "done": false, "why": "nothing matches .panel" })),
+            Ok(json!({ "ok": true, "done": false, "why": "nothing matches .panel" })),
+            Ok(json!({ "ok": true, "done": true, "count": 1 })),
+        ]);
+        let result = run(
+            &host,
+            Request::Wait {
+                selector: ".panel".into(),
+                gone: false,
+                timeout: Duration::from_secs(5),
+            },
+        );
+        assert!(result.success, "{}", result.message);
+        assert!(result.message.starts_with(".panel appeared after"), "{}", result.message);
+    }
+
+    #[test]
+    fn an_eval_that_fails_is_looked_at_again_rather_than_reported() {
+        // An eval issued while the page is still loading has its callback
+        // dropped by the navigation. That is what `dev wait body` is for,
+        // so it must survive one — otherwise the command that exists to
+        // wait out a load is the one thing a load can break.
+        let host = Scripted::new(vec![
+            Err("the window did not answer within 5.0s".into()),
+            Ok(json!({ "ok": true, "done": true, "count": 1 })),
+        ]);
+        let result = run(
+            &host,
+            Request::Wait {
+                selector: "body".into(),
+                gone: false,
+                timeout: Duration::from_secs(5),
+            },
+        );
+        assert!(result.success, "{}", result.message);
+    }
+
+    #[test]
+    fn giving_up_says_what_the_last_look_saw() {
+        // "timed out" on its own sends someone to look at the wrong thing.
+        // "still visible" and "in the page but hidden" send them to the
+        // right one.
+        let host = Scripted::new(vec![Ok(json!({
+            "ok": true,
+            "done": false,
+            "why": "2 match(es) for .row are in the page but none is visible"
+        }))]);
+        let result = run(
+            &host,
+            Request::Wait {
+                selector: ".row".into(),
+                gone: false,
+                // Shortest the clamp allows, so the test is not a sleep.
+                timeout: Duration::from_secs_f64(MIN_TIMEOUT),
+            },
+        );
+        assert!(!result.success);
+        assert!(result.message.contains("none is visible"), "{}", result.message);
+    }
+
+    #[test]
+    fn an_ambiguous_selector_is_refused_on_the_first_look() {
+        // Not retried: looking again cannot make two buttons into one, and
+        // clicking the first of them is the false pass this exists to stop.
+        let host = Scripted::new(vec![Ok(json!({
+            "ok": false,
+            "error": "button matches 3 visible elements — pass an index (0–2) to say which"
+        }))]);
+        let result = run(
+            &host,
+            Request::Click {
+                selector: "button".into(),
+                index: None,
+                timeout: Duration::from_secs(30),
+            },
+        );
+        assert!(!result.success);
+        assert!(result.message.contains("pass an index"), "{}", result.message);
     }
 
     #[test]

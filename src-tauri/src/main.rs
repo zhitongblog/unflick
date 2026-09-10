@@ -84,31 +84,24 @@ fn main() {
         setlocale(LC_NUMERIC, lc_val);
     }
 
-    // Special case before clap: a single positional arg that points at a
-    // real file means "Explorer asked us to open this." Bypass CLI parsing
-    // and route to the GUI with the path stashed for the frontend.
+    // Special case before clap: a positional arg that points at a real file
+    // means "Explorer asked us to open this." Bypass CLI parsing and route
+    // to the GUI with the path stashed for the frontend.
     let raw_args: Vec<String> = std::env::args().collect();
-    if raw_args.len() == 2 {
-        let arg = &raw_args[1];
-        if !arg.starts_with('-') && std::path::Path::new(arg).is_file() {
-            std::env::set_var(PENDING_FILE_ENV, arg);
-            // Same as the plain-GUI path: if there is a terminal to talk
-            // to, talk to it.
-            #[cfg(target_os = "windows")]
-            unsafe { winapi_attach_console(); }
-            // The same log the plain-GUI path gets. This branch had been
-            // going without one, which meant the single most common launch
-            // — double-clicking a video — was the one that left no trace
-            // when it went wrong.
-            init_file_log();
-            boot::mark("main: opening a file from the shell");
-            // Track A: never armed. This branch is a double-clicked film,
-            // which arrives with no flags at all — a film someone opened
-            // from Finder must not be scriptable by whatever else is on
-            // the machine.
-            unflick_lib::run(false);
-            return;
-        }
+    if let Some((path, allow_dev)) = gui_launch_file(&raw_args) {
+        std::env::set_var(PENDING_FILE_ENV, &path);
+        // Same as the plain-GUI path: if there is a terminal to talk
+        // to, talk to it.
+        #[cfg(target_os = "windows")]
+        unsafe { winapi_attach_console(); }
+        // The same log the plain-GUI path gets. This branch had been
+        // going without one, which meant the single most common launch
+        // — double-clicking a video — was the one that left no trace
+        // when it went wrong.
+        init_file_log();
+        boot::mark("main: opening a file from the shell");
+        unflick_lib::run(allow_dev);
+        return;
     }
 
     let cli = Cli::parse();
@@ -141,6 +134,41 @@ fn main() {
     // Track A: `unflick --allow-dev` arms the dev surface for this process
     // and no other. See `Cli::allow_dev` for why it is a flag.
     unflick_lib::run(cli.allow_dev);
+}
+
+// ─── Track A part 2 — GUI self-test bridge ────────────────────────────
+/// A launch that means "open this film in the window", and whether it also
+/// armed the dev surface.
+///
+/// `unflick film.mkv` is what Finder and Explorer send, and clap would
+/// reject the bare path as an unknown subcommand — which is why this scan
+/// runs first. `unflick --allow-dev film.mkv` is the same launch with the
+/// dev surface armed: the way this track's own verification starts the
+/// player, and the way anyone reproduces a bug in a particular file.
+///
+/// The rule part 1 set still holds and is what the shape of this function
+/// protects: a *double-clicked* film is never scriptable. A double click
+/// arrives with no flags at all, so it lands here with `allow_dev` false;
+/// arming still takes someone typing the flag. Anything else — a
+/// subcommand, `--mcp`, a flag this does not recognise, a second path —
+/// is not this launch and goes to clap, where it belongs.
+fn gui_launch_file(args: &[String]) -> Option<(String, bool)> {
+    let mut file: Option<String> = None;
+    let mut allow_dev = false;
+    for arg in args.iter().skip(1) {
+        if arg == "--allow-dev" {
+            allow_dev = true;
+        } else if arg.starts_with('-') || file.is_some() {
+            return None;
+        } else if std::path::Path::new(arg).is_file() {
+            file = Some(arg.clone());
+        } else {
+            // A subcommand, or a path that is not there. Either way clap
+            // gives a better answer than a silent GUI launch would.
+            return None;
+        }
+    }
+    file.map(|path| (path, allow_dev))
 }
 
 /// Set up a best-effort log file at `%TEMP%/unflick.log` that captures
