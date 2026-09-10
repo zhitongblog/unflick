@@ -43,7 +43,7 @@ fn the_bridge_drives_the_real_window() {
     require_an_embedded_frontend();
 
     let fixtures = common::fixtures();
-    let gui = Gui::start(&fixtures.plain);
+    let mut gui = Gui::start(&fixtures.plain);
     let mut broken: Vec<String> = Vec::new();
 
     // ── the page is there ───────────────────────────────────────────────
@@ -268,6 +268,71 @@ fn the_bridge_drives_the_real_window() {
         let _ = std::fs::remove_file(&path);
     }
 
+    // ── the render thread outlives a geometry storm ─────────────────────
+    // Last, because it is the phase that can take the window down with it,
+    // and everything above should get its answer first.
+    //
+    // What it is for: `video_surface_set_geometry` runs on the AppKit main
+    // thread, and on macOS it resizes the NSView and calls
+    // `[NSOpenGLContext update]` — both of which reallocate the drawable
+    // that the render thread is at that moment painting into from inside
+    // `mpv_render_context_render`. Unsynchronised, that is a SIGSEGV in
+    // AppleMetalOpenGLRenderer: 10 out of 10 runs died within 3 seconds of
+    // this storm starting, and 1 in 10 idle launches died on the single
+    // geometry push the frontend makes when it mounts.
+    //
+    // Two things are asserted, because the obvious fix for the first
+    // causes the second: that the process is still alive (no crash), and
+    // that playback has moved on (no deadlock — a render thread wedged
+    // waiting on a lock stalls mpv behind a video queue that never
+    // drains, and the position stops).
+    // Start the file over first: the phases above take long enough that a
+    // 20-second fixture may already have run out, and "the position did
+    // not move" would then be true for a reason that is not a bug.
+    let restart = gui.send("play", json!({ "file": gui.file.to_string_lossy() }));
+    check(&mut broken, "restarted the fixture for the storm", restart.ok(), &restart);
+    let before = gui.send("status", json!({}));
+    let started_at = before.data()["position"].as_f64().unwrap_or(-1.0);
+    check_msg(
+        &mut broken,
+        "playback had a position to compare against",
+        before.ok() && started_at >= 0.0,
+        || format!("{}", before.data()),
+    );
+    let storm = gui.send("dev_eval", json!({ "script": A_GEOMETRY_STORM }));
+    check(&mut broken, "the geometry storm started", storm.ok(), &storm);
+    if storm.ok() {
+        std::thread::sleep(STORM);
+        match gui.exited() {
+            Some(status) => broken.push(format!(
+                "the window died under a geometry storm after {:?}: {}. A SIGSEGV \
+                 here is the render thread and the main thread in the same GL \
+                 context at the same time — see VideoSurface::lock_gl",
+                STORM, status
+            )),
+            None => {
+                let stop = gui.send(
+                    "dev_eval",
+                    json!({ "script": "clearInterval(window.__unflickStorm); window.__unflickStorm = 0; return __unflickStormPushes" }),
+                );
+                check_msg(
+                    &mut broken,
+                    "the window still answered after the storm",
+                    stop.ok() && stop.data()["value"].as_f64().unwrap_or(0.0) > 0.0,
+                    || format!("{}: {}", stop.message(), stop.data()),
+                );
+                let after = gui.send("status", json!({}));
+                let ended_at = after.data()["position"].as_f64().unwrap_or(-1.0);
+                check_msg(
+                    &mut broken,
+                    "playback moved on through the storm",
+                    after.ok() && ended_at > started_at,
+                    || format!("position went {} → {}", started_at, ended_at),
+                );
+            }
+        }
+    }
+
     drop(gui);
     assert!(
         broken.is_empty(),
@@ -285,6 +350,41 @@ var bad = withSelector
   .map(function (n) { return [n.selector, document.querySelectorAll(n.selector).length]; })
   .filter(function (pair) { return pair[1] !== 1; });
 return { checked: withSelector.length, nodes: snap.nodes.length, bad: bad };";
+
+/// How long to hold the geometry storm. Unsynchronised, the median run
+/// died 0.7 s in and the slowest of ten took 2.8 s, so this is a wide
+/// margin over the worst measured — long enough to mean something, short
+/// enough to fit inside the 20-second fixture that has to keep playing
+/// through it.
+const STORM: Duration = Duration::from_secs(10);
+
+/// Push a new video-surface rect twice a frame, the way a window being
+/// dragged by its corner does, only without pause. Two things matter and
+/// both were measured: the sizes have to actually change (the frontend's
+/// own sync skips a rect equal to the last one, and so would the
+/// interesting half of the backend), and bigger rects catch it more
+/// often, a bigger reallocation being a wider window to land in.
+///
+/// How reliably this catches an unfixed build depends on something the
+/// test cannot control. With the screen unlocked it is near-certain: a
+/// storm of 560x380-ish rects killed the unfixed build 10 times out of
+/// 10, median 0.65 s. With the screen locked the race narrows sharply and
+/// these larger sizes caught it 4 times in 25. So a green run on a locked
+/// machine is weak evidence; a green run on an unlocked one is strong.
+const A_GEOMETRY_STORM: &str = "\
+if (window.__unflickStorm) return 'already';
+window.__unflickStormPushes = 0;
+var n = 0;
+window.__unflickStorm = setInterval(function () {
+  n++;
+  var w = 900 + (n % 11) * 90;
+  var h = 600 + (n % 9) * 70;
+  window.__unflickStormPushes++;
+  window.__TAURI_INTERNALS__
+    .invoke('video_surface_set_geometry', { x: 0, y: 0, w: w, h: h })
+    .catch(function () {});
+}, 8);
+return 'storming';";
 
 /// A button that records what it was sent.
 const PLANT_A_BUTTON: &str = "\
@@ -340,6 +440,8 @@ struct Gui {
     child: Child,
     addr: String,
     data_dir: PathBuf,
+    /// The file it was launched with, kept so a phase can start it over.
+    file: PathBuf,
 }
 
 impl Gui {
@@ -371,7 +473,7 @@ impl Gui {
             .spawn()
             .expect("failed to spawn the unflick GUI");
 
-        let gui = Self { child, addr, data_dir };
+        let gui = Self { child, addr, data_dir, file: file.to_path_buf() };
         gui.wait_until_listening();
         gui
     }
@@ -395,6 +497,14 @@ impl Gui {
              (on Linux, run under xvfb-run).",
             self.addr
         );
+    }
+
+    /// The exit status if the window is already gone, `None` while it is
+    /// still running. Asked rather than inferred from a refused
+    /// connection: a process that took a signal and one that is merely
+    /// too busy to accept look the same from the socket.
+    fn exited(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.try_wait().ok().flatten()
     }
 
     fn send(&self, command: &str, args: Value) -> Reply {

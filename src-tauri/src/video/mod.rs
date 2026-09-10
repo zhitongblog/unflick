@@ -32,6 +32,26 @@ pub trait VideoSurface: Send + Sync {
     /// Required before mpv_render_context_render() or any GL state change.
     fn make_current(&self) -> Result<()>;
 
+    /// Take / release whatever lock keeps a frame's GL work from
+    /// overlapping a change to the drawable it is painting into.
+    ///
+    /// Only macOS needs this, and it needs it badly: `set_geometry` there
+    /// resizes the NSView and calls `[NSOpenGLContext update]`, both on
+    /// the AppKit main thread, both of which reallocate the renderer's
+    /// attachments. A render already in flight on the render thread then
+    /// walks a resource list that no longer exists — an intermittent
+    /// SIGSEGV inside AppleMetalOpenGLRenderer, hit in practice on the
+    /// frontend's very first geometry push. macOS holds CGL's context
+    /// lock across both sides so one waits for the other.
+    ///
+    /// Windows and Linux move their child widget without touching the GL
+    /// context at all, so the default is a pair of no-ops. Always paired;
+    /// the render loop takes them through an RAII guard.
+    fn lock_gl(&self) {}
+
+    /// Release what [`VideoSurface::lock_gl`] took.
+    fn unlock_gl(&self) {}
+
     /// Resolve a GL function pointer. Used as mpv's get_proc_address callback.
     /// Caller must hold a current context.
     fn get_proc_address(&self, name: &str) -> *mut c_void;

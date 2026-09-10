@@ -59,6 +59,25 @@ struct RenderState {
     shutdown: bool,
 }
 
+/// Holds a surface's GL lock for one frame — see
+/// [`VideoSurface::lock_gl`]. A guard rather than a bare pair of calls
+/// because the loop body below `continue`s out of the middle of a frame
+/// on error, and an unlock skipped there would wedge the next resize.
+struct GlFrame<'a>(&'a dyn VideoSurface);
+
+impl<'a> GlFrame<'a> {
+    fn new(surface: &'a dyn VideoSurface) -> Self {
+        surface.lock_gl();
+        Self(surface)
+    }
+}
+
+impl Drop for GlFrame<'_> {
+    fn drop(&mut self) {
+        self.0.unlock_gl();
+    }
+}
+
 unsafe extern "C" fn update_callback_trampoline(ctx: *mut c_void) {
     if ctx.is_null() {
         return;
@@ -328,13 +347,22 @@ fn run_render_thread(
         let _ = (did_frame, did_redraw); // Will use for diagnostics later.
 
         let (w, h) = surface.size();
-        if let Err(e) = ctx.render_to_fbo(0, w, h) {
-            eprintln!("[unflick-render] render_to_fbo: {e}");
-            continue;
-        }
-        if let Err(e) = surface.swap_buffers() {
-            eprintln!("[unflick-render] swap_buffers: {e}");
-            continue;
+        {
+            // One frame's GL work, start to finish, under the surface's
+            // context lock. Between `render_to_fbo` and `swap_buffers`
+            // the drawable must not move; on macOS a geometry change
+            // arriving on the AppKit main thread would otherwise do
+            // exactly that, and take the renderer's resource list with
+            // it. No-op on Windows and Linux.
+            let _gl = GlFrame::new(surface.as_ref());
+            if let Err(e) = ctx.render_to_fbo(0, w, h) {
+                eprintln!("[unflick-render] render_to_fbo: {e}");
+                continue;
+            }
+            if let Err(e) = surface.swap_buffers() {
+                eprintln!("[unflick-render] swap_buffers: {e}");
+                continue;
+            }
         }
         frames_rendered += 1;
         // Log every 30 frames so we can tell whether the loop is alive

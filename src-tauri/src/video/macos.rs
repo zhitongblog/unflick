@@ -28,8 +28,8 @@ use std::sync::Mutex;
 
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext,
-    PossiblyCurrentContext, PossiblyCurrentGlContext,
+    AsRawContext, ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext,
+    PossiblyCurrentContext, PossiblyCurrentGlContext, RawContext,
 };
 use glutin::display::{Display, DisplayApiPreference, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
@@ -42,6 +42,35 @@ use raw_window_handle::{
 };
 
 use super::VideoSurface;
+
+// CGL's per-context lock. This is the only mutual exclusion Apple's GL
+// stack offers between a thread *rendering into* a context and a thread
+// *reconfiguring the drawable behind* that context — and reconfiguring
+// the drawable is exactly what a geometry change is. Recursive from the
+// same thread, so nesting a lock inside a lock is fine.
+#[link(name = "OpenGL", kind = "framework")]
+extern "C" {
+    fn CGLLockContext(ctx: *mut c_void) -> i32;
+    fn CGLUnlockContext(ctx: *mut c_void) -> i32;
+}
+
+/// Holds the CGL context lock for a scope. A raw pointer rather than a
+/// borrow of the surface so the render loop can take it around a whole
+/// frame without borrowing anything that a resize also wants.
+struct CglLock(*mut c_void);
+
+impl CglLock {
+    fn new(ctx: *mut c_void) -> Self {
+        unsafe { CGLLockContext(ctx) };
+        Self(ctx)
+    }
+}
+
+impl Drop for CglLock {
+    fn drop(&mut self) {
+        unsafe { CGLUnlockContext(self.0) };
+    }
+}
 
 /// Same NotCurrent → Current lifecycle dance as the Windows impl.
 /// CGL contexts are also thread-affine, so binding happens lazily on the
@@ -60,6 +89,12 @@ pub struct MacosVideoSurface {
     /// the frontend into the parent's coordinate space.
     parent: Retained<NSView>,
     context: Mutex<Option<ContextSlot>>,
+    /// The CGLContextObj inside glutin's NSOpenGLContext, cached at
+    /// construction. Cached because both sides of the race have to be able
+    /// to take the context lock *without* going through `context` above —
+    /// the Mutex is a Rust-side lock over the slot, not over the GL state,
+    /// and `render_to_fbo` never touches it at all.
+    cgl: *mut c_void,
     surface: Surface<WindowSurface>,
     display: Display,
     /// Tracked HWND-equivalent size — same rationale as WindowsVideoSurface:
@@ -160,6 +195,26 @@ impl MacosVideoSurface {
                 .map_err(|e| anyhow!("create_context: {e}"))?
         };
 
+        // Dig the CGLContextObj out now, while we still have a concrete
+        // context type in hand. `raw_context()` hands back the
+        // NSOpenGLContext; the CGL object under it is what the lock is
+        // keyed on. Failing here rather than later: without this pointer
+        // there is no way to serialise a resize against a render, and a
+        // surface that cannot do that is one that segfaults on its first
+        // window resize.
+        let cgl: *mut c_void = unsafe {
+            let RawContext::Cgl(ns_ctx) = not_current.raw_context();
+            let ns_ctx = ns_ctx as *const objc2::runtime::AnyObject;
+            let ns_ctx = ns_ctx
+                .as_ref()
+                .ok_or_else(|| anyhow!("glutin's NSOpenGLContext pointer was null"))?;
+            let cgl: *mut c_void = msg_send![ns_ctx, CGLContextObj];
+            if cgl.is_null() {
+                return Err(anyhow!("NSOpenGLContext has no CGLContextObj"));
+            }
+            cgl
+        };
+
         let surface_attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
             raw_window,
             std::num::NonZeroU32::new(w.max(1) as u32).unwrap(),
@@ -176,6 +231,7 @@ impl MacosVideoSurface {
             parent,
             display,
             surface,
+            cgl,
             context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
             cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
             cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
@@ -184,7 +240,21 @@ impl MacosVideoSurface {
 }
 
 impl VideoSurface for MacosVideoSurface {
+    fn lock_gl(&self) {
+        unsafe { CGLLockContext(self.cgl) };
+    }
+
+    fn unlock_gl(&self) {
+        unsafe { CGLUnlockContext(self.cgl) };
+    }
+
     fn make_current(&self) -> Result<()> {
+        // Deliberately *not* under the context lock. glutin's make_current
+        // is `[ctx update]` + `setView:`, and it dispatches both to the
+        // main thread — while `[NSOpenGLContext update]` takes the context
+        // lock itself. Holding the lock here and then waiting on a main
+        // thread that is about to ask for it hangs the render thread
+        // before its first frame; measured, not theorised.
         let mut guard = self
             .context
             .lock()
@@ -224,6 +294,30 @@ impl VideoSurface for MacosVideoSurface {
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
+        // Everything below reconfigures the drawable the GL context is
+        // painting into: setFrame resizes the surface AppKit hands the
+        // renderer, and glutin's `resize` is `[NSOpenGLContext update]`.
+        // All of it lands on the AppKit main thread, which is where the
+        // frontend's `video_surface_set_geometry` runs — while the render
+        // thread is inside `mpv_render_context_render` with no idea any of
+        // it is happening. That is how the renderer ends up walking a
+        // GLDContextRec resource list that was freed underneath it: a
+        // SIGSEGV in AppleMetalOpenGLRenderer that took 1 of 10 idle
+        // launches on the single geometry push the frontend makes when it
+        // mounts, and 11 of 11 when the pushes come every frame. (Both
+        // with the screen unlocked. Locked, the race narrows to about 1 in
+        // 6 — the machine's answer depends on whether anyone is looking at
+        // it.) Hold the context lock across the whole reconfiguration so
+        // an in-flight frame finishes first.
+        //
+        // Only from the main thread, and not just by Cocoa's rule about
+        // views: glutin's `resize` dispatches *to* the main thread, so a
+        // lock held across it from anywhere else deadlocks against the
+        // lock `[NSOpenGLContext update]` takes for itself. Every caller
+        // is on main — Tauri runs non-async commands there, and so does
+        // the window-event hook behind `refresh_geometry` — so the branch
+        // is an assertion about that, not a fallback for it.
+        let _lock = MainThreadMarker::new().map(|_| CglLock::new(self.cgl));
         // The frontend gives us coords in the WebView's client space (y
         // measured from the top, like CSS). Cocoa's default coord system
         // is flipped — y from the bottom — so we have to translate.
@@ -287,6 +381,8 @@ impl VideoSurface for MacosVideoSurface {
     }
 
     fn swap_buffers(&self) -> Result<()> {
+        // No lock of its own: the render loop already holds the context
+        // lock across render-then-swap, and it is the only caller.
         let guard = self
             .context
             .lock()
