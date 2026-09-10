@@ -73,6 +73,24 @@
     return { ok: false, error: message };
   }
 
+  /**
+   * What to add to a "not yet" when the window is not on screen.
+   *
+   * Measured, not guessed: in a hidden WKWebView `requestAnimationFrame`
+   * never fires at all, while `setTimeout` still does. Framer Motion drives
+   * its exit animations on animation frames and `AnimatePresence` keeps a
+   * component mounted until the exit finishes — so a panel that has been
+   * closed stays in the page indefinitely, and `dev wait --gone` on it is
+   * waiting for something that cannot happen. Without this sentence that
+   * looks exactly like a UI bug, and someone spends an afternoon on it.
+   */
+  function hiddenNote() {
+    if (typeof document.hidden !== 'boolean' || !document.hidden) return '';
+    return ' — note the window is not on screen (' + document.visibilityState +
+      '), so animation frames are suspended and anything waiting on an exit ' +
+      'animation to be removed will never be';
+  }
+
   function cap(text, limit) {
     var s = String(text).replace(/\s+/g, ' ').trim();
     return s.length > limit ? s.slice(0, limit) + '…' : s;
@@ -351,12 +369,12 @@
       // The distinction that saves an hour: it IS in the page, it is just
       // not showing. A wrong selector and a panel that never opened need
       // different fixes, and only this sentence tells them apart.
-      result.why = gone
-        ? selector + ' is still visible (' + live.length + ' match(es))'
+      result.why = (gone
+        ? selector + ' is still visible (' + live.length + ' match(es))' + hiddenNote()
         : (found.length
             ? found.length + ' match(es) for ' + selector +
               ' are in the page but none is visible'
-            : 'nothing matches ' + selector);
+            : 'nothing matches ' + selector));
     }
     return result;
   }
@@ -450,7 +468,7 @@
         ok: true,
         done: false,
         why: describe(el) + ' is covered by ' + describe(top) +
-          ' at (' + Math.round(x) + ', ' + Math.round(y) + ')'
+          ' at (' + Math.round(x) + ', ' + Math.round(y) + ')' + hiddenNote()
       };
     }
 

@@ -175,6 +175,17 @@ fn build_program(id: u64, js: &str) -> String {
   var __id = {id};
   var __src = {source};
 
+  // WebKit's `error.stack` is a bare frame list with no message in it —
+  // "@\n@tauri://localhost:677:25" tells nobody anything. The name and
+  // message are the sentence; the stack is the appendix.
+  function __blame(err) {{
+    if (err && err.message) {{
+      var head = (err.name ? err.name + ': ' : '') + err.message;
+      return err.stack ? head + '\n' + err.stack : head;
+    }}
+    return String(err);
+  }}
+
   function __send(payload) {{
     try {{
       window.__TAURI_INTERNALS__.invoke('dev_report', {{ id: __id, payload: payload }});
@@ -212,7 +223,7 @@ fn build_program(id: u64, js: &str) -> String {
     try {{
       __fn = new Function('"use strict"; return (async function () {{' + __src + '\n}})();');
     }} catch (e2) {{
-      __send({{ error: 'the script did not parse: ' + (e2 && e2.message ? e2.message : e2) }});
+      __send({{ error: 'the script did not parse: ' + __blame(e2) }});
       return;
     }}
   }}
@@ -220,10 +231,10 @@ fn build_program(id: u64, js: &str) -> String {
   try {{
     Promise.resolve(__fn()).then(
       function (v) {{ __send(__wire(v)); }},
-      function (err) {{ __send({{ error: String(err && err.stack ? err.stack : err) }}); }}
+      function (err) {{ __send({{ error: __blame(err) }}); }}
     );
   }} catch (err) {{
-    __send({{ error: String(err && err.stack ? err.stack : err) }});
+    __send({{ error: __blame(err) }});
   }}
 }})();
 "#,

@@ -276,7 +276,18 @@ unflick dev wait <selector> [--gone] [--timeout <s>]
 unflick dev capture [--output <path>] [--max-edge <px>] # the UI layer, not the decoded picture
 unflick dev eval <script> [--timeout <s>]
 unflick --allow-dev                     # arm it on the GUI
+unflick --allow-dev <file>              # ...and open a film in the same launch
 unflick daemon --allow-dev              # arm it headless (answers "no window")
+#
+# Two things about a window that is not on screen, both of which look like
+# app bugs and are not. `dev capture` refuses — by name — when the screen is
+# locked or the window is minimised, rather than returning a black PNG;
+# `dev snapshot`, `dev text`, `dev click` and `dev eval` all keep working
+# there, so an unattended check should reach for those. And a hidden webview
+# runs no animation frames at all, so anything Framer Motion's
+# `AnimatePresence` is animating out stays in the page: `dev wait --gone` on
+# a closing panel cannot succeed until the window is visible. The refusal
+# says so when it happens.
 
 # Recently played / privacy
 unflick recent list [--limit <n>]
@@ -437,7 +448,22 @@ cargo run -- --mcp               # Test MCP server during development
 cargo run -- play test.mp4 && echo "OK"
 cargo run -- status | jq .
 cargo run -- screenshot --output /tmp/test.png && ls -la /tmp/test.png
+
+# The one suite that opens a window. Its own binary, so a flake in it
+# cannot mask a playback regression, and it is NOT in CI — a GUI run has
+# never been verified on the Linux or Windows runners, and a red build
+# nobody trusts is worse than a gap someone knows about.
+pnpm build                                             # dist/ must exist
+cd src-tauri && cargo test --test gui_dev --features custom-protocol
 ```
+
+`custom-protocol` is not optional there, and it is worth knowing why: Tauri
+decides between the built `dist/` and `devUrl` at compile time on that
+feature. A plain `cargo build` produces a binary whose window navigates to
+http://localhost:1420 and sits on about:blank unless `pnpm dev` happens to
+be running. `pnpm tauri dev` handles this for you; `cargo test` does not,
+so the GUI suite refuses to run without the feature rather than testing a
+blank page.
 
 ## Milestone Plan
 

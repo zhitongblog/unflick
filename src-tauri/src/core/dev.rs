@@ -295,7 +295,7 @@ pub fn run(host: &dyn DevHost, request: Request) -> CommandResult {
                     .map(|s| format!("clicked {}", s))
                     .unwrap_or_else(|| "clicked".to_string())
             },
-            |why, waited| format!("{} after {} ms", why, waited),
+            |why, waited| format!("gave up after {} ms — {}", waited, why),
         ),
         Request::Text { selector } => {
             let call = probe_call("text", json!({ "selector": selector }));
@@ -340,7 +340,7 @@ pub fn run(host: &dyn DevHost, request: Request) -> CommandResult {
                         format!("{} appeared after {} ms", name, waited)
                     }
                 },
-                |why, waited| format!("{} after {} ms", why, waited),
+                |why, waited| format!("gave up after {} ms — {}", waited, why),
             )
         }
         Request::Capture { max_edge, output } => capture(host, max_edge, output),
