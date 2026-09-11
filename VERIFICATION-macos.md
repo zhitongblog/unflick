@@ -787,3 +787,79 @@ $ unflick status
 `playerState === "stopped"`。这不是 bug，是那张门在运行时的实证：
 带着文件启动时它不出现也不消费标志，文件一停它就该出现，它就出现了。
 （随后按 Esc 关掉，`onboarding_seen` 回到 `true`。）
+
+---
+
+## v0.11 #4 在线字幕搜索界面（无 Key 引导页）
+
+**结论：通过。** 两边说的是同一件事、给的是同一个网址。
+
+CLI 侧的拒绝：
+
+```
+$ unflick subtitle search --file /tmp/uf-verify-media/bili.mp4
+{
+  "success": false,
+  "message": "OpenSubtitles API key not set. Get a free key at
+              https://www.opensubtitles.com/consumers, then run:
+              unflick settings set opensubtitles_api_key <key>"
+}
+```
+
+窗口侧：字幕菜单 → `在线查找字幕…`，先闪一下 `加载中…`，然后落到引导页：
+
+```
+在线查找字幕
+
+OpenSubtitles 需要你自己的免费 API Key。下载会计入你个人的每日额度，
+所以 unflick 不附带共享的 Key。
+前往 opensubtitles.com 获取 Key →
+保存
+```
+
+结构：
+
+```
+  inputs : ['password/粘贴你的 API Key']
+  links  : ['前往 opensubtitles.com 获取 Key → → https://www.opensubtitles.com/consumers']
+  buttons: ['保存', …]
+```
+
+三件事都对：
+
+1. **网址和 CLI 打印的完全一致**（`opensubtitles.com/consumers`）。
+2. 输入框是 `type=password` —— Key 是机密，不该明文躺在屏幕上。
+3. 文案解释了**为什么**要自己申请（下载记在你自己的额度上），而不是干巴巴地报错。
+
+保存这条路也是通的。往输入框里塞一个假 Key 再点「保存」：
+
+```
+$ unflick settings get --key opensubtitles_api_key
+   ok TEST-KEY-NOT-REAL
+$ unflick settings unset opensubtitles_api_key
+   removed opensubtitles_api_key
+```
+
+（真的搜索 / 下载没测——本机没有 Key，也不打算替用户去申请一个。
+**「有 Key 之后搜索能不能出结果」这一条仍然 `unverified`**，需要一个有
+OpenSubtitles 账号的人跑 `unflick subtitle search <query>` 和菜单里的同一条路。）
+
+---
+
+## 顺手确认：音轨菜单没有 "undefined"
+
+Windows 那次验证抓到的六个缺陷里，最刺眼的一个是音轨菜单每一条都显示
+"undefined"。macOS 上没有：
+
+```
+$ unflick audio list
+  id=1 title=None lang=None codec=aac selected=True
+
+菜单里：
+  音轨
+  Track 1
+  aac
+```
+
+后端的 `title` 是 `None`，界面显示的是 **`Track 1`**（由 id 合成）加上
+codec `aac`——正是那个 bug 修好之后该有的样子。
