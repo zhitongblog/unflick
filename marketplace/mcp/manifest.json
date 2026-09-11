@@ -1,7 +1,7 @@
 {
   "name": "unflick",
   "displayName": "unflick — video player for humans and AI",
-  "description": "Drive the unflick video player from any AI agent. Play local files, discs and 30+ streaming-site URLs (YouTube, Bilibili, Twitch, Vimeo…), control playback down to single frames and A-B loops, search what was said and seek to it, describe the frame on screen, generate subtitles locally with whisper.cpp and translate them, find them online, cut clips and GIFs, take screenshots, set chapters and bookmarks, drive a 10-band equalizer, cast to a DLNA television, and scan/search a media library. 94 tools, 3 live resources, fully headless.",
+  "description": "Drive the unflick video player from any AI agent. Play local files, discs and 30+ streaming-site URLs (YouTube, Bilibili, Twitch, Vimeo…), control playback down to single frames and A-B loops, search what was said and seek to it, describe the frame on screen, generate subtitles locally with whisper.cpp and translate them, find them online, cut clips and GIFs, take screenshots, set chapters and bookmarks, drive a 10-band equalizer, cast to a DLNA television, scan/search a media library, and — with --allow-dev — drive and read the player's own window. 101 tools, 3 live resources, fully headless.",
   "version": "0.13.1",
   "license": "MIT",
   "author": "xiangdong li",
@@ -40,7 +40,7 @@
     ]
   },
   "capabilities": {
-    "tools": 94,
+    "tools": 101,
     "resources": 3,
     "prompts": 0
   },
@@ -88,6 +88,7 @@
     "audio_delay",
     "subtitle_style_get",
     "subtitle_style_set",
+    "subtitle_bilingual",
     "chapter_list",
     "chapter_seek",
     "chapter_next",
@@ -138,7 +139,13 @@
     "disc_list",
     "session",
     "startup",
-    "now_playing"
+    "now_playing",
+    "dev_snapshot",
+    "dev_click",
+    "dev_text",
+    "dev_wait",
+    "dev_capture",
+    "dev_eval"
   ],
   "resources": [
     "unflick://now-playing",

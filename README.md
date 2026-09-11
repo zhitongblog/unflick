@@ -36,8 +36,8 @@ irm https://unflick.app/install.ps1 | iex
 unflick exposes the same playback engine through three surfaces:
 
 - **GUI** — modern player window with libmpv-quality playback, keyboard shortcuts, drag-and-drop, picture-in-picture, true fullscreen, chapters, bookmarks, A-B loop, frame stepping, subtitle timing and styling.
-- **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate.
-- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 94 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
+- **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick subtitle bilingual on`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate. Started with `--allow-dev`, `unflick dev snapshot` / `click` / `eval` drive and read the player's own window, which is how unflick is tested on all three platforms.
+- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 101 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, subtitle_bilingual, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
 
 Claude Code users can install the skills and the MCP server in one step:
 

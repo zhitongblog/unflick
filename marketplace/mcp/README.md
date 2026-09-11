@@ -6,7 +6,7 @@
 - **Protocol**: Model Context Protocol, `2024-11-05`
 - **Transport**: stdio
 - **Server**: `unflick --mcp` (the npm wrapper, `npx -y unflick-mcp`, is not published yet)
-- **Tools**: 94 · **Resources**: 3 · **Prompts**: 0
+- **Tools**: 101 · **Resources**: 3 · **Prompts**: 0
 
 The MCP server spawns/attaches to the unflick **daemon** (the same core the GUI
 and CLI use) and routes every tool call to it, so AI control and the on-screen
@@ -25,7 +25,7 @@ Then add it to your client — see [`client-configs/`](./client-configs/).
 
 ## Tools
 
-94 tools. Every one has a 1:1 CLI command — `unflick <thing> <action>` — so a skill can fall back to the shell when no MCP server is connected.
+101 tools. Every one has a 1:1 CLI command — `unflick <thing> <action>` — so a skill can fall back to the shell when no MCP server is connected.
 
 ### Playback
 
@@ -37,7 +37,6 @@ Then add it to your client — see [`client-configs/`](./client-configs/).
 | `stop` | — | Stop playback and unload the file |
 | `seek` | `seconds` (req) | Seek to a position in seconds |
 | `set_volume` | `level` (req) | Set volume level |
-| `set_speed` | `rate`, `relative` | Get or set the playback speed of the window the user is watching |
 | `set_speed` | `rate`, `relative` | Get or set the playback speed of the window the user is watching |
 | `get_status` | — | Get current playback status including state, file, position, duration, volume, and speed |
 | `now_playing` | `cover` | What is playing, described the way a person would: title, artist, album, and whether there is any picture (an embedded cover is not video) |
@@ -84,6 +83,7 @@ Then add it to your client — see [`client-configs/`](./client-configs/).
 | `load_subtitle` | `file` (req) | Load an external subtitle file |
 | `subtitle_list` | — | List all subtitle tracks (embedded and external) |
 | `subtitle_select` | `id` (req) | Select a subtitle track by ID (0 to disable subtitles) |
+| `subtitle_bilingual` | `enabled`, `layout`, `primary`, `secondary` | Show two subtitle tracks at once — typically the original plus a translation |
 | `subtitle_delay` | `relative`, `seconds` | Get or set the subtitle delay in seconds |
 | `subtitle_style_get` | — | Read subtitle appearance: scale, vertical position, colour, border size, bold |
 | `subtitle_style_set` | `name` (req), `value` (req) | Set one subtitle appearance property |
@@ -120,11 +120,11 @@ Then add it to your client — see [`client-configs/`](./client-configs/).
 | Tool | Args | Description |
 |---|---|---|
 | `bookmark_add` | `file`, `name`, `position` | Save a named position in a file, so it can be jumped back to later |
-| `bookmark_list` | `all`, `file` | Bookmarks for the file being watched, in timeline order |
+| `bookmark_list` | `all`, `file`, `key` | Bookmarks for the file being watched, in timeline order |
 | `bookmark_goto` | `id` (req) | Jump to a bookmark by id |
 | `bookmark_rename` | `id` (req), `name` | Give a bookmark a name, or drop the one it has by omitting name |
 | `bookmark_remove` | `id` (req) | Delete one bookmark by id |
-| `bookmark_clear` | `all`, `file` | Delete every bookmark for the file being watched, or for the file named |
+| `bookmark_clear` | `all`, `file`, `key` | Delete every bookmark for the file being watched, or for the file named |
 
 ### Media library
 
@@ -172,6 +172,17 @@ Then add it to your client — see [`client-configs/`](./client-configs/).
 | `mouse_set` | `action` (req), `trigger` (req) | Point a mouse trigger at an action |
 | `mouse_reset` | `trigger` | Restore a mouse trigger to its default |
 
+### Driving the window itself
+
+| Tool | Args | Description |
+|---|---|---|
+| `dev_snapshot` | `depth`, `selector` | The accessibility tree of the unflick window: every visible element with its role, accessible name, state and a CSS selector that feeds straight back into dev_click and dev_text |
+| `dev_text` | `selector` (req) | Visible text of every element matching a selector, each with its index |
+| `dev_eval` | `script` (req), `timeout_seconds` | Run JavaScript in the unflick window and get back what it evaluated to |
+| `dev_click` | `selector` (req), `index`, `timeout_seconds` | Click an element in the unflick window |
+| `dev_wait` | `selector` (req), `gone`, `timeout_seconds` | Wait for an element to appear, or with `gone` for it to leave the page |
+| `dev_capture` | `max_edge` | A picture of the unflick interface |
+
 ### Streaming / SponsorBlock
 
 | Tool | Args | Description |
@@ -210,5 +221,5 @@ printf '%s\n' \
   | unflick --mcp
 ```
 
-Expect `serverInfo: {name: "unflick", version: "0.13.1"}`, a 94-tool list, and a
+Expect `serverInfo: {name: "unflick", version: "0.14.0"}`, a 101-tool list, and a
 `get_status` JSON payload.
