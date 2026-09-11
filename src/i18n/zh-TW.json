@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "鍵盤快速鍵",
     "hint": "點擊某個快速鍵，然後按下你想要的按鍵。Esc 取消。",
+    "conflict": "{key} 已經綁定給「{action}」了——先改掉或重設那一條。",
     "press": "請按鍵…",
     "resetAll": "全部重設",
     "reset": "重設",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick 無法開啟 {scheme}:// 連結",
+    "titleDiscUnsupported": "這張光碟需要另一個 mpv 建置",
     "titleNetwork": "這個連結載入不了",
     "titleYtdlp": "這個連結需要 yt-dlp",
     "titleDrm": "這部影片受 DRM 保護",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "先掛載匯出目錄（mount -t nfs），然後播放掛載後的路徑。",
     "hintSchemeOther": "此版本不支援該通訊協定。請改用本機路徑、已掛載的共用，或 http(s) 連結。",
     "hintNetwork": "檢查一下連結和網路連線。有些站台也會拒絕瀏覽器以外的用戶端。",
+    "hintDiscUnsupported": "unflick 認出了這張光碟——只是目前建置載入的 libmpv 不支援光碟播放。擷取出來的檔案或映像檔可以正常播放；要直接播放光碟，需要帶 libdvdnav 與 libbluray 的 mpv。",
     "hintYtdlp": "安裝 yt-dlp 並確認它在 PATH 中，然後重試這個連結。",
     "hintDrm": "Netflix、Disney+ 等受 DRM 保護的服務只能在它們自己的 App 裡播放。",
     "hintUnreadable": "unflick 讀不到它。確認檔案還在，而且你有開啟它的權限。",

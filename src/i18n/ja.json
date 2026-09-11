@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "キーボードショートカット",
     "hint": "ショートカットをクリックして、割り当てたいキーを押します。Esc でキャンセル。",
+    "conflict": "{key} はすでに「{action}」に割り当てられています。先にそちらを変更するかリセットしてください。",
     "press": "キーを押してください…",
     "resetAll": "すべてリセット",
     "reset": "リセット",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick は {scheme}:// のリンクを開けません",
+    "titleDiscUnsupported": "このディスクには別の mpv が必要です",
     "titleNetwork": "このリンクを読み込めませんでした",
     "titleYtdlp": "このリンクには yt-dlp が必要です",
     "titleDrm": "この動画は DRM で保護されています",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "エクスポートをマウント（mount -t nfs）してから、マウント先のパスを再生してください。",
     "hintSchemeOther": "このビルドはそのプロトコルに対応していません。ローカルのパス、マウント済みの共有、または http(s) のリンクをお使いください。",
     "hintNetwork": "リンクと接続を確認してください。ブラウザー以外を拒否するサイトもあります。",
+    "hintDiscUnsupported": "ディスクは認識されています。この build の libmpv がディスク再生に対応していないだけです。リッピングしたファイルやイメージは通常どおり再生できます。ディスク自体を再生するには libdvdnav と libbluray を含む mpv が必要です。",
     "hintYtdlp": "yt-dlp をインストールし、PATH に入っていることを確認してから、もう一度お試しください。",
     "hintDrm": "Netflix や Disney+ など DRM で保護されたサービスは、それぞれの公式アプリでしか再生できません。",
     "hintUnreadable": "unflick から読み取れませんでした。ファイルがまだあるか、開く権限があるかを確認してください。",

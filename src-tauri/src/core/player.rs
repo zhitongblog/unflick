@@ -180,6 +180,27 @@ impl Player {
         // reaches `player_play` directly, gets it too.
         let target = match disc::detect(path) {
             Some(d) => {
+                // Ask before trying. A libmpv built without libdvdnav has no
+                // `dvd-device` property either, so the attempt below comes
+                // back as mpv's bare "property not found" — which the window
+                // then classified as a file it could not read and told the
+                // user to check their permissions. The file was fine and the
+                // permissions were fine; this build simply cannot play discs.
+                let protocols = self.supported_protocols();
+                if !d
+                    .kind
+                    .protocols()
+                    .iter()
+                    .any(|p| protocols.iter().any(|have| have == p))
+                {
+                    bail!(
+                        "this build cannot play {} — the libmpv it loaded was built without \
+                         disc support. The disc is recognised, so a rip or an image of it plays \
+                         normally; playing the disc itself needs an mpv built with libdvdnav \
+                         and libbluray.",
+                        d.kind.label()
+                    );
+                }
                 // Before libdvdnav gets anywhere near the disc.
                 disc::ensure_console();
                 if !d.device.is_empty() {

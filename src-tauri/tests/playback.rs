@@ -1153,6 +1153,53 @@ fn playing_a_file_records_it_even_when_it_was_never_scanned() {
     assert_eq!(rows[0]["play_count"], 1);
 }
 
+/// A source that mpv can open but never reads a frame from is not a play, and
+/// must not be offered back on the first screen.
+///
+/// The bug this guards was found by driving the window: the history row was
+/// written at the play call site, before `loaded` had been decided, so anything
+/// that did not fail *fast* got recorded — a share that had gone away, a
+/// mistyped path behind a mount, or the FIFO used here, which is the same shape
+/// and deterministic. The entry was permanent and failed again when clicked.
+///
+/// A FIFO with no writer is the only reliable way to sit in "still opening":
+/// mpv opens it, then waits forever for bytes that never come.
+#[test]
+fn a_source_that_never_opens_stays_out_of_the_history() {
+    let f = fixtures();
+    let d = Daemon::start();
+
+    let stall = d.data_dir().join("stall.mkv");
+    let path = std::ffi::CString::new(stall.to_str().unwrap()).unwrap();
+    // SAFETY: a path inside this test's own data dir, which no other test
+    // and no user shares.
+    let made = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+    assert_eq!(made, 0, "could not create the FIFO the test needs");
+
+    let reply = d.send("play", json!({ "file": stall.to_str().unwrap() }));
+    reply.expect_ok();
+    assert_eq!(
+        reply.data()["loaded"],
+        false,
+        "a FIFO nobody writes to cannot report itself loaded"
+    );
+
+    let recent = d.send("recent_list", json!({})).expect_ok().data();
+    assert_eq!(
+        recent.as_array().expect("recent list").len(),
+        0,
+        "something still opening was written to the history"
+    );
+
+    // The other half of the rule, and the reason the fix is not "only record
+    // Loaded": a file that does open is still recorded, immediately.
+    d.play(&f.with_chapters);
+    let recent = d.send("recent_list", json!({})).expect_ok().data();
+    let rows = recent.as_array().expect("recent list");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["title"], "chapters");
+}
+
 #[test]
 fn recent_is_ordered_newest_first_and_counts_repeats() {
     let f = fixtures();

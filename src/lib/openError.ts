@@ -19,6 +19,7 @@
  */
 
 export type OpenErrorKind =
+  | "disc_unsupported"
   | "unsupported_scheme"
   | "network"
   | "ytdlp"
@@ -115,6 +116,15 @@ export function classifyOpenError(
   if (lower.includes("drm") || lower.includes("widevine") || lower.includes("encrypted")) {
     return { kind: "drm", scheme, detail };
   }
+  // Our own refusal from `core::player`, recognised by a phrase we write
+  // ourselves rather than by anything mpv says. It used to arrive as mpv's
+  // bare "property not found" and fall through to `unreadable`, so the
+  // window told people to check that the file existed and that they had
+  // permission to open it — while the disc was found, readable, and simply
+  // not playable by this build.
+  if (lower.includes("built without disc support")) {
+    return { kind: "disc_unsupported", scheme, detail };
+  }
   if (scheme && !PLAYABLE_SCHEMES.has(scheme)) {
     return { kind: "unsupported_scheme", scheme, detail };
   }
@@ -150,6 +160,7 @@ export function hintKeyFor(
     if (error.scheme === "nfs") return `hintNfs${suffix}`;
     return "hintSchemeOther";
   }
+  if (error.kind === "disc_unsupported") return "hintDiscUnsupported";
   if (error.kind === "network") return "hintNetwork";
   if (error.kind === "ytdlp") return "hintYtdlp";
   if (error.kind === "drm") return "hintDrm";
@@ -161,6 +172,8 @@ export function titleKeyFor(error: ClassifiedOpenError): string {
   switch (error.kind) {
     case "unsupported_scheme":
       return "titleUnsupportedScheme";
+    case "disc_unsupported":
+      return "titleDiscUnsupported";
     case "network":
       return "titleNetwork";
     case "ytdlp":

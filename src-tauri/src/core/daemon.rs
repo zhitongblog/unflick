@@ -628,6 +628,11 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                     // per file or it is a setting that does nothing.
                     // Covers URLs and files alike; returns at once.
                     crate::core::bilingual::after_play_hooks(Arc::clone(player));
+                    // A source still opening after the load deadline is not a
+                    // failure, but calling it "playing" would be a guess. Say
+                    // which one it is; a script watching a network share needs
+                    // to be able to tell.
+                    let loaded = outcome == player::LoadOutcome::Loaded;
                     // History is written here rather than being left to
                     // each caller: a play is a play whether it came from
                     // the window, a script, or an agent.
@@ -636,13 +641,24 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                         // player holds the yt-dlp-resolved CDN address,
                         // which changes between sessions and is not what
                         // anyone wants to see in their history.
-                        let _ = db.record_play(&src);
+                        if loaded {
+                            let _ = db.record_play(&src);
+                        } else {
+                            // Still opening is not a play yet. Writing it
+                            // here is what put a dead path in "continue
+                            // watching": a FIFO mpv can open but never reads
+                            // from, or a share that has gone away, left a
+                            // permanent first-screen entry that fails again
+                            // when clicked. Waiting for `Loaded` alone would
+                            // be the other error — the deadline exists
+                            // precisely because slow shares do open, later.
+                            record_play_when_it_opens(
+                                Arc::clone(&ctx.player),
+                                Arc::clone(&ctx.db),
+                                src.clone(),
+                            );
+                        }
                     }
-                    // A source still opening after the load deadline is not a
-                    // failure, but calling it "playing" would be a guess. Say
-                    // which one it is; a script watching a network share needs
-                    // to be able to tell.
-                    let loaded = outcome == player::LoadOutcome::Loaded;
                     CommandResult::ok_with_data(
                         if loaded {
                             format!("playing {}", file)
@@ -2388,6 +2404,40 @@ fn bookmark_scope(
 /// and not merged into a made-up "unknown disc" — see `db::migrate` — so the
 /// one thing owed to the user is being told they are there and how to get at
 /// them. Goes in the message only; `data` stays a bare list.
+/// Write a history entry once a source that was still opening actually opens.
+///
+/// Bounded on purpose: a share that never answers should leave nothing behind,
+/// which is the whole point of not writing the entry up front. Polling rather
+/// than waiting on an event because nothing else in unflick reads mpv's event
+/// queue — auto-advance polls `eof-reached` the same way — and a second reader
+/// would steal events from `await_load`.
+fn record_play_when_it_opens(
+    player: Arc<Player>,
+    db: Arc<Database>,
+    src: crate::db::SourceKey,
+) {
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(500));
+            // Whatever this source is doing, it is not what is playing now,
+            // and the history is about what played.
+            if player.current_source().as_ref() != Some(&src) {
+                return;
+            }
+            // Either answer means frames arrived: a duration says the
+            // demuxer read the file, a position past zero says it is
+            // playing even when the duration is unknown, which is every
+            // live stream.
+            let status = player.status();
+            if status.duration > 0.0 || status.position > 0.0 {
+                let _ = db.record_play(&src);
+                return;
+            }
+        }
+    });
+}
+
 fn orphan_note(db: &Database, scope: Option<&crate::db::SourceKey>) -> String {
     let Some(src) = scope else { return String::new() };
     // A disc reached through a path, which is the only case where a drive

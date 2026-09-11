@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "Raccourcis clavier",
     "hint": "Cliquez sur un raccourci, puis appuyez sur les touches voulues. Échap annule.",
+    "conflict": "{key} est déjà attribuée à « {action} » — modifiez ou réinitialisez celle-ci d’abord.",
     "press": "Appuyez sur des touches…",
     "resetAll": "Tout réinitialiser",
     "reset": "Réinitialiser",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick ne peut pas ouvrir les liens {scheme}://",
+    "titleDiscUnsupported": "Ce disque nécessite un autre mpv",
     "titleNetwork": "Ce lien n'a pas pu être chargé",
     "titleYtdlp": "Ce lien nécessite yt-dlp",
     "titleDrm": "Cette vidéo est protégée par DRM",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "Montez l'export (mount -t nfs), puis lisez le chemin monté.",
     "hintSchemeOther": "Cette version ne gère pas ce protocole. Utilisez un chemin local, un partage monté ou un lien http(s).",
     "hintNetwork": "Vérifiez le lien et votre connexion. Certains hôtes refusent aussi tout ce qui n'est pas un navigateur.",
+    "hintDiscUnsupported": "unflick a bien trouvé le disque : c'est le libmpv de cette version qui ne sait pas lire les disques. Un rip ou une image disque se lit normalement ; le disque lui-même nécessite un mpv compilé avec libdvdnav et libbluray.",
     "hintYtdlp": "Installez yt-dlp, vérifiez qu'il est dans le PATH, puis réessayez ce lien.",
     "hintDrm": "Netflix, Disney+ et les autres services protégés par DRM ne se lisent que dans leurs propres applications.",
     "hintUnreadable": "unflick n'a pas pu le lire. Vérifiez que le fichier est toujours là et que vous avez le droit de l'ouvrir.",

@@ -117,3 +117,32 @@ describe("detectPlatform", () => {
     expect(detectPlatform(undefined)).toBe("linux");
   });
 });
+
+describe("a disc this build cannot play", () => {
+  // The bug: mpv answers "property not found" when its libmpv has no
+  // dvd-device property, which fell through to `unreadable` and told the
+  // user to check the file and their permissions. Both were fine.
+  const message =
+    "this build cannot play DVDs — the libmpv it loaded was built without " +
+    "disc support. The disc is recognised, so a rip or an image of it plays " +
+    "normally; playing the disc itself needs an mpv built with libdvdnav and libbluray.";
+
+  it("is its own kind, not an unreadable file", () => {
+    const e = classifyOpenError("/Volumes/THE_MATRIX", message);
+    expect(e.kind).toBe("disc_unsupported");
+    expect(e.detail).toBe(message);
+  });
+
+  it("never advises checking permissions", () => {
+    const e = classifyOpenError("/Volumes/THE_MATRIX", message);
+    expect(titleKeyFor(e)).toBe("titleDiscUnsupported");
+    for (const platform of ["mac", "windows", "linux"] as const) {
+      expect(hintKeyFor(e, platform)).toBe("hintDiscUnsupported");
+    }
+  });
+
+  it("leaves an ordinary failed open alone", () => {
+    const e = classifyOpenError("/tmp/film.mkv", "could not open /tmp/film.mkv");
+    expect(e.kind).toBe("unreadable");
+  });
+});

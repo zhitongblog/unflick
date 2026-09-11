@@ -46,6 +46,24 @@ impl DiscKind {
         }
     }
 
+    /// The protocol names a libmpv reports when it can actually open this
+    /// kind of disc. Two each, because mpv offers a menu-driven variant and
+    /// a plain one and a build can carry either name.
+    pub fn protocols(self) -> &'static [&'static str] {
+        match self {
+            DiscKind::Dvd => &["dvd", "dvdnav"],
+            DiscKind::BluRay => &["bd", "bluray", "br"],
+        }
+    }
+
+    /// What to call this to a person.
+    pub fn label(self) -> &'static str {
+        match self {
+            DiscKind::Dvd => "DVDs",
+            DiscKind::BluRay => "Blu-rays",
+        }
+    }
+
     /// The mpv option that says where the disc is.
     pub fn device_property(self) -> &'static str {
         match self {

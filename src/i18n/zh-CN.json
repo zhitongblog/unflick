@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "键盘快捷键",
     "hint": "点击某个快捷键，然后按下你想要的按键。Esc 取消。",
+    "conflict": "{key} 已经绑定给「{action}」了——先改掉或重置那一条。",
     "press": "请按键…",
     "resetAll": "全部重置",
     "reset": "重置",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick 无法打开 {scheme}:// 链接",
+    "titleDiscUnsupported": "这张碟需要另一个 mpv 构建",
     "titleNetwork": "这个链接加载不了",
     "titleYtdlp": "这个链接需要 yt-dlp",
     "titleDrm": "这个视频受 DRM 保护",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "先挂载导出目录（mount -t nfs），然后播放挂载后的路径。",
     "hintSchemeOther": "此版本不支持该协议。请改用本地路径、已挂载的共享，或 http(s) 链接。",
     "hintNetwork": "检查一下链接和网络连接。有些站点也会拒绝浏览器以外的客户端。",
+    "hintDiscUnsupported": "unflick 认出了这张碟——只是当前构建加载的 libmpv 不支持光盘播放。抓取出来的文件或镜像可以正常播放；要直接播放光盘，需要带 libdvdnav 与 libbluray 的 mpv。",
     "hintYtdlp": "安装 yt-dlp 并确认它在 PATH 中，然后重试这个链接。",
     "hintDrm": "Netflix、Disney+ 等受 DRM 保护的服务只能在它们自己的应用里播放。",
     "hintUnreadable": "unflick 读不到它。确认文件还在，并且你有打开它的权限。",

@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "Keyboard shortcuts",
     "hint": "Click a shortcut, then press the keys you want. Esc cancels.",
+    "conflict": "{key} is already bound to “{action}” — rebind or reset that one first.",
     "press": "Press keys…",
     "resetAll": "Reset all",
     "reset": "Reset",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick cannot open {scheme}:// links",
+    "titleDiscUnsupported": "This disc needs a different mpv",
     "titleNetwork": "That link would not load",
     "titleYtdlp": "This link needs yt-dlp",
     "titleDrm": "This video is DRM-protected",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "Mount the export (mount -t nfs), then play the mounted path.",
     "hintSchemeOther": "This build has no support for that protocol. Play a local path, a mounted share, or an http(s) link.",
     "hintNetwork": "Check the link and your connection. Some hosts also refuse anything that is not a browser.",
+    "hintDiscUnsupported": "unflick found the disc — this build's libmpv just cannot play discs. A rip or a disc image plays normally; the disc itself needs an mpv built with libdvdnav and libbluray.",
     "hintYtdlp": "Install yt-dlp and make sure it is on your PATH, then try the link again.",
     "hintDrm": "Netflix, Disney+ and other DRM-protected services only play inside their own apps.",
     "hintUnreadable": "unflick could not read it. Check the file is still there and that you are allowed to open it.",

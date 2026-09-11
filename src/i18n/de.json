@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "Tastenkürzel",
     "hint": "Kürzel anklicken, dann die gewünschten Tasten drücken. Esc bricht ab.",
+    "conflict": "{key} ist bereits mit „{action}“ belegt — ändere oder setze diese Zuweisung zuerst zurück.",
     "press": "Tasten drücken…",
     "resetAll": "Alle zurücksetzen",
     "reset": "Zurücksetzen",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick kann {scheme}://-Links nicht öffnen",
+    "titleDiscUnsupported": "Diese Disc braucht ein anderes mpv",
     "titleNetwork": "Dieser Link ließ sich nicht laden",
     "titleYtdlp": "Für diesen Link wird yt-dlp gebraucht",
     "titleDrm": "Dieses Video ist DRM-geschützt",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "Export einhängen (mount -t nfs), dann den eingehängten Pfad abspielen.",
     "hintSchemeOther": "Dieser Build unterstützt das Protokoll nicht. Nutzen Sie einen lokalen Pfad, eine eingebundene Freigabe oder einen http(s)-Link.",
     "hintNetwork": "Prüfen Sie Link und Verbindung. Manche Anbieter weisen außerdem alles ab, was kein Browser ist.",
+    "hintDiscUnsupported": "unflick hat die Disc erkannt — nur kann das libmpv dieses Builds keine Discs abspielen. Ein Rip oder ein Disc-Image läuft normal; die Disc selbst braucht ein mpv mit libdvdnav und libbluray.",
     "hintYtdlp": "Installieren Sie yt-dlp, stellen Sie sicher, dass es im PATH liegt, und versuchen Sie es erneut.",
     "hintDrm": "Netflix, Disney+ und andere DRM-geschützte Dienste laufen nur in ihren eigenen Apps.",
     "hintUnreadable": "unflick konnte sie nicht lesen. Prüfen Sie, ob die Datei noch da ist und ob Sie sie öffnen dürfen.",

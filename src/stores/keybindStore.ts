@@ -19,6 +19,11 @@ export interface Binding {
   customized: boolean;
 }
 
+/** Why a rebind did not happen, in a form the window can translate. */
+export type BindFailure =
+  | { kind: "conflict"; key: string; actionId: string; label: string }
+  | { kind: "rejected"; detail: string };
+
 interface KeybindState {
   bindings: Binding[];
   /** Chord → action id. Rebuilt whenever bindings change. */
@@ -28,7 +33,7 @@ interface KeybindState {
 
   load: () => Promise<void>;
   /** Bind a key. Returns null on success, or a message explaining the refusal. */
-  setBinding: (action: string, key: string) => Promise<string | null>;
+  setBinding: (action: string, key: string) => Promise<BindFailure | null>;
   /** Reset one action, or every action when `action` is omitted. */
   reset: (action?: string) => Promise<void>;
   /** Which action a chord triggers, if any. */
@@ -65,14 +70,27 @@ export const useKeybindStore = create<KeybindState>((set, get) => ({
   },
 
   setBinding: async (action: string, key: string) => {
+    // Answered here rather than by the backend's refusal. The backend
+    // composes its sentence in Rust — including the action's English label —
+    // so a Chinese interface showed an English refusal, and there was no key
+    // to translate because the string never passed through i18n. The table
+    // this store already holds is the same one the backend checks, so the
+    // conflict can be reported as data and the sentence written where every
+    // other sentence is written. The backend still refuses; this only stops
+    // the refusal from being the thing the user reads.
+    const taken = get().bindings.find((b) => b.key === key && b.id !== action);
+    if (taken) {
+      return { kind: "conflict", key, actionId: taken.id, label: taken.label };
+    }
     try {
       await invoke("keybind_set", { action, key });
       await get().load();
       return null;
     } catch (e) {
-      // The backend refuses a key that's already taken and says which
-      // action holds it — surface that verbatim, it's the useful part.
-      return typeof e === "string" ? e : String(e);
+      // Anything else — an unknown action, a key the normaliser rejects —
+      // is a bug or a bad call rather than something a user chose, so the
+      // backend's own words are the useful ones.
+      return { kind: "rejected", detail: typeof e === "string" ? e : String(e) };
     }
   },
 

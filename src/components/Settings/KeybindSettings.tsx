@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useKeybindStore, type Binding } from "../../stores/keybindStore";
+import { useKeybindStore, type Binding, type BindFailure } from "../../stores/keybindStore";
 import { useStrings } from "../../i18n/utils";
 import { eventToKey, formatKey } from "../../lib/keys";
+import { conflictMessage } from "../../lib/keybindConflict";
 
 /**
  * The shortcut editor.
@@ -17,7 +18,7 @@ export default function KeybindSettings() {
 
   /** Action currently listening for a chord, if any. */
   const [capturing, setCapturing] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<string | null>(null);
+  const [failure, setFailure] = useState<BindFailure | null>(null);
   const capturingRef = useRef<string | null>(null);
   capturingRef.current = capturing;
 
@@ -37,7 +38,7 @@ export default function KeybindSettings() {
 
       if (e.key === "Escape") {
         setCapturing(null);
-        setConflict(null);
+        setFailure(null);
         return;
       }
 
@@ -48,7 +49,7 @@ export default function KeybindSettings() {
       if (!action) return;
       setCapturing(null);
 
-      void setBinding(action, chord).then((error) => setConflict(error));
+      void setBinding(action, chord).then(setFailure);
     };
 
     window.addEventListener("keydown", onKeyDown, true);
@@ -76,7 +77,7 @@ export default function KeybindSettings() {
         <button
           className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
           onClick={() => {
-            setConflict(null);
+            setFailure(null);
             void reset();
           }}
         >
@@ -86,9 +87,9 @@ export default function KeybindSettings() {
 
       <p className="mb-3 text-[11px] leading-relaxed text-white/45">{t.keybinds.hint}</p>
 
-      {conflict && (
+      {failure && (
         <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-300">
-          {conflict}
+          {conflictMessage(t.keybinds, failure)}
         </p>
       )}
 
@@ -115,7 +116,7 @@ export default function KeybindSettings() {
                       className="rounded px-1.5 py-0.5 text-[9px] text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
                       title={`${t.keybinds.reset} → ${formatKey(b.default)}`}
                       onClick={() => {
-                        setConflict(null);
+                        setFailure(null);
                         void reset(b.id);
                       }}
                     >
@@ -130,7 +131,7 @@ export default function KeybindSettings() {
                         : "border-white/10 bg-white/4 text-white/70 hover:border-white/25 hover:text-white"
                     }`}
                     onClick={() => {
-                      setConflict(null);
+                      setFailure(null);
                       setCapturing(capturing === b.id ? null : b.id);
                     }}
                   >

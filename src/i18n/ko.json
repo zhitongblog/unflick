@@ -387,6 +387,7 @@
   "keybinds": {
     "section": "키보드 단축키",
     "hint": "단축키를 클릭한 다음 원하는 키를 누르세요. Esc로 취소합니다.",
+    "conflict": "{key} 은(는) 이미 \"{action}\"에 할당되어 있습니다. 먼저 그 항목을 변경하거나 초기화하세요.",
     "press": "키를 누르세요…",
     "resetAll": "모두 초기화",
     "reset": "초기화",
@@ -511,6 +512,7 @@
   },
   "openError": {
     "titleUnsupportedScheme": "unflick은 {scheme}:// 링크를 열 수 없습니다",
+    "titleDiscUnsupported": "이 디스크에는 다른 mpv가 필요합니다",
     "titleNetwork": "이 링크를 불러오지 못했습니다",
     "titleYtdlp": "이 링크에는 yt-dlp가 필요합니다",
     "titleDrm": "이 영상은 DRM으로 보호되어 있습니다",
@@ -523,6 +525,7 @@
     "hintNfsLinux": "내보내기를 마운트(mount -t nfs)한 다음 마운트된 경로를 재생하세요.",
     "hintSchemeOther": "이 빌드는 해당 프로토콜을 지원하지 않습니다. 로컬 경로, 마운트된 공유, 또는 http(s) 링크를 사용하세요.",
     "hintNetwork": "링크와 네트워크 연결을 확인하세요. 브라우저가 아닌 클라이언트를 거부하는 사이트도 있습니다.",
+    "hintDiscUnsupported": "디스크는 인식되었습니다. 이 빌드의 libmpv가 디스크 재생을 지원하지 않을 뿐입니다. 추출한 파일이나 이미지는 정상적으로 재생됩니다. 디스크 자체를 재생하려면 libdvdnav와 libbluray로 빌드된 mpv가 필요합니다.",
     "hintYtdlp": "yt-dlp를 설치하고 PATH에 있는지 확인한 뒤 다시 시도하세요.",
     "hintDrm": "Netflix, Disney+ 등 DRM으로 보호된 서비스는 각자의 앱에서만 재생됩니다.",
     "hintUnreadable": "unflick이 읽지 못했습니다. 파일이 그대로 있는지, 열 권한이 있는지 확인하세요.",
