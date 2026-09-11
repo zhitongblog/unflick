@@ -711,8 +711,18 @@ function App() {
         showToast(`${t.hotkeys.speed} ${formatSpeed(1)}`);
       },
 
-      volume_up: () => setVolume(Math.min(150, volume + 5)),
-      volume_down: () => setVolume(Math.max(0, volume - 5)),
+      // The level comes from the store, not from this closure. One wheel
+      // event resolves to as many steps as it has travel — a mouse notch
+      // is deltaY 120, which is three — and the handler runs the trigger
+      // once per step. Ten reads of the same captured `volume` all compute
+      // the same target, so ten notches moved the volume by one notch and
+      // the accumulator's whole purpose was thrown away. `setVolume` sets
+      // the store synchronously before it awaits mpv, so read live and each
+      // step sees the one before it.
+      volume_up: () =>
+        setVolume(Math.min(150, usePlayerStore.getState().volume + 5)),
+      volume_down: () =>
+        setVolume(Math.max(0, usePlayerStore.getState().volume - 5)),
       mute: () => {
         // No separate mute state to keep in sync: remember the level we
         // came from so the second press restores it.

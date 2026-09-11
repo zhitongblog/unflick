@@ -268,6 +268,49 @@ fn the_bridge_drives_the_real_window() {
         let _ = std::fs::remove_file(&path);
     }
 
+    // ── one wheel event moves the volume by every step it is worth ──────
+    // The accumulator in lib/gesture.ts turns a deltaY into N steps and the
+    // wheel handler runs the bound trigger N times. Each of those calls used
+    // to read the `volume` captured when App last rendered, so all N computed
+    // the same target and N notches moved the volume by one — a mouse notch
+    // is deltaY 120, which is three steps, so two thirds of every scroll was
+    // thrown away. gesture.test.ts is green either way: it asserts the
+    // accumulator returns 5, which it always did. Only a real window shows
+    // what the handler does with the 5.
+    //
+    // Restarted first for the same reason the storm below is: the phases
+    // above take long enough that a 20-second fixture may have run out, and
+    // the wheel handler ignores everything while the state is "stopped".
+    let replay = gui.send("play", json!({ "file": gui.file.to_string_lossy() }));
+    check(&mut broken, "restarted the fixture to scroll on", replay.ok(), &replay);
+    std::thread::sleep(Duration::from_millis(1200));
+    let set = gui.send("volume", json!({ "level": 100 }));
+    check(&mut broken, "volume set to 100 to scroll down from", set.ok(), &set);
+    // The store learns the new level from its own 250 ms poll, and the fix
+    // reads the level from the store — so give it one.
+    std::thread::sleep(Duration::from_millis(800));
+    let wheeled = gui.send("dev_eval", json!({ "script": FIVE_WHEEL_STEPS_DOWN }));
+    check_msg(
+        &mut broken,
+        "the wheel event reached the video area",
+        wheeled.ok() && wheeled.data()["value"] == json!("dispatched"),
+        || format!("{}: {}", wheeled.message(), wheeled.data()),
+    );
+    if wheeled.data()["value"] == json!("dispatched") {
+        std::thread::sleep(Duration::from_millis(800));
+        let after = gui.send("status", json!({}));
+        let level = after.data()["volume"].as_f64().unwrap_or(-1.0);
+        check_msg(
+            &mut broken,
+            "five wheel steps moved the volume by five steps",
+            (level - 75.0).abs() < 0.5,
+            || format!(
+                "volume is {} after one deltaY 200 from 100; 75 is five steps,                  95 is the stale-closure bug applying exactly one",
+                level
+            ),
+        );
+    }
+
     // ── the render thread outlives a geometry storm ─────────────────────
     // Last, because it is the phase that can take the window down with it,
     // and everything above should get its answer first.
@@ -350,6 +393,22 @@ var bad = withSelector
   .map(function (n) { return [n.selector, document.querySelectorAll(n.selector).length]; })
   .filter(function (pair) { return pair[1] !== 1; });
 return { checked: withSelector.length, nodes: snap.nodes.length, bad: bad };";
+
+/// One wheel event carrying five steps of travel (the accumulator's
+/// threshold is 40), dispatched onto the element that listens for it.
+///
+/// Dispatched on the video area itself rather than on `body`: the handler is
+/// React's `onWheel` on that div, and an event fired at an ancestor never
+/// reaches it.
+const FIVE_WHEEL_STEPS_DOWN: &str = "\
+var el = document.querySelector('div.relative.flex.flex-1.items-center.justify-center.overflow-hidden');
+if (!el) return 'the video area was not found — its class list changed';
+var r = el.getBoundingClientRect();
+el.dispatchEvent(new WheelEvent('wheel', {
+  bubbles: true, cancelable: true, deltaY: 200,
+  clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, view: window
+}));
+return 'dispatched';";
 
 /// How long to hold the geometry storm. Unsynchronised, the median run
 /// died 0.7 s in and the slowest of ten took 2.8 s, so this is a wide

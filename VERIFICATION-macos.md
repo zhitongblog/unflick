@@ -403,3 +403,148 @@ a black rectangle. Unlock the screen and retry; `unflick dev snapshot` a…
 这一半。** 窗口隐藏 → 没有动画帧 → Framer Motion 的入场动画停在 `initial`
 （opacity 0）→ `dev click` 会按「不可见」拒绝，`dev wait` 也等不到。
 所以下面每一条都会分开写清楚：**结构和行为**验到了什么，**外观**还欠谁一双眼睛。
+
+---
+
+## v0.11 #3 鼠标手势（记账表里「仍未实机」了两个版本，**任何平台**都没实机过）
+
+**结论：滚轮音量有 bug，已修；其余全部通过；双击全屏在锁屏下测不了，`unverified`。**
+
+默认绑定先从 CLI 读出来当基准（9 个触发器）：
+
+```
+$ unflick mouse list
+  wheel_up → volume_up      wheel_down → volume_down
+  click → play_pause        double_click → fullscreen    middle_click → play_pause
+  gesture_left → seek_back  gesture_right → seek_forward
+  gesture_up → volume_up    gesture_down → volume_down
+```
+
+所有事件都派发到视频区那个 div（`div.relative.flex.flex-1.items-center.justify-center.overflow-hidden`，
+`[0, 28, 1024×528]`）——React 的 `onWheel` / `onMouseUp` 挂在它身上，派发到 `body`
+是到不了的（事件只向上冒泡）。
+
+### 🐞 找到的 bug：一次滚轮 N 步，音量只动一步
+
+`lib/gesture.ts` 的累加器把一次 `deltaY` 换算成 N 步，handler 再按 N 次触发：
+
+```js
+const { steps, direction } = wheel.current.push(e.deltaY);
+for (let i = 0; i < steps; i++) {
+  runMouseTrigger(direction === "up" ? "wheel_up" : "wheel_down");
+}
+```
+
+而 action 是：
+
+```js
+volume_up: () => setVolume(Math.min(150, volume + 5)),
+volume_down: () => setVolume(Math.max(0, volume - 5)),
+```
+
+`volume` 是 App 上次渲染时捕获的值。循环里 N 次调用读到的是**同一个** `volume`，
+算出**同一个**目标，最后一次写赢——**N 步等于 1 步**。
+
+实测（每次都先 `volume 100`，只派发一个 wheel 事件）：
+
+```
+  deltaY=400  steps=10  expected=50  volume: 100 → 90
+  deltaY=200  steps=5   expected=75  volume: 100 → 95
+  deltaY=80   steps=2   expected=90  volume: 100 → 95
+```
+
+**一个鼠标滚轮刻度是 deltaY 120，也就是 3 步**，所以真实鼠标上每一格都只走了
+三分之一。`gesture.test.ts` 全绿而且一直是对的——它断言累加器返回 10，它确实返回
+10；被扔掉的是 handler 拿到 10 之后的事。这就是那种**编译通过、headless 全绿、
+只有真窗口能看见**的 bug。
+
+尝试用 monkey-patch `__TAURI_INTERNALS__.invoke` 数调用次数时撞到
+`TypeError: Attempted to assign to readonly property.`——invoke 是只读的。
+不影响结论：终值本身就够说明问题。
+
+**修法**（`src/App.tsx`）：从 store 现读，不要用闭包里的。
+
+```js
+volume_up: () =>
+  setVolume(Math.min(150, usePlayerStore.getState().volume + 5)),
+volume_down: () =>
+  setVolume(Math.max(0, usePlayerStore.getState().volume - 5)),
+```
+
+`setVolume` 在 await mpv 之前就同步 `set({volume})`，所以循环里下一步能看到上一步。
+**同一个文件里的原生菜单分支（App.tsx:1058）本来就是这么写的**——这个修改只是让
+鼠标那条路和它对齐，不是发明新写法。
+
+修完实测，三个 delta 全部精确命中：
+
+```
+### AFTER THE FIX
+  deltaY=200  steps=5   expected=75  volume: 100 → 75
+  deltaY=400  steps=10  expected=50  volume: 100 → 50
+  deltaY=80   steps=2   expected=90  volume: 100 → 90
+```
+
+**回归测试加在 `src-tauri/tests/gui_dev.rs`**，不是加在前端——只有开真窗口的那个
+套件能看见这件事。新阶段：把音量设成 100，派发一个 `deltaY: 200` 的 wheel（5 步），
+断言音量是 75；失败信息里写明「95 就是 stale-closure 那个 bug 只应用了一步」。
+
+### 其余触发器：全部通过
+
+| 手势 | 派发 | 结果 |
+|---|---|---|
+| 中键 → play_pause | `mouseup` button=1 | `playing` → `paused` → `playing`，来回都对 |
+| 右拖右 → seek_forward | mousedown b=2 @cx，mouseup @cx+120 | `8.00 → 13.00`（+5） |
+| 右拖左 → seek_back | mouseup @cx−120 | `13.00 → 8.00`（−5） |
+| 右拖下 → volume_down | mouseup @cy+120 | `80 → 75` |
+| 右拖上 → volume_up | mouseup @cy−120 | `75 → 80` |
+| 20px 抖动 → **不算手势** | mouseup @cx+20 | 位置不变（`MIN_DISTANCE` 45 生效） |
+| 对角 (85,85) → **什么都不做** | mouseup @cx+85,cy+85 | 音量不变（`AXIS_DOMINANCE` 生效） |
+
+### 一个会骗人的测量陷阱，记下来给下一个人
+
+第一轮右拖「没反应」（8.00 → 8.00），差点记成 bug。真相是：**窗口隐藏时 WebKit
+会狠狠限流定时器**，250ms 的状态轮询几乎停了，所以我用 CLI `seek 10` 之后，窗口
+里的 store 还停在 5——而 `seek_forward` 是 `seek(position + 5)`，用的是 store 的值，
+于是算出 10，和当前位置一模一样，看起来「什么都没发生」。
+
+窗口自己的标签能直接看出这件事：
+
+```
+  CLI pos: 8.00   UI shows: 0:05 | 0:20 | 65
+```
+
+所以上表每一行都是先等窗口的标签和 CLI 对齐（`sync` / `syncvol`）再派发的。
+**用 CLI 改状态、再用窗口验效果，在锁屏下需要显式同步**，否则测的是限流。
+
+### 双击全屏：`unverified`（锁屏）
+
+双击确实走到了 handler，`set_fullscreen` 也确实被调到并且返回成功：
+
+```
+$ dev eval 'window.__TAURI_INTERNALS__.invoke("set_fullscreen")…'
+  result: ok:{"fullscreen":true}
+```
+
+但窗口**没有真的全屏**：
+
+```
+  geom before: {"iw":1024,"ih":640,"sw":1440,"sh":900}
+  geom after:  {"iw":1024,"ih":640}
+```
+
+连按三次，每次都返回 `{"fullscreen":true}`：
+
+```
+  toggle 1: {"fullscreen":true}
+  toggle 2: {"fullscreen":true}
+  toggle 3: {"fullscreen":true}
+```
+
+`set_fullscreen` 的实现是「读 `window.is_fullscreen()`，写反值」。三次都读到
+false，说明 **macOS 在锁屏状态下根本不执行全屏转场**。这不是 app 的问题，但
+它意味着：**「双击 → 全屏」这一条，本次给不出结论。**
+
+> 要验它，需要一个人在解锁的屏幕前：播一个文件，在画面上双击，看窗口是否进入
+> 全屏、标题栏和播放条是否隐藏，再双击一次看是否回来。
+> （中途一度想用「按钮数量」当全屏的观测量，发现不行——播放条空闲会自动隐藏，
+> 按钮数归零和全屏是两回事。写在这里免得下一个人重蹈。）
