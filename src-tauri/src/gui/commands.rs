@@ -32,7 +32,20 @@ pub fn boot_mark(label: String) {
 /// Returns `null` when the launch had no file. Single-shot, so a refresh
 /// does not replay anything.
 #[command]
-pub fn consume_pending_file(pending: State<'_, PendingFile>) -> Option<StartupOpen> {
+pub fn consume_pending_file(
+    app: AppHandle,
+    pending: State<'_, PendingFile>,
+) -> Option<StartupOpen> {
+    // Asking this question is also how the page says it is listening: from
+    // here on, a macOS Apple event goes to it rather than into the launch
+    // slot. If one landed in the gap between the backend draining the slot
+    // and this call, replay it — otherwise a film double-clicked during
+    // those few hundred milliseconds would be dropped twice over.
+    if let Some(path) = pending.mark_frontend_ready() {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.emit("open-file", path);
+        }
+    }
     pending.take_outcome()
 }
 

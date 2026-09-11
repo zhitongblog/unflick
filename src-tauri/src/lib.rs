@@ -538,13 +538,36 @@ pub fn run(allow_dev: bool) {
             // (App.tsx, mirrors the single-instance plugin's path).
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
+                // Which of the two deliveries depends on when this arrives.
+                //
+                // Warm — the app was already running and someone opened a
+                // second film — the page is listening, so the event goes to
+                // it, as it always did.
+                //
+                // Cold — the double click *is* the launch — the page does
+                // not exist yet, and emitting there dropped the film on the
+                // floor: unflick opened on an empty window and the user was
+                // left to open their file a second time by hand. The launch
+                // slot is the path the shell-argument launch already takes
+                // (`UNFLICK_OPEN_FILE` in main.rs), drained by the backend
+                // as soon as mpv exists rather than waiting for the WebView.
+                // Finder's Apple event has no env var to ride in on, so it
+                // is put into the same slot here.
+                let pending = app_handle.state::<gui::state::PendingFile>();
+                let ready = pending.frontend_is_ready();
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                    for url in urls {
-                        if let Ok(path) = url.to_file_path() {
-                            let path_str = path.to_string_lossy().into_owned();
-                            let _ = window.emit("open-file", path_str);
+                }
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        let path_str = path.to_string_lossy().into_owned();
+                        if ready {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("open-file", path_str);
+                            }
+                        } else {
+                            pending.set_path_if_empty(path_str);
                         }
                     }
                 }

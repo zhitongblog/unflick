@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::sync::Arc;
 
@@ -69,6 +70,17 @@ pub struct PendingFile {
     /// to repeat it. A reload of the page returns `None` from here, which
     /// is what keeps a refresh from replaying the launch.
     outcome: Mutex<Option<StartupOpen>>,
+    /// Whether the page has reached the point where an `open-file` event
+    /// would be heard.
+    ///
+    /// macOS hands a double-clicked film to an already-running process as an
+    /// Apple event, which Tauri surfaces as `RunEvent::Opened`. On a cold
+    /// launch that event arrives long before the WebView has registered its
+    /// listener, so emitting it there went nowhere and the app opened on an
+    /// empty window — the single most common way anyone opens a video did
+    /// nothing at all. The flag is what lets `Opened` choose between the two
+    /// deliveries instead of guessing.
+    frontend_ready: AtomicBool,
 }
 
 /// What the backend did with the file the shell handed us.
@@ -87,12 +99,45 @@ impl PendingFile {
                 std::env::var("UNFLICK_OPEN_FILE").ok().filter(|s| !s.is_empty()),
             ),
             outcome: Mutex::new(None),
+            frontend_ready: AtomicBool::new(false),
         }
     }
 
     /// Backend side: take the path to open. Single-shot.
     pub fn take_path(&self) -> Option<String> {
         self.path.lock().ok().and_then(|mut g| g.take())
+    }
+
+    /// Hand the launch slot a file that arrived after construction — the
+    /// macOS Apple event, which has no env var to ride in on.
+    ///
+    /// Only fills an empty slot. Two films dropped on the icon at once are
+    /// two `Opened` urls, and the first is the one the launch is about;
+    /// overwriting would open the second and silently discard the first.
+    pub fn set_path_if_empty(&self, path: String) -> bool {
+        match self.path.lock() {
+            Ok(mut g) if g.is_none() => {
+                *g = Some(path);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the page is listening yet.
+    pub fn frontend_is_ready(&self) -> bool {
+        self.frontend_ready.load(Ordering::SeqCst)
+    }
+
+    /// Frontend side: the page has mounted and is listening.
+    ///
+    /// Returns a path that arrived in the gap between the backend draining
+    /// the slot and the page being ready — narrow, but it is exactly the
+    /// window in which an Apple event would otherwise be dropped a second
+    /// time, so the caller replays it rather than leaving it stranded.
+    pub fn mark_frontend_ready(&self) -> Option<String> {
+        self.frontend_ready.store(true, Ordering::SeqCst);
+        self.take_path()
     }
 
     /// Backend side: record how the open went.
@@ -106,5 +151,65 @@ impl PendingFile {
     /// not re-trigger anything.
     pub fn take_outcome(&self) -> Option<StartupOpen> {
         self.outcome.lock().ok().and_then(|mut g| g.take())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty() -> PendingFile {
+        PendingFile {
+            path: Mutex::new(None),
+            outcome: Mutex::new(None),
+            frontend_ready: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn a_launch_file_is_handed_over_once() {
+        let p = empty();
+        assert!(p.set_path_if_empty("/films/a.mkv".into()));
+        assert_eq!(p.take_path().as_deref(), Some("/films/a.mkv"));
+        assert_eq!(p.take_path(), None, "a second reader must not replay the launch");
+    }
+
+    /// Two films dropped on the icon arrive as two urls. The launch is about
+    /// the first; overwriting would open the second and lose the first.
+    #[test]
+    fn a_second_file_does_not_displace_the_first() {
+        let p = empty();
+        assert!(p.set_path_if_empty("/films/first.mkv".into()));
+        assert!(!p.set_path_if_empty("/films/second.mkv".into()));
+        assert_eq!(p.take_path().as_deref(), Some("/films/first.mkv"));
+    }
+
+    /// The bug this exists for: on a cold launch the page is not listening
+    /// yet, so the Apple event has to go into the slot instead.
+    #[test]
+    fn the_page_is_not_listening_until_it_says_so() {
+        let p = empty();
+        assert!(!p.frontend_is_ready());
+        assert_eq!(p.mark_frontend_ready(), None);
+        assert!(p.frontend_is_ready());
+    }
+
+    /// The narrow gap: the backend has already drained the slot, the page has
+    /// not asked yet, and a film arrives. It must not be stranded.
+    #[test]
+    fn a_file_that_lands_in_the_gap_is_replayed_to_the_page() {
+        let p = empty();
+        assert_eq!(p.take_path(), None, "backend drains an empty slot at startup");
+        assert!(p.set_path_if_empty("/films/late.mkv".into()));
+        assert_eq!(p.mark_frontend_ready().as_deref(), Some("/films/late.mkv"));
+        assert_eq!(p.mark_frontend_ready(), None, "a page refresh must not open it again");
+    }
+
+    #[test]
+    fn the_outcome_is_read_once_so_a_refresh_shows_nothing() {
+        let p = empty();
+        p.set_outcome(StartupOpen { path: "/films/a.mkv".into(), error: None });
+        assert!(p.take_outcome().is_some());
+        assert!(p.take_outcome().is_none());
     }
 }
