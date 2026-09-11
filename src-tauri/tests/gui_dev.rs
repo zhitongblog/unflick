@@ -268,6 +268,47 @@ fn the_bridge_drives_the_real_window() {
         let _ = std::fs::remove_file(&path);
     }
 
+    // ── the launch wrote its own timeline down ──────────────────────────
+    // `unflick startup` reads the marks `boot::mark` prints, and it prints
+    // them to stderr — so the log is only a log if init_file_log actually
+    // points stderr at it. That redirect was written for Windows and for
+    // nothing else, which meant `startup` answered "no startup marks" on
+    // macOS and Linux for every release that shipped it: the file was
+    // created, the marks went to the inherited stderr, and the two never
+    // met. Nothing headless could see that, because the marks are emitted
+    // by a launch and this is the only suite that performs one.
+    //
+    // Deliberately asserted on the file rather than through `startup`: the
+    // parser was never the broken part, and a test that goes through it
+    // would pass on a build where the file is empty and the parser is
+    // simply being asked about the wrong path.
+    let launch_log = std::fs::read_to_string(gui.data_dir.join("gui.log")).unwrap_or_default();
+    check_msg(
+        &mut broken,
+        "the launch left its startup marks in UNFLICK_LOG",
+        launch_log.contains("[unflick] +") && launch_log.contains("ms "),
+        || {
+            format!(
+                "{} wrote {} bytes and none of it is a boot mark — stderr is not                  reaching the log, so `unflick startup` has nothing to parse",
+                gui.data_dir.join("gui.log").display(),
+                launch_log.len()
+            )
+        },
+    );
+    // The banner has to be in there too, and before the marks: it is what
+    // parse_last_launch cuts runs on, so a redirect installed after it is
+    // written leaves a log whose launches cannot be told apart.
+    check_msg(
+        &mut broken,
+        "the run banner landed in the log ahead of the marks",
+        launch_log
+            .find("=== unflick ")
+            .zip(launch_log.find("[unflick] +"))
+            .map(|(banner, mark)| banner < mark)
+            .unwrap_or(false),
+        || format!("banner/mark order wrong in {} bytes", launch_log.len()),
+    );
+
     // ── one wheel event moves the volume by every step it is worth ──────
     // The accumulator in lib/gesture.ts turns a deltaY into N steps and the
     // wheel handler runs the bound trigger N times. Each of those calls used

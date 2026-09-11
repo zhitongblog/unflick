@@ -5163,6 +5163,7 @@ dependencies = [
  "glutin",
  "gtk",
  "if-addrs",
+ "libc",
  "libloading 0.8.9",
  "objc2",
  "objc2-app-kit",

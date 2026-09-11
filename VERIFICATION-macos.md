@@ -1328,3 +1328,99 @@ unflick
 
 > 又一次撞到按钮下标会动：`--index 3` 这一次点到的是「清除」（最近播放那个），
 > 因为首屏上有没有「最近播放」区块会整体挪动下标。还是按文字选最稳。
+
+---
+
+## 🐞 第三个 bug（已修）：`unflick startup` 在 macOS / Linux 上从来没有过内容
+
+**结论：曾经是坏的，已修，并补了回归测试。**
+
+按记账表的要求，`unflick startup` 要对着**真正的 GUI 启动**跑，不是对着 daemon。
+第一次跑：
+
+```
+$ unflick startup
+{
+  "success": true,
+  "message": "no startup marks in /tmp/uf-verify-c/startup.log",
+  "data": {"log": "…/startup.log", "phases": [], "total_ms": 0}
+}
+```
+
+日志文件**存在但是 0 字节**，而 `UNFLICK_LOG` 确实传进去了
+（`ps eww` 确认进程环境里有它）。
+
+### 定位
+
+`boot::mark` 是 `eprintln!`——写 stderr。把 stderr 接到日志文件上的那段代码，
+在 `main.rs::init_file_log` 里，是这样的：
+
+```rust
+        // Best-effort stderr redirect on Windows. …
+        #[cfg(target_os = "windows")]
+        unsafe {
+            … SetStdHandle(STD_ERROR_HANDLE, h); …
+        }
+```
+
+**只有 Windows。** 在 macOS 和 Linux 上，`init_file_log` 把文件建出来、
+把 banner 写到 stderr、然后就结束了——文件永远是空的，
+`unflick startup` 永远回「no startup marks」。
+
+标记本身和解析器都是好的。把整个进程的 stderr 手工指到那个路径再跑一次，
+立刻就有完整时间线：
+
+```
+  last launch reached "ui: react mounted" at 758 ms
+```
+
+所以坏的只有一处：**缺一个非 Windows 的重定向**。
+
+### 修法
+
+`main.rs::init_file_log` 加一个 `#[cfg(unix)]` 分支，用 `dup2` 做 Windows 那边
+`SetStdHandle` 做的事；`libc` 提升成 unix 下的直接依赖（Cargo.lock 里本来就有
+0.2.186，走的是这个仓库给 `objc2-web-kit` / `block2` 写过的同一条理由）。
+
+**放在 banner 之前**，不是之后——`parse_last_launch` 靠
+`=== unflick <version> starting at <unix> ===` 这一行把日志切成一次次启动，
+重定向如果装在 banner 之后，banner 会落到旧的 stderr 上，日志就分不出运行了。
+
+修完，用**正常的**启动方式（stderr 去 gui.out，不去日志路径）：
+
+```
+$ ls -la /tmp/uf-verify-c/startup.log
+-rw-r--r--  1 alexlee  wheel  878  9月 11 09:38
+
+=== unflick 0.13.1 starting at 1789090689 ===
+[unflick] +    0ms main: opening a file from the shell
+…
+
+$ unflick startup
+  last launch reached "ui: react mounted" at 816 ms
+       0 ms  main: opening a file from the shell
+       0 ms  run: handing off to tauri
+     340 ms  setup: entered
+     342 ms  setup: menus built
+     447 ms  window: shown
+     448 ms  control: database open
+     499 ms  open: starting the launch file
+     537 ms  open: launch file playing
+     537 ms  control: port claimed
+     816 ms  ui: react mounted
+```
+
+**这是 macOS 上第一次拿到真实的 GUI 启动时间线。**顺带它本身就是一份体检：
+窗口 447ms 上屏、文件 537ms 开始播、React 816ms 挂载。
+
+### 回归测试
+
+加在 `tests/gui_dev.rs`——它本来就会启动一个真窗口并且已经把 `UNFLICK_LOG`
+指到自己的临时目录，是唯一能看见「一次启动」的套件。两条断言：
+
+1. 日志里有 `[unflick] +…ms` 形状的标记（失败信息直接说「stderr 没接到日志上，
+   所以 `unflick startup` 没东西可解析」）。
+2. banner 在第一条标记**之前**——守住上面那个顺序。
+
+故意断言**文件**而不是走 `startup` 命令：解析器从来不是坏的那一半，
+走命令的测试在「文件是空的」的构建上也可能因为问错路径而蒙混过去。

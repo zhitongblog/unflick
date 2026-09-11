@@ -182,6 +182,35 @@ fn init_file_log() {
         .append(true)
         .open(&path)
     {
+        // The same redirect as the Windows branch below, and it has to
+        // happen *before* the banner rather than after.
+        //
+        // Without it `unflick startup` answers "no startup marks in <path>"
+        // on macOS and Linux forever, which is what it did until this was
+        // measured: the file gets created, every `boot::mark` goes to the
+        // stderr this process inherited, and the two never meet. The marks
+        // were right and the parser was right; there was simply nothing in
+        // the file to parse. A shipped CLI and MCP surface that only ever
+        // worked on one of the three platforms.
+        //
+        // Before the banner because `parse_last_launch` cuts the log into
+        // runs on those `=== unflick <version> starting at <unix> ===`
+        // lines. Redirect afterwards and the banner goes to the old stderr,
+        // leaving a log whose runs cannot be told apart.
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            // dup2 makes fd 2 a second name for the log, so the eprintln in
+            // boot::mark, render_loop and lib.rs all land in it.
+            unsafe {
+                libc::dup2(f.as_raw_fd(), libc::STDERR_FILENO);
+            }
+            // Leaked for the reason the Windows branch leaks its handle:
+            // the redirect has to outlive this scope, and fd 2 now refers
+            // to the same description.
+            std::mem::forget(f);
+        }
+
         // Line a header so each run is visible in the rolling log.
         let _ = std::io::Write::write_all(
             &mut std::io::stderr(),
