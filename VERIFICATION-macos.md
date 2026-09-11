@@ -1263,3 +1263,68 @@ macOS
 ```
 
 **原尺寸是精确恢复的**（1024×640，不是「差不多」），快捷键和 CLI 走的是同一条路。
+
+---
+
+## v0.13 会话续播（首屏的「继续观看」）
+
+**结论：通过，全套。**
+
+### 先踩一个不是 bug 的坑
+
+第一次试：播放 → seek 8s → 立刻 kill 窗口 → `unflick session` 说
+`no session to resume`。看着像丢了。
+
+不是。`core/session.rs` 把位置写在一个 **5 秒的 tick** 上，而不是退出钩子上
+（模块头注释写得很清楚：退出钩子在进程被杀时不会跑）。我杀得太快，一个 tick
+都没落。等够 12 秒再杀：
+
+```
+  at close: /tmp/uf-verify-media/bili.mp4 @ 8.0
+$ unflick session
+  session: /tmp/uf-verify-media/bili.mp4 at 0:08
+  data: {'duration': 20.0, 'key': '…/bili.mp4', 'path': '…/bili.mp4',
+         'position': 8.0, 'updated_at': '2026-09-11 01:31:21'}
+```
+
+**「最多丢一个 tick」这个设计在 macOS 上是成立的**，代价就是自动化测试要等够。
+
+### 首屏真的把它端出来了
+
+不带文件重新启动：
+
+```
+unflick
+把视频拖到这里 · 或点击打开文件
+打开文件 / 打开 URL
+继续观看
+  bili   0:08   ✕
+最近播放
+  bili / song
+```
+
+`0:08` 和 CLI 的 `at 0:08` 一致。
+
+### 点它就接着看
+
+```
+  clicked resume entry
+  now: /tmp/uf-verify-media/bili.mp4 @ 11.84 state=playing
+```
+
+从 8.0 接上并且在播（读数 11.84 是因为点完到查询之间又走了约 3.8 秒）。
+
+### 两种「不看了」都对
+
+- **正常 stop 会清掉会话**：`unflick stop` 之后 `no session to resume`，
+  首屏的「继续观看」也没了。停是主动行为，没有什么可续的——对。
+- **✕ 也清**：重新造一个 `at 0:14` 的会话，点卡片上的 ✕：
+
+  ```
+    clicked ✕
+    session after ✕: no session to resume
+    card gone
+  ```
+
+> 又一次撞到按钮下标会动：`--index 3` 这一次点到的是「清除」（最近播放那个），
+> 因为首屏上有没有「最近播放」区块会整体挪动下标。还是按文字选最稳。
