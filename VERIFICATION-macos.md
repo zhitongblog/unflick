@@ -1570,3 +1570,81 @@ $ unflick cast to
 **给 2 秒跑了 12 秒，给 4 秒跑了 9 秒**——耗时和这个参数没关系。
 还有一次（第一次跑，冷启动）在 90 秒的外部超时下被杀掉，没能复现。
 没深究，记在这里。
+
+---
+
+# 总账
+
+| # | 条目 | 结论 | 证据 |
+|---|---|---|---|
+| 1 | v0.11 进度条缩略图预览 | **通过** | 浮层里的图和 `frame thumbnail` 的图**逐字节相同**（2963 B，sha256 bdb47d30…） |
+| 2 | v0.11 自定义快捷键 | **通过** | 35 条与 CLI 全对，`Mod`→`⌘`；改键后旧键失效、新键生效；单行重置回 `b` |
+| 3 | v0.11 鼠标手势 | **通过**（滚轮音量曾是 bug，已修） | 中键往返、四个方向各 ±5、20px 抖动与对角不触发；**双击全屏 unverified** |
+| 4 | v0.11 在线字幕引导页 | **通过** | 与 CLI 同一个 URL，password 输入框，保存后 `settings get` 读得到 |
+| 5 | v0.11 首屏最近播放 | **通过** | 与 `recent list` 同序；`dev click` 真点开一条；清除两边同步 |
+| 6 | v0.11 画面几何 | **通过** | 旋转/反交错/宽高比/缩放逐个对上；reload 后面板读回后端真值 |
+| 7 | v0.12 均衡器 | **通过** | 十段频点、量程、6 个预设与 CLI 一致；`speech` 出来的十个数完全相同 |
+| 8 | v0.12 音乐模式 | **通过** | 自动进入；窗口 1024×640 → 380×560；⌘M 与 CLI 往返精确复原 |
+| 9 | v0.12 书签 | **通过** | 钉子在 15% / 60%；重命名、删除、点钉子 17.00→3.00 |
+| 10 | v0.12 速度微调 | **通过** | 1.50→1.55→1.60→1.55，窗口与 CLI 同步 |
+| 11 | v0.12 网络路径 | **通过** | `smb://` / `nfs://` 的拒绝点名**访达**和 `/Volumes`；GUI 错误卡是中文的 |
+| 12 | v0.13 会话续播 | **通过** | 杀窗后 `session` 记到 0:08；首屏「继续观看」；点击从 8.0 接上；stop 与 ✕ 都清 |
+| 13 | v0.13 启动时间线 | **修好之后通过** | 原本永远是 `no startup marks`；修后拿到 10 个阶段、816ms |
+| 14 | v0.13 光盘拒绝 | **🐞 缺陷（未修）** | 识别对了，播放时 CLI 说 `property not found`、GUI 说「检查权限」 |
+| 15 | v0.13 投屏面板 | **没有这个界面** | 8 个语言文件 0 命中，前端 0 处 invoke，lib.rs 未注册命令 |
+| 16 | v0.14 双语字幕 | **通过** | 真窗口合成像素：两行不重叠；开关、角标、落盘、换文件重新武装 |
+| 17 | v0.14 首启引导 | **通过** | 四条退出路径条条落盘；重新武装有效；带文件启动不出现且**不消费标志** |
+
+## 改了什么，测试加在哪
+
+| 修的 | 文件 | 测试 |
+|---|---|---|
+| 滚轮音量从 store 现读，不用渲染闭包 | `src/App.tsx` | `tests/gui_dev.rs`：设 100、派发一个 `deltaY:200`、断言 75 |
+| `init_file_log` 在 unix 上用 `dup2` 把 stderr 接到日志，且**在 banner 之前** | `src-tauri/src/main.rs`、`src-tauri/Cargo.toml`（`libc`） | `tests/gui_dev.rs`：日志里有 `[unflick] +…ms` 标记，且 banner 在第一条标记之前 |
+
+**两条都做过反向验证**：把修改退回去重新构建，`gui_dev` 如期报出三条失败，
+失败信息正是为它们写的那几句——
+
+```
+3 of the window bridge's promises did not hold:
+  the launch left its startup marks in UNFLICK_LOG: …/gui.log wrote 0 bytes and none
+    of it is a boot mark — stderr is not reaching the log, so `unflick startup` has
+    nothing to parse
+  the run banner landed in the log ahead of the marks: banner/mark order wrong in 0 bytes
+  five wheel steps moved the volume by five steps: volume is 95 after one deltaY 200
+    from 100; 75 is five steps, 95 is the stale-closure bug applying exactly one
+```
+
+改回来之后重新全绿。
+
+## 测试数
+
+| 套件 | 结果 |
+|---|---|
+| `pnpm test` | 7 files / **98 passed** |
+| `cargo test --lib` | **178 passed** |
+| `cargo test --test dev` | **15 passed** |
+| `cargo test --test playback` | **112 passed** |
+| `cargo test --test understanding` | **26 passed** |
+| `cargo test --test gui_dev --features custom-protocol` | **1 passed**（含本次新增的 3 条断言）|
+| `cargo test --test cast` | **15 passed** |
+| `cargo test --test cleanup` | **5 passed** |
+| `cargo test --test session` | **6 passed** |
+| `cargo test --test startup` | **3 passed** |
+| `cargo test --test disc` | 8 passed / **1 failed（已知）** |
+
+`disc` 那条已知失败，原文是：
+
+```
+panicked at tests/disc.rs:185:5:
+assertion `left == right` failed: the bundled libmpv should play DVDs
+  left: Bool(false)
+ right: true
+```
+
+——就是本机 libmpv 不支持 DVD，也是第 14 条那个缺陷的同一个根因。
+
+> 另记：`playback` 第一次跑挂过一次，`cover.jpg` 在 `--test-threads=2` 下
+> 被一个测试读到的同时另一个还在写（`ffmpeg failed: Invalid data found`）。
+> 夹具生成完之后重跑就稳定全绿了。**首次运行的夹具竞争**，不是代码问题，
+> 但值得知道。
