@@ -1505,3 +1505,68 @@ let supports_dvd = has("dvd") || has("dvdnav");
 
 **仍未验证**：真实光驱里的物理光盘（本机无光驱），以及在一个 `dvd: true` 的
 构建上从盘符/镜像播放 —— 那条在 Windows 上验过，macOS 上没有。
+
+---
+
+## v0.13 投屏 / DLNA 面板
+
+**结论：GUI 里没有这个面板 —— 一个都没有，任何平台。** CLI / MCP 侧正常。
+
+任务书说「本网络上没有接收端，至少空状态要诚实」。实际情况比这更基本：
+
+```
+=== 8 个语言文件里 cast / dlna / 投屏 的出现次数 ===
+  de.json: 0   en.json: 0   es.json: 0   fr.json: 0
+  ja.json: 0   ko.json: 0   zh-CN.json: 0  zh-TW.json: 0
+
+=== 前端里有没有 invoke("cast…") ===
+  （无）
+
+=== lib.rs 里有没有注册投屏的 tauri command ===
+  605:            cast: Arc::new(std::sync::Mutex::new(None)),      ← 只有共享状态
+```
+
+**没有组件、没有文案、没有 invoke、没有注册命令。** 投屏是纯 CLI + MCP 功能。
+所以「空状态诚不诚实」无从谈起——**没有空状态，因为没有界面**。
+
+这条要写进记账表：v0.13 那一行写的是「5/5 完成，全部实机验证」，DLNA 那部分
+确实在安卓电视盒子上端到端验过——但那是 CLI。**GUI 上从来没有过投屏入口**，
+这跟 macOS 无关，三个平台都一样。
+
+### CLI 侧：能用，而且本网络上真的有一台接收端
+
+任务书假设「本网络没有接收端」。**不对**——`unflick cast to` 不带参数直接找到了一台：
+
+```
+$ unflick cast to
+{
+  "success": true,
+  "message": "casting bili to 爱投屏c9ac-DLNA",
+  "data": {"file": "/tmp/uf-verify-media/bili.mp4",
+           "renderer": "爱投屏c9ac-DLNA",
+           "url": "http://192.168.188.63:52834/bili.mp4"}
+}
+```
+
+（不是我的设备，立刻停掉了：`stopped casting to 爱投屏c9ac-DLNA`，
+随后 `cast status` 回 `not casting`。）
+
+`cast list` 也能列出来，描述解析正确：
+
+```
+  "message": "1 renderer: 爱投屏c9ac-DLNA",
+  "address": "192.168.188.66:1214",
+  "control_url": "http://192.168.188.66:1214/AVTransport/65f1…-dmr/control.xml",
+  "id": "uuid:65f1b2fb4e0dfec693cf07cd89119e7e-dmr"
+```
+
+### 一个小问题：`--seconds` 好像不管用
+
+```
+  cast list --seconds 2  →  exit=0  elapsed=12s
+  cast list --seconds 4  →  exit=0  elapsed=9s
+```
+
+**给 2 秒跑了 12 秒，给 4 秒跑了 9 秒**——耗时和这个参数没关系。
+还有一次（第一次跑，冷启动）在 90 秒的外部超时下被杀掉，没能复现。
+没深究，记在这里。
