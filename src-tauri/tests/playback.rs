@@ -557,6 +557,24 @@ fn the_two_lines_never_share_a_position() {
     d.play(&f.with_subtitles);
     two_tracks(&d, &f.translation);
 
+    // A libmpv without `secondary-sub-pos` cannot be asked to stack the two
+    // lines, and `bilingual on` says so rather than pretending: it reports the
+    // layout as `top`, which is where mpv puts a secondary subtitle on its own.
+    // That is a different arrangement, not a broken one — the two lines are at
+    // opposite edges instead of adjacent — so assert the fallback and stop.
+    let state = d.send("subtitle_bilingual", json!({})).expect_ok().data();
+    if state["secondary_sub_pos"].is_null() {
+        assert_eq!(
+            state["layout"], "top",
+            "no secondary-sub-pos, so the layout has to be the one mpv does by itself: {state}"
+        );
+        assert!(
+            state["secondary"].is_object(),
+            "the second line must still be on: {state}"
+        );
+        return;
+    }
+
     let gap = |d: &Daemon| {
         let s = d.send("subtitle_bilingual", json!({})).expect_ok().data();
         let primary = s["sub_pos"].as_f64().unwrap();
@@ -585,6 +603,17 @@ fn subtitle_delay_moves_both_lines_together() {
     d.send("subtitle_delay", json!({ "seconds": 0.5 })).expect_ok();
     let state = d.send("subtitle_bilingual", json!({})).expect_ok().data();
     assert!((state["delay"].as_f64().unwrap() - 0.5).abs() < 1e-6);
+    // `secondary-sub-delay` arrived in the same mpv release as
+    // `secondary-sub-pos`. Where it is missing there is no second delay to
+    // drift: mpv applies the one delay to both lines, which is the behaviour
+    // this test is about in the first place.
+    if state["secondary_delay"].is_null() {
+        assert!(
+            state["secondary"].is_object(),
+            "the second line must still be on: {state}"
+        );
+        return;
+    }
     assert!(
         (state["secondary_delay"].as_f64().unwrap() - 0.5).abs() < 1e-6,
         "the translation drifted away from the original: {state}"
@@ -1156,6 +1185,10 @@ fn playing_a_file_records_it_even_when_it_was_never_scanned() {
 /// A source that mpv can open but never reads a frame from is not a play, and
 /// must not be offered back on the first screen.
 ///
+/// Unix only: the repro is a FIFO, which Windows has no equivalent of. The rule
+/// it guards is platform-independent and the code under test is one branch for
+/// every platform, so covering it here covers it everywhere.
+///
 /// The bug this guards was found by driving the window: the history row was
 /// written at the play call site, before `loaded` had been decided, so anything
 /// that did not fail *fast* got recorded — a share that had gone away, a
@@ -1164,6 +1197,7 @@ fn playing_a_file_records_it_even_when_it_was_never_scanned() {
 ///
 /// A FIFO with no writer is the only reliable way to sit in "still opening":
 /// mpv opens it, then waits forever for bytes that never come.
+#[cfg(unix)]
 #[test]
 fn a_source_that_never_opens_stays_out_of_the_history() {
     let f = fixtures();
