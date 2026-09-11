@@ -1,6 +1,6 @@
 {
   "name": "unflick-mcp",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "MCP server launcher for the unflick video player. Locates the installed unflick binary and runs `unflick --mcp` over stdio.",
   "type": "module",
   "bin": {

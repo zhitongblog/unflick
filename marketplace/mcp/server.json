@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.zhitongblog/unflick",
   "description": "Drive the unflick video player from any AI agent: play local files, discs and 30+ streaming-site URLs, seek by what was said, describe the frame, screenshot, cut clips/GIFs, generate and translate subtitles locally, bookmark, equalize, cast to a TV, and scan/search a media library — 94 tools, fully headless.",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "repository": {
     "url": "https://github.com/zhitongblog/unflick",
     "source": "github"
