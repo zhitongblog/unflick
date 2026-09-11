@@ -1424,3 +1424,84 @@ $ unflick startup
 
 故意断言**文件**而不是走 `startup` 命令：解析器从来不是坏的那一半，
 走命令的测试在「文件是空的」的构建上也可能因为问错路径而蒙混过去。
+
+---
+
+## v0.13 光盘拒绝（本机无光驱）
+
+**结论：`unflick disc` 通过；`unflick play <碟>` 和 GUI 的报错 —— 🐞 不诚实，没改。**
+
+### 本机的前提：这个 libmpv 没有 DVD 支持
+
+```
+$ unflick disc
+{
+  "success": true,
+  "message": "no optical drives found",
+  "data": {"drives": [], "supports": {"bluray": true, "dvd": false}}
+}
+```
+
+`dvd: false`。（这也是 `cargo test --test disc` 在本机有一条预期失败的原因。）
+「没有光驱」这句本身是对的，也是诚实的。
+
+### 识别一个 VIDEO_TS 文件夹：对
+
+造一个 `FakeDVD/VIDEO_TS/VTS_01_0.VOB`：
+
+```
+$ unflick disc /tmp/uf-verify-media/FakeDVD
+{
+  "message": "DVD \"FakeDVD\" — opens as dvd://",
+  "data": {
+    "device": "/tmp/uf-verify-media/FakeDVD",
+    "key": "disc:dvd:7644a2407ec94147",
+    "kind": "dvd", "label": "FakeDVD", "url": "dvd://"
+  }
+}
+```
+
+认出来了，而且给了**按碟本身算的稳定身份** `disc:dvd:7644a2407ec94147`——
+就是 v0.14 那条「碟按碟记，不按盘符记」的东西，在 macOS 上是通的。
+
+### 🐞 但是播它的时候，两边都在说假话
+
+```
+$ unflick play /tmp/uf-verify-media/FakeDVD
+{"success": false, "message": "property not found"}
+```
+
+`property not found` 是 libmpv 的原始错误（多半来自去设一个这个构建里不存在的
+`dvd-device`），直接甩给了用户。
+
+窗口里更糟。通过 URL 对话框走 GUI 自己的打开流程：
+
+```
+这个文件打不开
+/tmp/uf-verify-media/FakeDVD
+unflick 读不到它。确认文件还在，并且你有打开它的权限。
+打开另一个文件      详细信息
+```
+
+**「确认文件还在，并且你有打开它的权限」——文件在，权限也有。**
+真正的原因是这个构建不支持 DVD，而这件事 `unflick disc` **已经知道了**
+（`supports.dvd == false`）。同一屏上还挂着那句原始英文 `property not found`。
+
+诊断很明确：支持性检查存在，但只长在 `disc` 命令上——
+
+```rust
+// core/daemon.rs:798
+let supports_dvd = has("dvd") || has("dvdnav");
+```
+
+——`play` 这条路没有去问它，直接把碟丢给了 mpv。
+
+**没改。** 这是播放管线上的行为改动，而本机没有一个能放 DVD 的构建来验证
+「支持时应该照常播」那一半；只改拒绝、验不了正例，是拿 Windows 上已经端到端
+验过的 DVD 路径去赌。按规矩只报不修。修的时候该做的事：`play` 在识别出碟之后
+先问一次 `supports`，不支持就照 `smb://` 那种写法说人话
+（「这个 unflick 构建不带 DVD 支持」），并且给 `OpenErrorCard` 一个
+「不是文件读不到」的分类，别再建议用户去查权限。
+
+**仍未验证**：真实光驱里的物理光盘（本机无光驱），以及在一个 `dvd: true` 的
+构建上从盘符/镜像播放 —— 那条在 Windows 上验过，macOS 上没有。
