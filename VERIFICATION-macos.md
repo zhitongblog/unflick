@@ -721,3 +721,69 @@ before:                     0 bookmark(s)
 
 **没改**，因为正确的修法是让后端返回结构化的冲突信息（冲突的 action id），
 由前端组装句子——那是改接口，不是接线错误。记在这里。
+
+---
+
+## v0.11 #5 首屏最近播放
+
+**结论：通过**，而且这一条是**真点的**（首屏不走入场动画，`dev click` 命中检测过了）。
+
+停止播放后首屏长这样：
+
+```
+unflick
+把视频拖到这里 · 或点击打开文件
+打开文件 / 打开 URL
+最近播放          清除
+  bili
+  second
+  selftest
+```
+
+CLI 说的是同样三条、同样顺序：
+
+```
+$ unflick recent list
+  3 recently played
+    /tmp/uf-verify-media/bili.mp4      bili
+    /tmp/uf-verify-media/second.mp4    second
+    …/scratchpad/selftest.mp4          selftest
+```
+
+结构上看，每一项的**完整路径在 `title` 上**，显示的是短名：
+
+```
+  0 清除        title=None
+  1 bili        title=/tmp/uf-verify-media/bili.mp4
+  2 second      title=/tmp/uf-verify-media/second.mp4
+  3 selftest    title=/private/tmp/claude-501/…/scratchpad/selftest.mp4
+```
+
+（这正是 dev_probe.js 里 accname 顺序那段注释说的情况：`title` 是**正文之后**的
+回退，所以快照播报的是 `bili` 而不是一长串路径。实物和注释对上了。）
+
+点其中一条，真的会播：
+
+```
+$ unflick dev click 'button[title="/tmp/uf-verify-media/second.mp4"]'
+  true  clicked button.group.flex "/tmp/uf-verify-media/second.mp4"
+$ unflick status
+  now playing: /tmp/uf-verify-media/second.mp4  state playing
+```
+
+「清除」两边一起清干净：
+
+```
+  CLI before: 3 recently played
+  clicked 清除
+  CLI after:  0 recently played
+  最近播放 block gone
+```
+
+### 顺带确认了首启引导的门是活的
+
+这一条中途，播放一停，欢迎卡**自己回来了**——因为前面测改键时把
+`onboarding_seen` 留在了 `false`，而 `shouldShowOnboarding` 的条件之一是
+`playerState === "stopped"`。这不是 bug，是那张门在运行时的实证：
+带着文件启动时它不出现也不消费标志，文件一停它就该出现，它就出现了。
+（随后按 Esc 关掉，`onboarding_seen` 回到 `true`。）
