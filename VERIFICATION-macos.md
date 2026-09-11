@@ -548,3 +548,82 @@ false，说明 **macOS 在锁屏状态下根本不执行全屏转场**。这不�
 > 全屏、标题栏和播放条是否隐藏，再双击一次看是否回来。
 > （中途一度想用「按钮数量」当全屏的观测量，发现不行——播放条空闲会自动隐藏，
 > 按钮数归零和全屏是两回事。写在这里免得下一个人重蹈。）
+
+---
+
+## 方法说明：锁屏之后，面板怎么验
+
+接下来大部分条目是**面板**，而面板在隐藏窗口里是 opacity 0：
+
+```
+$ unflick dev click 'button' --index 12      → clicked button.rounded-lg.p-1.5 "视频滤镜"
+$ unflick dev eval '…querySelectorAll(".glass-elevated")…'
+  1 panels; opacities=0
+```
+
+播放条上的按钮本身是可见的（`dev wait button` 秒过，16 个按钮），所以**打开面板
+这一步是真点的**。但面板内部的控件 `dev click` 会按「不可见」拒绝，所以下面凡是
+操作面板内控件的地方，用的是 `dev eval` 里的 `el.click()` / 派发 `change`。
+
+**这一步绕过了命中检测**——也就是绕过了 dev bridge 专门用来防「点到被遮住的元素
+还报成功」的那道关。所以每一条都写清楚：**能证明的是「控件接上了正确的动作、
+后端确实变了、面板重新打开时显示的是后端的真值」，不能证明的是「这个控件在屏幕上
+点得到」。** 后者需要解锁的屏幕。
+
+---
+
+## v0.11 #6 画面几何（aspect / rotate / zoom / deinterlace）
+
+**结论：通过**（含一次完整的往返校验）。
+
+静止状态两边一致：
+
+```
+$ unflick video get
+  {"aspect": "auto", "deinterlace": false, "panscan": 0.0, "rotate": 0, "zoom": 1.0}
+
+面板里（按顺序）：
+  5 SELECT  value=auto          ← 宽高比
+  6..9 BUTTON 0° 90° 180° 270°  ← 旋转
+  10 INPUT range value=1        ← 缩放
+  11 BUTTON 反交错              ← 反交错
+```
+
+逐个从窗口驱动，每一步用 CLI 复核：
+
+| 操作 | CLI 复核 |
+|---|---|
+| 点 `90°` | `rotate=90` |
+| 点 `270°` | `rotate=270` |
+| 点 `反交错` | `deint=True` |
+| select → `16:9` | `aspect=1.7778` |
+| zoom range → `1.4` | `zoom=1.3999999866023676` |
+
+下拉框的选项是 `auto,16:9,4:3,21:9,1.85:1,2.35:1,1:1`，缩放条是
+`min=0.5 max=3 step=0.05`。
+
+### 往返：面板重新挂载时读的是后端，不是自己记的
+
+这是「面板打开了但显示的是陈旧数据」那一类 bug 的正面检查。后端此时是
+`aspect=1.7778 rotate=270 zoom=1.3999999866023676 deint=True`，把整个页面
+`location.reload()` 之后重新打开面板：
+
+```json
+{
+  "aspectSelect": "16:9",
+  "zoomRange": "1.4",
+  "zoomLabel": "1.40",
+  "rotateButtons": [
+    "0°:…bg-white/4.text-white/50",
+    "90°:…bg-white/4.text-white/50",
+    "180°:…bg-white/4.text-white/50",
+    "270°:…bg-brand-purple/15.text-white"
+  ],
+  "deinterlaceClass": "…bg-brand-purple/15.text-white"
+}
+```
+
+**全中**：`1.7778` 被映射回 `16:9` 这个标签（需要一张浮点→标签的表，它是对的），
+缩放条和 `1.40×` 那个数字一致，270° 是唯一高亮的那颗，反交错也高亮。
+
+`unflick video reset` 之后回到 `aspect=auto rotate=0 zoom=1.0 deint=False`。
