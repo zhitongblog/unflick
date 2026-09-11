@@ -1,6 +1,6 @@
 {
   "name": "unflick",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Drive the unflick video player from Claude — play (files, discs, streaming URLs), seek to what was said, clip/GIF, subtitles (local whisper, translate, search online), bookmarks, equalizer, casting, media library, screenshot. Bundles seven skills and the unflick MCP server.",
   "author": {
     "name": "xiangdong li",

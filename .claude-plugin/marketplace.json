@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "unflick — a free, ad-free video player for humans and AI. Skills + MCP server.",
-    "version": "0.13.1"
+    "version": "0.14.0"
   },
   "plugins": [
     {
       "name": "unflick",
       "source": "./marketplace",
       "description": "Drive the unflick video player from Claude: play local files, discs and 30+ streaming-site URLs, seek to a line of dialogue, clip/GIF, generate & translate subtitles locally, bookmark, equalize, cast to a TV, manage a media library, screenshot, show two subtitle tracks at once. Bundles seven skills and the unflick MCP server (101 tools).",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "author": {
         "name": "xiangdong li"
       },
