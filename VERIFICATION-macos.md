@@ -627,3 +627,97 @@ $ unflick video get
 缩放条和 `1.40×` 那个数字一致，270° 是唯一高亮的那颗，反交错也高亮。
 
 `unflick video reset` 之后回到 `aspect=auto rotate=0 zoom=1.0 deint=False`。
+
+---
+
+## v0.11 #2 自定义快捷键
+
+**结论：通过。** 外加一个 i18n 缺口（见末尾）。
+
+设置面板用 `⌘,` 打开（`Mod+,`）。
+
+> 第一次按没反应，以为是快捷键坏了 —— 其实是我自己往 `window` 和 `document`
+> 各派发了一次 keydown，**开了又关**。教训：`toggleSettings` 是 toggle，
+> 一次按键只能派发一个事件。
+
+### 编辑器列出的东西，和 CLI 逐条对得上
+
+CLI 35 条，编辑器 44 行（35 键盘 + 9 鼠标）。键位显示走 `formatKey`，
+**这是第一次在 macOS 上看到它把 `Mod` 渲染成 `⌘`**：
+
+| CLI | 编辑器 | | CLI | 编辑器 |
+|---|---|---|---|---|
+| `Space` | `Space` | | `[` | `[` |
+| `ArrowLeft` | `←` | | `b` | `B` |
+| `ArrowRight` | `→` | | `Shift+b` | `⇧B` |
+| `,` `.` | `,` `.` | | `Mod+-` | `⌘-` |
+| `Shift+,` | `⇧,` | | `Mod+=` | `⌘=` |
+| `Alt+,` | `⌥,` | | `Mod+m` | `⌘M` |
+| `Backspace` | `Backspace` | | `Mod+o` | `⌘O` |
+| `ArrowUp` `ArrowDown` | `↑` `↓` | | `Mod+,` | `⌘,` |
+| `PageUp` `PageDown` | `PgUp` `PgDn` | | `Mod+Shift+p` | `⌘⇧P` |
+
+`Alt` → `⌥`、`Shift` → `⇧`、`Mod` → `⌘`。Windows 上这些会是 Ctrl/Alt/Shift，
+macOS 的这一套以前没人看过。
+
+### 改键真的生效了
+
+先确认键盘这条路本身是通的：按 `b`，`unflick bookmark list` 从 `0 bookmark(s)`
+变成 `1 bookmark(s)`（pos 20.0）。
+
+然后在编辑器里给「为此刻添加书签」重新绑定：点它的键位按钮进入捕获，按 `j`。
+
+```
+$ unflick keybind list
+  bookmark_add → j  customized=True
+```
+
+清空书签、seek 到 5s，关掉设置面板，再分别按两个键：
+
+```
+before:                     0 bookmark(s)
+=== press the OLD key b ===  0 bookmark(s)      ← 旧键已失效
+=== press the NEW key j ===  1 bookmark(s)
+   id=2 pos=5.0
+```
+
+**旧键不再触发，新键触发，位置也对。**
+
+### 单行重置
+
+改过之后那一行长出一个重置入口：
+
+```json
+{"buttons":[{"text":"已修改","title":"重置 → B"},{"text":"J","title":null}]}
+```
+
+点「已修改」：
+
+```
+  CLI: bookmark_add → b customized=False
+```
+
+### 冲突检测能用，但那句话没翻译
+
+把「为此刻添加书签」往 `f`（已被全屏占用）上绑：
+
+```
+  UI:  f is already bound to "Fullscreen" — rebind or reset that first
+  CLI: bookmark_add   → b        ← 没有被改掉，拒绝是有效的
+  CLI: fullscreen     → f
+```
+
+**行为是对的**：拒绝改、旧绑定原样保留、界面把原因说清楚了。
+
+**但那句话是英文的，而整个界面是中文的。** 来源在
+`src-tauri/src/core/keybind.rs:137`：
+
+```rust
+"{} is already bound to \"{}\" — rebind or reset that first",
+```
+
+句子在 Rust 里拼好，连里面的动作名（`"Fullscreen"` 而不是「全屏」）也是英文，
+前端原样显示。`src/i18n/` 下有 7 个语言文件，这句话一个都没有。
+
+**没改**，因为正确的修法是让后端返回结构化的冲突信息（冲突的 action id），
+由前端组装句子——那是改接口，不是接线错误。记在这里。
