@@ -177,3 +177,142 @@ launched pid=34308 visible=true
 卡片没出（`shouldShowOnboarding` 里 `playerState !== "stopped"` 那条），**而且
 标志没有被顺手写成 true**。也就是说：从 Finder 双击一个片子第一次用 unflick 的
 人，下次空手打开播放器时，引导还在等他。这条如果写反了，是那种没人会发现的 bug。
+
+---
+
+## 双语字幕（v0.14，落地当天从没上过屏）
+
+**结论：通过，而且是这次验证里证据最硬的一条**（真窗口合成后的像素）。
+
+### 先撞上一件不是 bug 的事
+
+第一次试的时候，我用 CLI 加载了两个字幕文件，然后打开 GUI 的字幕菜单：
+
+```
+$ unflick subtitle list
+  id=1 orig.srt  selected=false
+  id=2 zh.srt    selected=true
+
+$ unflick dev text '.glass-elevated'
+字幕
+没有加载字幕轨。          ← 菜单说一条都没有
+延迟 − +0.00s +
+加载字幕文件… / 在线查找字幕…
+```
+
+看着像经典的「列表没走到打开的面板里」。但不是：`playerStore` 的轮询只在
+**文件变了**的时候重拉字幕轨（`if (s.file !== previousFile) … refreshSubtitles()`），
+同一个文件上从 CLI 加载的轨道不会推给窗口。这是有意的，代码里写着。所以这条不
+记为缺陷——但它确实意味着：**在同一个文件上用 CLI/MCP 加字幕，窗口菜单不会更新，
+要切一次文件。** 记在这里，因为下一个从外面驱动窗口的人一定会再撞一次。
+
+按它设计的路走（sidecar 放在视频旁边，换文件触发轮询）之后，菜单是对的：
+
+```
+$ unflick subtitle list
+  id=1 title=en.srt selected=False secondary=False
+  id=2 title=zh.srt selected=True  secondary=False
+
+$ unflick dev text '.glass-elevated'
+字幕
+关闭
+en.srt
+zh.srt
+双语字幕
+延迟 − +0.00s +
+加载字幕文件… / 在线查找字幕…
+```
+
+两条轨道、标题一致、**没有一个是 "undefined"** —— Windows 那次音轨菜单全是
+"undefined" 的同类 bug，在 macOS 的字幕菜单上不存在。
+
+### 开关真的驱动了后端
+
+```
+$ unflick dev snapshot --selector '[role="switch"]'
+{"name": "同时显示原文和译文", "role": "switch", "state": {"checked": false}}
+
+$ unflick subtitle bilingual
+"message": "bilingual off"
+"primary": {"id": 2, "label": "bili.zh.srt", "lang": "zh"}, "secondary": null
+
+$ unflick dev click '[role="switch"]'
+clicked button.flex.w-full "同时显示原文和译文"
+
+$ unflick dev snapshot --selector '[role="switch"]'
+{"name": "同时显示原文和译文", "role": "switch", "state": {"checked": true, "focused": true}}
+
+$ unflick subtitle bilingual
+"message": "bilingual on: bili.en.srt + bili.zh.srt"
+"primary":   {"id": 1, "label": "bili.en.srt", "lang": "en"}
+"secondary": {"id": 2, "label": "bili.zh.srt", "lang": "zh"}
+"layout": "stacked",  "sub_pos": 100.0,  "secondary_sub_pos": 94.5
+```
+
+窗口的 `aria-checked` 和 CLI 读出来的 `enabled` 两边对上，主轨/副轨也对上。
+
+### 两行真的叠在屏幕上 —— 这条只能用真像素证
+
+`unflick screenshot` 证不了。它要的是干净的画面层：
+
+```rust
+// core/player.rs:475
+self.mpv.command(&["screenshot-to-file", path, "video"])
+```
+
+`"video"` 就是「不含字幕和 OSD」，所以截出来的 20 秒测试片是彩条，一个字都没有。
+`dev capture` 也证不了——它拿的是 WKWebView 那一层，而 mpv 在 macOS 上画在自己的
+子窗口里。**两个内置工具都到不了这个问题**。
+
+屏幕当时没锁、窗口在前台，所以用 `screencapture` 抓了真实合成后的窗口，裁出字幕带：
+
+![两行字幕](docs/verification-macos/bilingual-two-lines.png)
+
+上面一行 `原文那一行`（zh，secondary，`secondary_sub_pos` 94.5），下面一行
+`The original line`（en，primary，`sub_pos` 100）。**不重叠，确实是两条带。**
+bilingual.rs 里那句「mpv 不会自己叠，`secondary-sub-pos` 等于 `sub-pos` 时会塌成
+一条」——叠加的算术在 macOS 上是对的。
+
+菜单本身也一起进了这张图：
+
+![字幕菜单](docs/verification-macos/bilingual-menu.png)
+
+`en.srt` 前面是对勾（选中的那条），`zh.srt` 右边是 `第二行` 角标（副轨用角标而不是
+对勾，因为它不是「选中」的意思），`双语字幕` 开关是开的。
+
+### 落盘，以及换文件自动重新武装
+
+```json
+// /tmp/uf-verify-c/settings.json
+{
+  "onboarding_seen": false,
+  "subtitle_bilingual": { "enabled": true, "layout": "stacked" }
+}
+```
+
+换一个带自己 sidecar 的新文件（second.mp4 + second.en.srt + second.zh.srt）：
+
+```
+$ unflick play /tmp/uf-verify-media/second.mp4
+$ unflick subtitle bilingual
+  bilingual on: second.en.srt + second.zh.srt
+  enabled True primary second.en.srt secondary second.zh.srt sub_pos 100.0 sec_pos 94.5
+```
+
+`after_play_hooks` 那条路在 macOS 上通的。而且**菜单自己跟上了**——文件换掉之后
+菜单还开着，没有人碰它，开关读出来已经是 checked：
+
+```
+$ unflick dev snapshot --selector '[role="switch"]'
+  switch: 同时显示原文和译文 checked= True
+```
+
+这正是 `refreshSubtitles` 里 `bilingual: mapped.some(t => t.secondary)` 那行在干的事。
+
+从 GUI 关掉，一路通到底：
+
+```
+$ unflick dev click '[role="switch"]'   → clicked button.flex.w-full "同时显示原文和译文"
+$ unflick subtitle bilingual            → bilingual off
+$ cat settings.json                     → {"enabled": false, "layout": "stacked"}
+```
