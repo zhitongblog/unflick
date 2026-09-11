@@ -316,3 +316,90 @@ $ unflick dev click '[role="switch"]'   → clicked button.flex.w-full "同时�
 $ unflick subtitle bilingual            → bilingual off
 $ cat settings.json                     → {"enabled": false, "layout": "stacked"}
 ```
+
+---
+
+## v0.11 #1 进度条缩略图预览（记账表里写了两版「仍未实机」的那条）
+
+**结论：通过。** 而且是能拿到的最强证据——**窗口里那张图和 CLI 出的图逐字节相同**。
+
+### 后端先通
+
+CLI 那一半叫 `unflick frame thumbnail`（不是 `unflick thumbnail`）：
+
+```
+$ unflick frame thumbnail 8 --output /tmp/uf-verify-c/thumb8.png --width 160
+{"success": true, "message": "preview at 8.0s → /tmp/uf-verify-c/thumb8.png",
+ "data": {"bytes": 2911, "path": "…", "position": 8.0}}
+
+$ file /tmp/uf-verify-c/thumb8.png
+JPEG image data, JFIF standard 1.02, …, 160x90, components 3
+```
+
+> 顺带：`--output` 给什么名字就写什么名字，内容是 JPEG。上面这个 `.png` 里装的是
+> JPEG。不影响功能（GUI 用的是 data URL，MIME 写对了），但 CLI 这一侧名字会骗人。
+
+### 窗口这一半
+
+进度条是 `div.group.relative.cursor-pointer`，在 `[80, 561, 864×19]`。派发
+`mouseover` + `mousemove` 到 40% 处：
+
+```
+$ unflick dev eval '…fire("mouseover"); fire("mousemove")…'
+{"firedAt":[426,571]}
+
+$ unflick dev eval '…document.querySelectorAll("img")…'
+[{"w":160,"natural":"160x90","src":"data:image/jpeg;base64,/9j/4AAQSkZJRgABA","vis":true}]
+
+$ unflick dev text '.glass-elevated'
+  visible True '0:07'
+```
+
+浮层出来了：一张 160×90 的 JPEG，底下一行时间 `0:07`。
+
+时间对不对，算一遍：`clientX` 是整数，`80 + 864×0.4 = 425.6` 被截成 `425`，
+`(425−80)/864 × 20s = 7.986s`，`formatTime` 向下取整 → `0:07`。对的。
+
+### 两个真相来源，逐字节对上
+
+把窗口里那张图的 data URL 解出来，和 CLI 在同一个 bucket 上生成的比：
+
+```
+GUI tooltip image: 2963 bytes  sha256 bdb47d30e4e767db
+$ unflick frame thumbnail 7.7 --output … --width 160
+  CLI bucket: 6.0  2963 bytes
+CLI image:         2963 bytes  sha256 bdb47d30e4e767db
+```
+
+**同样 2963 字节，同样的 sha256。** 窗口显示的确实就是后端算出来的那一帧，
+7.986s 落到 6.0s 这个 bucket——和 CLI 传 7.7 落到的 bucket 是同一个。
+
+（那张图留在 `docs/verification-macos/thumbnail-tooltip-image.jpg`。）
+
+---
+
+## 中途：屏幕锁了，而 `dev capture` 的拒绝是对的
+
+缩略图验完之后屏幕自动锁了。这件事本身值得记一笔，因为它是设计里明写的行为，
+这是第一次在 macOS 上真的撞到：
+
+```
+$ python3 -c "…ioreg -n Root -d1 -a…"
+CGSSessionScreenIsLocked present: True
+
+$ unflick dev eval 'JSON.stringify({hidden:document.hidden, vis:document.visibilityState})'
+{"hidden":true,"vis":"hidden"}
+
+$ unflick dev capture --output /tmp/uf-verify-c/x.png
+false — the screen is locked, so nothing is drawing the window and a capture would be
+a black rectangle. Unlock the screen and retry; `unflick dev snapshot` a…
+```
+
+**按名字拒绝，说清楚为什么，并且指向还能用的那个命令。** 这是对的，不是故障。
+同时 `dev eval` 照常工作（上面那三条命令都是锁屏之后跑的），DOM 还在
+（`imgs: 1`，浮层没被拆掉）。
+
+代价是真实的，要写在前面：**锁屏之后，这一轮剩下的所有面板都拿不到「长什么样」
+这一半。** 窗口隐藏 → 没有动画帧 → Framer Motion 的入场动画停在 `initial`
+（opacity 0）→ `dev click` 会按「不可见」拒绝，`dev wait` 也等不到。
+所以下面每一条都会分开写清楚：**结构和行为**验到了什么，**外观**还欠谁一双眼睛。
