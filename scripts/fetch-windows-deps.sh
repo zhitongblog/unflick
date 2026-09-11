@@ -109,9 +109,22 @@ fi
 if [ -f src-tauri/whisper/whisper-cli.exe ] && [ -f src-tauri/whisper/ggml-tiny.bin ]; then
   echo "==> whisper: already present"
 else
-  echo "==> whisper: downloading whisper.cpp binaries"
-  curl -fL --retry 3 -o "$TMP/whisper.zip" \
-    https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip
+  echo "==> whisper: resolving a release that carries the Windows binaries"
+  # Not `/releases/latest/download/…`: whisper.cpp tags releases that carry no
+  # assets at all (v1.9.4 is one), and "latest" points at the newest tag rather
+  # than the newest build. That 404 broke a release build once already. Walk
+  # back until a release actually has the zip.
+  WHISPER_URL="$(gh_api 'https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=25' \
+    | node -e '
+      let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+        for (const r of JSON.parse(s)) {
+          const a = (r.assets || []).find(a => a.name === "whisper-bin-x64.zip");
+          if (a) { console.error("    " + r.tag_name + " / " + a.name); console.log(a.browser_download_url); return; }
+        }
+        console.error("no release in the last 25 carries whisper-bin-x64.zip");
+        process.exit(1);
+      });')"
+  curl -fL --retry 3 -o "$TMP/whisper.zip" "$WHISPER_URL"
   mkdir -p src-tauri/whisper
   # whisper.cpp now splits the CPU backend into one DLL per microarchitecture
   # and picks at runtime, so every ggml-cpu-*.dll has to ship — bundling only

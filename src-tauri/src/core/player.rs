@@ -667,10 +667,17 @@ impl Player {
             .set_property_f64("secondary-sub-pos", pos.clamp(0.0, 150.0))
     }
 
-    pub fn secondary_sub_delay(&self) -> f64 {
-        self.mpv
-            .get_property_f64("secondary-sub-delay")
-            .unwrap_or(0.0)
+    /// The second line's offset, or `None` where this libmpv has no such
+    /// property.
+    ///
+    /// `unwrap_or(0.0)` used to stand in for both, which reported a build
+    /// that cannot hold a separate offset as one holding zero — so a reader
+    /// comparing it against `sub-delay` saw the translation sitting at 0.0
+    /// while the original moved, and called it drift. The two cases need
+    /// different answers: `null` means "this build has one delay for both
+    /// lines", a number means "here is the second one".
+    pub fn secondary_sub_delay(&self) -> Option<f64> {
+        self.mpv.get_property_f64("secondary-sub-delay").ok()
     }
 
     /// List all audio tracks
