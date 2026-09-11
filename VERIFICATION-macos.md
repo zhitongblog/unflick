@@ -1119,3 +1119,89 @@ start:        CLI: 1.50x   window: 1.5×
 > 但它描述的是「面板还在」；**这里更狠一层：那个还在的面板不是半透明的残影，
 > 而是一个不透明、可点击、状态陈旧的活靶子。** 任何在隐藏窗口里驱动
 > unflick 的人都会撞上，建议写进 `dev` 的文档里。
+
+---
+
+## v0.12 #3 书签（进度条上的钉、弹层、重命名、删除）
+
+**结论：通过，全套。**
+
+从窗口按 `b` 加两个（3s 和 12s），CLI 确认：
+
+```
+$ unflick bookmark list
+  2 bookmark(s)
+   id=3 pos=3.00 name=None
+   id=4 pos=12.00 name=None
+```
+
+### 钉子的位置是算对的
+
+```
+$ unflick dev eval '…querySelectorAll("button.absolute.top-1\\/2")…'
+   {'title': '0:03', 'left': '15%', 'rects': 1}
+   {'title': '0:12', 'left': '60%', 'rects': 1}
+```
+
+20 秒的片子，3s → **15%**，12s → **60%**。没有名字时 `title` 回退成时间。
+
+### 弹层（Shift+B）
+
+```
+书签
+在此处添加书签
+0:03   0:03
+0:12   0:12
+```
+
+两条，和 CLI 一致。每行各有一个「重命名」和一个「删除」。
+
+### 重命名
+
+点第一条的「重命名」→ 出现输入框（placeholder `给这个位置起个名字`）→
+填「开场」→ Enter：
+
+```
+$ unflick bookmark list
+   id=3 pos=3.00 name=开场
+   id=4 pos=12.00 name=None
+```
+
+**钉子跟着改了**：`["开场@15%", "0:12@60%"]` —— 有名字用名字，没名字用时间。
+
+> 找输入框时踩了一下：那个 `<input>` **没有 `type` 属性**，
+> 所以 `input[type=text]` 选不中（虽然 `i.type` 读出来是 `"text"`）。
+> 要用 `input:not([type])` 或按 placeholder 找。
+
+### 删除
+
+点第二条的「删除」：
+
+```
+$ unflick bookmark list
+  1 bookmark(s)
+   id=3 pos=3.00 name=开场
+```
+
+钉子也少了一个：`["开场@15%"]`。
+
+### 点钉子会跳过去
+
+先 seek 到 17s，再点那颗钉子 —— 第一次 `dev click` **拒绝了**，因为
+`button[title="开场"]` 同时命中钉子和弹层里那一行：
+
+```
+button[title="开场"] matches 2 visible elements — pass an index (0–1) to say which.
+  0: button.absolute.top-1/2 "开场"; 1: button.min-w-0.flex-1 "开场"
+```
+
+这正是 dev bridge 存在的理由之一（「命中好几个就不要瞎点第一个」），
+**在 macOS 上照常工作**。指定 `--index 0`：
+
+```
+  click: True clicked button.absolute.top-1/2 "开场"
+  after:  3.00  (expect 3.00)
+```
+
+`17.00 → 3.00`。ProgressBar 里那段「钉子要把 mousedown 也吞掉，否则进度条会先
+seek 到大概位置、跳两次」的处理是有效的——位置精确落在 3.00，不是附近。
