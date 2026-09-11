@@ -1205,3 +1205,61 @@ button[title="开场"] matches 2 visible elements — pass an index (0–1) to s
 
 `17.00 → 3.00`。ProgressBar 里那段「钉子要把 mousedown 也吞掉，否则进度条会先
 seek 到大概位置、跳两次」的处理是有效的——位置精确落在 3.00，不是附近。
+
+---
+
+## v0.12 #2 音乐模式
+
+**结论：通过**（自动进入、真实改变窗口尺寸、往返精确回到原尺寸）。
+
+用 ffmpeg 造一个带标签的 25 秒 mp3（`title=Test Track / artist=Verification /
+album=macOS`）。
+
+### 自动进入，并且窗口真的变了
+
+```
+=== before (video file) ===
+   mode: normal
+   window: {"iw":1024,"ih":640}
+=== play the audio file ===
+   mode: music
+   window: {"iw":380,"ih":560}
+   nowplaying: {'title': 'Test Track', 'artist': 'Verification', 'album': 'macOS', 'has_video': False}
+```
+
+**1024×640 → 380×560**，这是一次真实的 macOS 窗口缩放，不是 CSS 布局变化
+（读的是 `innerWidth/innerHeight`）。界面也换成了音乐布局：
+
+```
+Test Track
+Verification
+macOS
+0:08   0:25   1×
+```
+
+标签是从 mp3 里读出来的，三行都对。
+
+### 「回不去」是**故意**的，不是 bug
+
+放完 mp3 再放视频，模式**仍然**是 music、窗口仍然是 380×560。差点记成缺陷，
+但 App.tsx 里写得很清楚：
+
+```js
+// 这是单向的：keyed on the file, so it fires once per track and a user
+// who leaves music mode for this file is not dragged back into it — and
+// never in reverse, because a video that follows an mp3 should not yank
+// the window back while the tags are still being read.
+```
+
+**只进不出是设计**。理由也成立：标签还在读的时候把窗口拽回去，体验更糟。
+
+### 手动往返，两条路都精确
+
+```
+=== ⌘M ===                 mode: normal   window: {"iw":1024,"ih":640}
+=== ⌘M again ===           mode: music    window: {"iw":380,"ih":560}
+=== unflick window mode normal ===
+                           mode: normal   window: {"iw":1024,"ih":640}
+```
+
+**原尺寸是精确恢复的**（1024×640，不是「差不多」），快捷键和 CLI 走的是同一条路。
