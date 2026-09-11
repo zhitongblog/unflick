@@ -863,3 +863,145 @@ $ unflick audio list
 
 后端的 `title` 是 `None`，界面显示的是 **`Track 1`**（由 id 合成）加上
 codec `aac`——正是那个 bug 修好之后该有的样子。
+
+---
+
+## v0.12 #4 网络路径（记账表里「仍未实机」的那条）
+
+**结论：通过。拒绝的措辞是 macOS 自己的，不是 Windows 那套翻译过来的。**
+
+CLI：
+
+```
+$ unflick play smb://server/share/film.mkv
+{"success": false,
+ "message": "cannot open smb://server/share/film.mkv: no smb:// support in this build.
+             SMB URLs are not supported — connect to the server in Finder,
+             then play the path under /Volumes."}
+
+$ unflick play nfs://server/export/film.mkv
+{"success": false,
+ "message": "cannot open nfs://server/export/film.mkv: no nfs:// support in this build.
+             NFS URLs are not supported — mount the export in Finder or with mount_nfs,
+             then play the path under /Volumes."}
+```
+
+两句都点名 **Finder** 和 **`/Volumes`**，nfs 那句还给了 `mount_nfs`。
+Windows 上这里说的是映射盘符——**这是第一次确认 macOS 分支真的在跑。**
+
+窗口侧（`⌘U` 打开 URL 对话框）。输入框的 placeholder 本身就在教人：
+
+```
+  inputs: ["text|https://…  或  已挂载共享上的路径"]
+```
+
+填 `smb://server/share/film.mkv` 按「播放」，出来的是一张本地化的错误卡：
+
+```
+unflick 无法打开 smb:// 链接
+✕
+smb://server/share/film.mkv
+先在访达里连接服务器，然后播放 /Volumes 下的路径。
+打开另一个文件        详细信息
+```
+
+**「访达」「/Volumes」都在，中文的。** 这条是本次验证里最干净的一条：
+CLI 和 GUI 说的是同一件事，而且都说的是 macOS 的做法。
+
+### 一个小瑕疵：同一个错误，两种语言同屏
+
+错误卡是本地化的，但 URL 对话框里**同时**还留着后端的原始英文串：
+
+```
+could not open smb://server/share/film.mkv
+```
+
+两处同时在屏幕上。不影响用，但一个界面上两种语言说同一件事，读起来是坏的。
+
+### `//server/share/...`（UNC）在 macOS 上只有通用报错
+
+```
+$ unflick play //server/share/film.mkv
+{"success": false, "message": "could not open //server/share/film.mkv"}
+```
+
+诚实但没帮上忙。UNC 是 Windows 的写法，macOS 上它只是一个不存在的路径；
+如果想更好，可以识别出 `//host/share` 这种形状并给出和 `smb://` 一样的指引。
+**没改**（属于产品判断，不是接线错误）。
+
+---
+
+## 🐞 找到的第二个 bug：没播成的文件会进「最近播放」
+
+**先是撞见的**：测完网络路径之后，首屏的最近播放里多出两条：
+
+```
+$ unflick recent list
+  3 recently played
+    bili   <- /tmp/uf-verify-media/bili.mp4
+    film   <- /Volumes/NoSuchShare/film.mkv      ← 从来没播成过
+    film   <- //server/share/film.mkv            ← 从来没播成过
+```
+
+**然后做成了确定复现**。关键不是「打不开」，是「**打开中**」——
+`core/daemon.rs` 里写历史那一段在 `Ok(outcome)` 分支内，**在判断
+`loaded` 之前**：
+
+```rust
+match player.play(&resolved, effective_seek, volume, speed) {
+    Ok(outcome) => {
+        …
+        if !ctx.incognito.load(…) {
+            let _ = db.record_play(&src);        // ← 这里
+        }
+        let loaded = outcome == player::LoadOutcome::Loaded;   // ← 判断在后面
+```
+
+也就是说：只要 mpv 在截止时间内没报错，就记一笔，**无论它最后有没有真的打开**。
+快速失败的路径（`Err`）不会记——这也是为什么用不存在的路径试了几次都复现不出来，
+它们失败得太快。
+
+用一个 **FIFO** 就能稳定复现：mpv 能打开它，但永远读不到数据，所以一定落在
+「还在加载」这条路上：
+
+```bash
+$ mkfifo /tmp/uf-verify-media/stall.mkv
+$ unflick recent clear
+  0 recently played
+$ unflick play /tmp/uf-verify-media/stall.mkv
+  success=True  "opening /tmp/uf-verify-media/stall.mkv (still loading)"
+  data: {'file': '/tmp/uf-verify-media/stall.mkv', 'loaded': False}
+$ unflick recent list
+  1 recently played
+    stall <- /tmp/uf-verify-media/stall.mkv
+```
+
+**一个自己报告 `loaded: false`、一帧都没放出来的东西，进了「最近播放」。**
+对用户的影响：网络共享断了、路径打错了，都会在首屏留下一条永久的垃圾记录，
+点它还会再失败一次。
+
+**没改。** 正确的修法是把历史写到「加载真的完成」那个事件上，而不是写在 play
+调用点——但「还在加载」这条路存在的意义恰恰是伺候慢的网络共享，直接改成
+「只有 `Loaded` 才记」会把真正能放的慢共享一起丢掉。这是播放/加载管线的改动，
+按这次的规矩（不碰深层）只报不修。
+
+---
+
+## 另一件事：打不开的路径会让窗口短暂失去响应
+
+`play /Volumes/NoSuchShare/film.mkv` 之后，`dev eval` 连着几次报
+
+```
+the window did not answer within 5.0s.
+```
+
+进程**还活着**（`ps -p` 确认），控制端口也还在，5 秒之后自己就恢复了：
+
+```
+  t=5s  process=yes  control-port-status=True  dev-eval=True
+```
+
+看起来是 macOS 对 `/Volumes/…` 的自动挂载尝试把主线程堵了一会儿。
+不是崩溃（40 分钟内没有任何新的 `.ips` 崩溃报告），但**在自动化脚本眼里
+和「GUI 死了」长得一模一样**——本次验证中途就因此误判过两次。
+`dev` 的默认 5 秒超时比这个停顿短，需要的话用 `--timeout` 放宽。
