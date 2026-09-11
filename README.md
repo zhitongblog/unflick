@@ -13,6 +13,9 @@ What makes it different: **MCP is a built-in control surface, not a third-party 
 **One-line install:**
 
 ```bash
+# macOS — Homebrew
+brew install --cask zhitongblog/tap/unflick
+
 # macOS / Linux
 curl -fsSL https://unflick.app/install.sh | bash
 
