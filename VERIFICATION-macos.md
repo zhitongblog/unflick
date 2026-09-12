@@ -1571,6 +1571,204 @@ $ unflick cast to
 还有一次（第一次跑，冷启动）在 90 秒的外部超时下被杀掉，没能复现。
 没深究，记在这里。
 
+### 2026-09-13：面板补上了，并在 macOS 上逐条实机
+
+上面那条「没有这个界面」在这天结束。播放条上多了一个投屏按钮
+（`[data-cast-button]`），弹层的形状照书签面板抄的——同样的 Framer Motion 进出、
+同样的点外面关掉、同样的「每次打开都重新读一遍」。
+
+**它没有自己的投屏逻辑。** 一个 Tauri 命令 `cast`，把 action 转给
+`core::daemon::dispatch` 的 `cast` 分支——`unflick cast …` 和 MCP 的 `cast` 工具
+走的是同一个。它拿到的 `ControlContext` 就是内嵌控制服务器自己那一个
+（在 `spawn_embedded_control_server` 里塞进 `GuiPlayer.control`）：投屏会话握着
+一个电视还在拉流的 HTTP 服务器，活得比任何一条命令都久，所以窗口要是自己再开一个，
+`unflick cast status` 说的就是另一台电视了。
+
+同一个进程、同一个端口，窗口和 CLI 逐字对上：
+
+| action | 窗口里 `invoke("cast", …)` | `unflick cast …` |
+|---|---|---|
+| status | `{"data":null,"message":"not casting"}` | `success=True  'not casting'  data=null` |
+| pause | `REJECTED: not casting` | `success=False 'not casting'` |
+| resume | `REJECTED: not casting` | `success=False 'not casting'` |
+| seek | `REJECTED: not casting` | `success=False 'not casting'` |
+| stop | `REJECTED: not casting` | `success=False 'not casting'` |
+| to | `REJECTED: no DLNA renderers answered` | `success=False 'no DLNA renderers answered'` |
+| list | `{"data":[],"message":"no DLNA renderers answered"}` | `success=True 'no DLNA renderers answered' data=[]` |
+
+#### 搜索是看得见的
+
+上一次记的「`--seconds` 好像不管用、`cast list` 能跑 12 秒」正是面板要解决的事：
+一个看起来卡住八秒的弹层，人会点第二下。所以打开就显示搜索在跑，并且数秒：
+
+```
+$ unflick dev click '[data-cast-button]'
+  clicked button.rounded-lg.p-1.5 "Cast to TV"
+
+t+0.0s  正在寻找电视…  0 秒
+t+1.2s  正在寻找电视…  1 秒
+t+2.4s  正在寻找电视…  2 秒
+t+3.5s  正在寻找电视…  3 秒
+t+4.1s  没有找到电视  这个网络上没有任何设备回应 DLNA 搜索。…
+```
+
+#### 空状态：本机唯一能真验的那条，也是最该写对的那条
+
+```
+$ unflick dev text '[data-cast-panel]'
+CAST TO TV
+No televisions found
+Nothing on this network answered a DLNA search. Check that the television is on
+and awake — many stop answering from standby — and that it is on the same network
+as this computer. A guest network, or a VPN running here, counts as a different
+network.
+Search again
+```
+
+```
+投屏到电视
+没有找到电视
+这个网络上没有任何设备回应 DLNA 搜索。请确认电视已开机并且处于唤醒状态——很多电视
+待机时不再回应——并且和这台电脑在同一个网络里。访客网络，或者这台电脑上开着的 VPN，
+都算另一个网络。
+重新搜索
+```
+
+同一时刻的 CLI：`cast list -> no DLNA renderers answered  data=[]`，
+`cast status -> not casting`。**面板说的和 CLI 说的是同一件事。**
+
+#### 抓到的一个 bug：关掉再打开会拿到上次的答案
+
+第一版把「每次打开都重新读」写在了组件的挂载 effect 里。**在这棵树上这是错的**：
+`AnimatePresence` 在退场动画还没跑完时重新打开，是把退场**倒放**回去，不是重新
+挂载——组件的挂载 effect 只跑过一次，面板会一直显示第一次搜到的那几台电视，
+包括中途已经关机的。而窗口不可见时退场动画**永远**跑不完（这份文件开头那条陷阱），
+所以在 dev 桥下这是必现的。
+
+改成由播放条上那一下点击驱动（`castStore.open()`）。反向验证过：把改动退回挂载
+effect 的写法重新构建，`gui_dev` 如期报出为它写的那句——
+
+```
+1 of the window bridge's promises did not hold:
+  reopening the panel searches again instead of showing the last answer:
+  searching:empty is "0:1" right after the reopen — anything but "1:0" means the
+  panel kept the previous search, which is the AnimatePresence reversal
+```
+
+改回来之后重新全绿。
+
+#### 有设备的那一半：对着一个自己写的软件接收端验的，**不是电视**
+
+本网络上这次一台 DLNA 设备都没有（上次那台 `爱投屏c9ac-DLNA` 不在了）。为了不把
+「列表 / 投屏中 / 停止回本地」这三个状态留成空白，在本机跑了一个自己写的
+DLNA MediaRenderer——真的答 SSDP M-SEARCH、真的给设备描述 XML、真的讲 AVTransport
+（SetAVTransportURI / Play / Pause / Stop / Seek / GetPositionInfo /
+GetTransportInfo）。**它是一个软件接收端，不是电视，画面从来没有出现在任何屏幕上。**
+
+对着它，从窗口里点出来的：
+
+```
+### 点列表里那台电视
+  clicked button.flex.w-full "unflick test renderer"
+### 面板
+  CAST TO TV | Playing on unflick test renderer | cast-test | 0:00 | 0:30
+  | Pause | Stop casting | Stops the television and picks the film back up in this window.
+### unflick cast status
+  /tmp/uf-cast-media/cast-test.mp4 on unflick test renderer — PLAYING
+### 接收端自己的日志
+  [renderer] fetched 2048 bytes of http://192.168.5.8:65147/cast-test.mp4 -> HTTP 206
+```
+
+——**媒体服务器是真的被拉了字节的**（HTTP 206，Range 请求）。
+
+暂停 / 继续，按钮文字跟着翻，CLI 同刻对上：
+
+```
+  clicked button.rounded-lg.border "Pause"
+  面板: … | 0:20 | 0:30 | Resume | …     cli: pos=20.0 state=PAUSED_PLAYBACK
+  clicked button.rounded-lg.border "Resume"
+  面板: … | 0:22 | 0:30 | Pause  | …     cli: pos=22.0 state=PLAYING
+```
+
+停止，回到本地：
+
+```
+### 电视在放的时候，本地播放器
+  state=paused position=5.00
+  clicked button.rounded-lg.border "Stop casting"
+### unflick cast status
+  not casting
+### 本地播放器
+  state=playing position=7.00      ← 窗口自己接着放了
+### 面板
+  回到「正在寻找电视…」，离换一台只差一下
+```
+
+关掉面板，投屏按钮上的紫点还在（`purple dot=1`）；再打开，直接是控制界面，
+不再搜一遍。没有文件时列表那行是 disabled，并且多一句
+「Open a file first — casting sends what is playing.」。
+
+#### 顺手抓到的一条 dev 桥的限制（只报不修）
+
+**`unflick dev click` 点出来的 click 事件不带坐标。** 探针最后一步是
+`el.click()`（为了让原生激活行为生效），而 `el.click()` 合成的事件 `clientX` 是 0。
+挂了监听器一看就清楚：
+
+```
+$ unflick dev click '[data-cast-seek]'      →  报 x=702（元素中点）
+页面收到的:  click, clientX=0, 元素 rect: left=562 width=279
+```
+
+于是「点进度条中间」变成了「点最左边」，投屏进度条跳到 0:00。
+**这不只影响投屏面板：`ProgressBar.tsx` 读的也是 `e.clientX`**，所以拿 `dev click`
+去点主进度条，会 seek 到 0:00 并且看起来是成功的。
+
+面板这边的换算本身是对的——手工派发一个带 `clientX` 的 click 到 75% 处：
+
+```
+$ unflick dev eval 'var e=…[data-cast-seek]; var r=e.getBoundingClientRect();
+   e.dispatchEvent(new MouseEvent("click",{bubbles:true,clientX:Math.round(r.left+r.width*0.75),…}))'
+  cli pos= 24.0     面板: 0:23 | 0:30
+```
+
+#### 还有一件构建上的事，值得写下来
+
+跑完 `cargo test --lib` / `--test playback` 之后再启动窗口，窗口里显示的是
+**另一个应用**——`location.href` 是 `http://localhost:1420/`，`document.title` 是
+`欢迎.md — SoloMD`。原因是那几条 `cargo test` **不带** `--features custom-protocol`，
+把 `target/debug/unflick` 覆盖成了走 devUrl 的版本，而这台机器上正好有另一个
+Tauri 应用在 1420 上跑 dev server。CLAUDE.md 里写的是「不带这个 feature 会停在
+about:blank」——**实际上更糟：它会去加载别人的 dev server，看起来像你的应用疯了。**
+验证前重新 `cargo build --features custom-protocol`。
+
+#### 这次的测试数
+
+| 套件 | 结果 |
+|---|---|
+| `pnpm test` | 9 files / **125 passed**（新增 `lib/cast.test.ts` 18 条）|
+| `npx tsc --noEmit` | 干净 |
+| `cargo test --lib` | **183 passed** |
+| `cargo test --test dev` | **15 passed** |
+| `cargo test --test playback` | **113 passed** |
+| `cargo test --test understanding` | **26 passed** |
+| `cargo test --test cast` | **15 passed** |
+| `cargo test --test gui_dev --features custom-protocol` | **1 passed**（含本次新增的投屏一段；**网络上有接收端和没有接收端各跑过一次，两边都绿**）|
+| `cargo test --test disc` | 8 passed / **1 failed（已知，本机 libmpv 不支持 DVD）** |
+
+i18n 那两道闸都验过是活的：把 `{t.cast.noneTitle}` 换成字面量重新跑，
+`hardcoded.test.ts` 如期报
+`components/CastMenu.tsx:172  JSX text "No televisions found"`；八个语言包的
+键对齐由 `locales.test.ts` 守着。
+
+#### 这次仍然验不了的
+
+- **真电视。** 本网络上没有 DLNA 接收端。上面所有「有设备」的证据都来自本机那个
+  软件接收端，它按 UPnP 该怎么答就怎么答，但它不是一台电视：解码、真实网络
+  往返、机顶盒那些不讲规矩的实现，一条都没碰到。
+- **面板长什么样。** 全程锁屏，`dev capture` 按名字拒绝（这是对的）。验的是结构
+  和行为，不是像素。
+- **Windows / Linux 上的这个面板。** 一行都没在那两个平台上跑过。
+
 ---
 
 # 总账
@@ -1591,7 +1789,7 @@ $ unflick cast to
 | 12 | v0.13 会话续播 | **通过** | 杀窗后 `session` 记到 0:08；首屏「继续观看」；点击从 8.0 接上；stop 与 ✕ 都清 |
 | 13 | v0.13 启动时间线 | **修好之后通过** | 原本永远是 `no startup marks`；修后拿到 10 个阶段、816ms |
 | 14 | v0.13 光盘拒绝 | **🐞 缺陷（未修）** | 识别对了，播放时 CLI 说 `property not found`、GUI 说「检查权限」 |
-| 15 | v0.13 投屏面板 | **没有这个界面** | 8 个语言文件 0 命中，前端 0 处 invoke，lib.rs 未注册命令 |
+| 15 | v0.13 投屏面板 | **2026-09-11：没有这个界面** → **2026-09-13：有了，且通过** | 当初 8 个语言文件 0 命中、前端 0 处 invoke、lib.rs 未注册命令；现在面板与 `cast list` / `cast status` 逐字对上，空状态说清楚该查什么。有设备的那一半是对着本机软件接收端验的，**真电视仍未验** |
 | 16 | v0.14 双语字幕 | **通过** | 真窗口合成像素：两行不重叠；开关、角标、落盘、换文件重新武装 |
 | 17 | v0.14 首启引导 | **通过** | 四条退出路径条条落盘；重新武装有效；带文件启动不出现且**不消费标志** |
 
