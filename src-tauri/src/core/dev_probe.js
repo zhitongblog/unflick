@@ -490,10 +490,17 @@
    * The event sequence a real press produces, in the order it produces it.
    *
    * React and Framer Motion both listen on `pointerdown` far more often
-   * than on `click`, so `el.click()` alone misses handlers and reports
-   * success for a press nothing heard. `el.click()` still runs last,
-   * because it is what performs the element's native activation — a
-   * dispatched MouseEvent is untrusted and a checkbox would not toggle.
+   * than on `click`, so a bare click misses handlers and reports success
+   * for a press nothing heard.
+   *
+   * The last step is a dispatched `click` carrying coordinates, not
+   * `el.click()`. `el.click()` is the same dispatch with a default init,
+   * which means `clientX` and `clientY` are **zero** — so a handler that
+   * reads them, as every bar in this interface does, saw every click land
+   * on its left edge. Driving the progress bar at 75% seeked to 0:00 and
+   * reported success. Activation behaviour runs for a dispatched click
+   * too (a checkbox still toggles, an anchor still navigates); the only
+   * thing `el.click()` added was the wrong position.
    */
   function press(el, x, y) {
     var init = {
@@ -522,11 +529,7 @@
       el.dispatchEvent(new PointerEvent('pointerup', pointerInit));
     }
     el.dispatchEvent(new MouseEvent('mouseup', init));
-    if (typeof el.click === 'function') {
-      el.click();
-    } else {
-      el.dispatchEvent(new MouseEvent('click', init));
-    }
+    el.dispatchEvent(new MouseEvent('click', init));
   }
 
   /**

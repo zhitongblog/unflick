@@ -457,6 +457,93 @@ fn the_bridge_drives_the_real_window() {
         let _ = gui.send("dev_click", json!({ "selector": "[data-cast-button]" }));
     }
 
+    // ── a click lands where it was aimed ────────────────────────────────
+    // The probe used to finish its press with `el.click()`, which is the
+    // same dispatch with a default init — so `clientX` and `clientY` were
+    // **zero**. Every handler in this interface that reads them saw the
+    // left edge: driving the progress bar at its middle seeked to 0:00 and
+    // reported success, which is the worst kind of wrong, because the
+    // bridge said it had done the thing.
+    //
+    // The bar is found by the shape ProgressBar.tsx gives it rather than by
+    // a test id, because there are none in this tree yet. If that selector
+    // stops matching, this phase says so instead of quietly passing.
+    {
+        // Put a file back on. The phases above run for most of a minute and
+        // the fixture is 20 seconds long, so by here the player is very
+        // likely stopped — and a stopped player has no progress bar to click,
+        // which would read as "the selector is wrong" when it is not.
+        let _ = gui.send("play", json!({ "file": gui.file.to_string_lossy() }));
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        let _ = gui.send("pause", json!({}));
+        // The player bar hides itself when the mouse has been still, and by
+        // this phase it has been still for most of a minute. Wake it the way
+        // a hand would, or the selector below finds nothing and this phase
+        // reports a missing bar when the bar is merely asleep.
+        let _ = gui.send(
+            "dev_eval",
+            json!({
+                "script": "document.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: innerWidth / 2, clientY: innerHeight - 40})); 'woken'"
+            }),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let bar = "div.group.relative.flex.flex-1.cursor-pointer";
+        let found = gui.send(
+            "dev_eval",
+            json!({ "script": format!("document.querySelectorAll('{bar}').length") }),
+        );
+        // `.length` comes back as a JSON number, not a string — reading it
+        // with `as_str()` alone silently yields the default and reports a
+        // missing bar that is right there on screen. Cost me a round trip.
+        let matches = match &found.data()["value"] {
+            Value::Number(n) => n.to_string(),
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        // When it does not match, say what the window did have — a bare
+        // count sends the next person hunting through the source for a
+        // class list that may have moved for a reason (fullscreen floats
+        // the bars, music mode replaces them).
+        let nearby = gui.send(
+            "dev_eval",
+            json!({
+                "script": "Array.from(document.querySelectorAll('div.cursor-pointer')).slice(0, 4).map(function (e) { return e.className; }).join(' | ') || '(no div.cursor-pointer at all)'"
+            }),
+        );
+        check_msg(
+            &mut broken,
+            "the progress bar is still where this phase looks for it",
+            matches == "1",
+            || format!(
+                "{matches} elements match {bar:?}. What the window had instead: {}",
+                nearby.data()["value"].as_str().unwrap_or("(could not ask)")
+            ),
+        );
+
+        if matches == "1" {
+            let clicked = gui.send("dev_click", json!({ "selector": bar }));
+            check(&mut broken, "a click on the progress bar is delivered", clicked.ok(), &clicked);
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+
+            let status = gui.send("status", json!({}));
+            let pos = status.data()["position"].as_f64().unwrap_or(-1.0);
+            let dur = status.data()["duration"].as_f64().unwrap_or(0.0);
+            // Centred click, so half the file — generously, because the bar
+            // has padding and the fixture is short. Anything near zero is
+            // the bug: a coordinate-less click reading as the left edge.
+            let want = dur / 2.0;
+            check_msg(
+                &mut broken,
+                "a centred click seeks to the middle rather than to the start",
+                dur > 0.0 && (pos - want).abs() < dur * 0.2,
+                || format!(
+                    "clicked the middle of the bar and landed at {pos:.1}s of {dur:.1}s — \
+                     near 0 means the click arrived without coordinates"
+                ),
+            );
+        }
+    }
+
     // ── the render thread outlives a geometry storm ─────────────────────
     // Last, because it is the phase that can take the window down with it,
     // and everything above should get its answer first.
