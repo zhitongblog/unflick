@@ -41,7 +41,13 @@ jobs:
       # that's the whole reason this matrix exists.
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # ubuntu-24.04-arm earns its place by having caught something no test
+        # could: C's plain `char` is unsigned there and signed everywhere else,
+        # so a hardcoded `*const i8` in the mpv FFI made the tree fail to
+        # compile on every ARM Linux machine — through four releases, because
+        # no machine that had ever built it was one. A compile target is the
+        # only thing that can assert "this builds elsewhere".
+        os: [windows-latest, macos-latest, ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
 
