@@ -45,8 +45,19 @@ interface CastState {
   /** The last backend message that came back as a failure. English, from Rust. */
   error: string | null;
 
-  /** Forget the last search. Called when the panel opens, before it re-runs. */
+  /** Forget the last search. */
   reset: () => void;
+  /**
+   * What opening the panel does: forget the last search, read the live
+   * state, and — unless something is already casting — look again.
+   *
+   * Deliberately not the panel's mount effect. `AnimatePresence` reverses
+   * an exit rather than remounting when a popover is reopened before its
+   * 120 ms close has finished, so a component that reads state on mount
+   * reads it once and then shows whatever was true the first time. The
+   * open is an event; this is it.
+   */
+  open: () => Promise<void>;
   /** Re-read `cast status`. Cheap when nothing is casting — no network at all. */
   refresh: () => Promise<void>;
   /** Search every interface for televisions. Takes seconds by design. */
@@ -95,6 +106,12 @@ export const useCastStore = create<CastState>((set, get) => ({
       busy: false,
       error: null,
     }),
+
+  open: async () => {
+    get().reset();
+    await get().refresh();
+    if (!get().session) await get().discover();
+  },
 
   refresh: async () => {
     try {

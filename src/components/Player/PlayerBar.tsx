@@ -533,7 +533,16 @@ export default function PlayerBar() {
           <div className="relative">
             <button
               className={barBtnClass(showCastMenu || castSession !== null)}
-              onClick={() => setShowCastMenu((v) => !v)}
+              onClick={() => {
+                const opening = !showCastMenu;
+                setShowCastMenu(opening);
+                // The open is the event, not the mount — a popover reopened
+                // inside its own 120 ms close animation is reversed by
+                // `AnimatePresence` rather than remounted, and a panel that
+                // only reads on mount would show the televisions that
+                // answered last time.
+                if (opening) void useCastStore.getState().open();
+              }}
               title={t.cast.title}
             >
               <CastIcon />

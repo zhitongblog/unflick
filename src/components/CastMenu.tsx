@@ -43,8 +43,6 @@ export default function CastMenu({ onClose }: { onClose: () => void }) {
     connecting,
     busy,
     error,
-    reset,
-    refresh,
     discover,
     castTo,
     pause,
@@ -73,20 +71,13 @@ export default function CastMenu({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Every open starts from nothing known. A cast can be started, moved or
-  // stopped from the CLI or by an agent between one open and the next, and
-  // a renderer list left over from last time is a list of televisions that
-  // may have been switched off since. Read the live state first, then
-  // search — unless something is already casting, in which case the
-  // controls are what is wanted and a search would only delay them.
-  useEffect(() => {
-    reset();
-    void (async () => {
-      await refresh();
-      if (!useCastStore.getState().session) await discover();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Where the "every open starts from nothing known" rule is *not*: see
+  // `castStore.open`, which the player bar calls on the click that opens
+  // this. A mount effect would be the obvious place and the wrong one —
+  // reopening a popover before its exit animation has finished makes
+  // `AnimatePresence` reverse the exit instead of remounting, so the
+  // effect would run once and the panel would go on showing the
+  // televisions that answered the first time.
 
   // Follow the television while it plays. Only while something is casting:
   // `cast status` with no session touches no network at all, but with one
