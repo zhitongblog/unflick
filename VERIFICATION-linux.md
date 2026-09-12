@@ -120,3 +120,9 @@ finished in 0.85s
 ```
 test gui::dev_capture::tests::a_short_or_empty_buffer_is_not_mistaken_for_a_picture ... ok
 ```
+
+> **给下一个人的环境提醒**：这台 VM 的 `disk` 是宿主机上一个 30 GiB 的稀疏文件，
+> 而宿主机（macOS）当时只剩 100 MB 可用。debug 构建 + 三个集成测试二进制
+> （每个 350 MB）足以把 VM 内部从 13 GB 吃到 5 GB，而**稀疏文件同步增长会把宿主
+> 机撑爆**——本次验证中途就因此把宿主机写满、VM 的 sshd 被拖死，只能强停重启。
+> 在 Linux 上做这件事之前，先确认**宿主机**有 10 GB 以上余量，不只是 VM 内部。
