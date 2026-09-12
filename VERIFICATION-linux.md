@@ -250,3 +250,55 @@ Linux 的设备节点两条都不是。
 （`ls: cannot access '/dev/sr*': No such file or directory`），所以即使 VM 活着，
 能验的也只是「没有光驱时说没有光驱」，不是「有光驱时认不出来」。
 真要验这条，需要一台带光驱的 Linux 机器。
+
+---
+
+# 总账
+
+| # | 条目 | 结论 | 证据 |
+|---|---|---|---|
+| 1 | **arm64 Linux 能不能构建** | **🐞 缺陷（已修）** | `error[E0277]` / `error[E0308]`，`mpv/handle.rs:315` 把 `c_char` 写死成 `i8`；改成 `c_char` 后 `Finished dev profile in 1m 15s` |
+| 2 | `cargo test --lib` | **通过** | `183 passed; 0 failed`，0.85s |
+| 3 | `gui/dev_capture/linux.rs` 编译 | **通过**（史上第一次） | 对着 webkit2gtk-4.1 2.52.3 干净编译，`looks_blank` 单测在 Linux 上第一次跑过 |
+| 4 | `--test dev` / `playback` / `understanding` | **`unverified`** | 宿主机磁盘写满，进程被杀；随后 VM 无法启动 |
+| 5 | `dev` 桥六个动词 | **`unverified`** | 没有能起来的窗口 |
+| 6 | `dev capture` 在 Xvfb 下出图 | **`unverified`** | 同上；且 Xvfb 无 window manager，正是该怀疑的一半 |
+| 7–17 | 所有 GUI 功能（播放条 / 快捷键 / 手势 / 几何 / 均衡器 / Music / 书签 / 速度 / 最近播放 / 续播 / 字幕 / 双语 / 引导 / 网络路径） | **`unverified`** | 同上 |
+| 18 | 光盘在 Linux 上不走 `play` 这条路 | **仅代码层确认** | `drives()` 出 `/dev/sr0`，`detect()` 对它三个分支全不命中，返回 `None` |
+| 19 | 发布的 `.deb`/`.rpm`/`.AppImage` | **`unverified`，且本次也不可能验** | 那三个包是 CI 在 **x86_64** 上构建的，这台是 **arm64** |
+
+## 改了什么，怎么复验的
+
+| 修的 | 文件 | 复验 |
+|---|---|---|
+| `command()` 的指针数组用 `c_char` 而不是写死的 `i8` | `src-tauri/src/mpv/handle.rs` | 用 `limactl copy` 同步进 VM，**重新构建成功**（1m 15s，之前是 2 个硬错误）；随后 `cargo test --lib` 183/183 |
+
+宿主机（macOS，`c_char == i8`）上 `cargo check --lib` 与 `cargo test --lib`
+都仍然通过，这次改动对已经能构建的三种机器是零变化。
+
+**没有为这条加回归测试**，而且这是有意的：它是编译期错误，不是运行期行为，
+唯一能守住它的东西是**一台 ARM Linux 的 CI runner**（`ubuntu-24.04-arm` 现在是
+GitHub Actions 的免费公共 runner）。加一条 Rust 测试断言不了「在别的架构上能编译」。
+这条建议写在下面。
+
+## 仍未验证，以及为什么
+
+- **除「能不能构建」以外的一切 Linux GUI 行为。** 原因是宿主机资源，不是代码：
+  16 GB 内存的机器上 23.5 GB 交换区用掉 22.8 GB、空闲物理内存 265 MB、
+  数据卷 228 GiB 用掉 182 GiB。要接着做这件事，需要的是**一台有余量的机器**
+  （宿主机至少 10 GB 空闲磁盘 + 能真正给出 6 GB 的内存），不是更多时间。
+- **发布包本身**。x86_64 的三个包在一台 arm64 机器上无从验起。
+- **物理光驱 / 光盘**。这台 VM 没有 `/dev/sr*`。
+
+## 给下一次的三条建议
+
+1. **CI 加一条 `ubuntu-24.04-arm`。** 本次第一条缺陷是纯粹的「没人在这个架构上
+   编译过」，而它在任何一台 ARM Linux 上都是必现的硬错误。这是唯一能防住同类
+   问题的东西，而且现在是免费 runner。
+2. **在 Linux 上做实机验证之前，先量宿主机。** 一个 debug 构建树在 VM 里是
+   20+ GB，而 VM 的稀疏磁盘会把这些同步吃到宿主机上。本次就是这样把宿主机写满、
+   进而把 VM 拖死的。
+3. **`dev capture` 在 Xvfb 下的行为要专门验。** 它现在能编译，但 `linux.rs` 自己
+   的超时文案说的是「window manager 从没 map 过的窗口没有可见区域」，而
+   `xvfb-run` 下没有 window manager。这条要么能用，要么会给出一句该给的拒绝——
+   两种都行，但得有人真的看一眼。
