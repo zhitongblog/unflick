@@ -2343,3 +2343,63 @@ pub fn check_bundled_whisper(app: AppHandle) -> Result<Value, String> {
         Ok(json!({"bundled": false}))
     }
 }
+
+// ─── Cast panel ───────────────────────────────────────────────────────────
+//
+// One command for the whole feature, because there is one command behind it:
+// `core::daemon`'s `cast` arm, the same arm `unflick cast …` and the MCP
+// `cast` tool reach. The window is not given its own discovery, its own
+// session or its own idea of what a renderer is — it is given the dispatcher,
+// and the action name rides in as an argument exactly as it does on the wire.
+//
+// That is not tidiness. A cast session owns an HTTP server that a television
+// keeps fetching from, and it lives in `ControlContext`; a second one started
+// from the window would serve the same file twice and leave `unflick cast
+// status` describing a cast nobody is watching. There is one context, so
+// there is one cast.
+//
+// Async + `spawn_blocking` because discovery is slow by design: SSDP replies
+// are spread across the `MX` window so that a room full of devices does not
+// answer at once, and cutting it short simply loses the slower televisions.
+// Several seconds on the Tauri command thread would freeze the window that
+// is meant to be showing the search running.
+#[command]
+pub async fn cast(
+    action: String,
+    renderer: Option<String>,
+    file: Option<String>,
+    seconds: Option<f64>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let ctx = gui_player
+        .control
+        .get()
+        .cloned()
+        .ok_or_else(|| "the control server is not running, so there is nothing to cast with".to_string())?;
+
+    let mut args = json!({ "action": action });
+    if let Some(r) = renderer {
+        args["renderer"] = json!(r);
+    }
+    if let Some(f) = file {
+        args["file"] = json!(f);
+    }
+    if let Some(s) = seconds {
+        args["seconds"] = json!(s);
+    }
+
+    let result = tokio::task::spawn_blocking(move || {
+        crate::core::daemon::dispatch(&ctx, "cast", &args)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // The frontend gets the same two fields the CLI prints, and a failure
+    // arrives as a rejected promise rather than a `success: false` the
+    // caller has to remember to look at.
+    if result.success {
+        Ok(json!({ "message": result.message, "data": result.data }))
+    } else {
+        Err(result.message)
+    }
+}

@@ -28,6 +28,23 @@ pub struct GuiPlayer {
     /// Shared with the embedded control server so a CLI or MCP `play`
     /// respects the window's incognito switch. See `ControlContext`.
     pub incognito: Arc<std::sync::atomic::AtomicBool>,
+
+    // ─── Cast panel ───────────────────────────────────────────────────
+    /// The very `ControlContext` the embedded control server answers on,
+    /// published here once it exists.
+    ///
+    /// A cast lives in that context — `ctx.cast` holds the renderer and
+    /// the HTTP server feeding it — and it has to, because the cast
+    /// outlives any one command. So the window cannot start its own: a
+    /// panel with its own session would be a second truth, disagreeing
+    /// with `unflick cast status` the moment either was used. Sharing the
+    /// context instead makes the panel a caller of `daemon::dispatch`,
+    /// exactly like the socket the CLI talks to.
+    ///
+    /// `None` until the control thread has built it (and if the process
+    /// never gets that far, the cast command says so rather than casting
+    /// into a context nobody else can see).
+    pub control: OnceLock<Arc<crate::core::daemon::ControlContext>>,
 }
 
 impl GuiPlayer {
@@ -41,6 +58,7 @@ impl GuiPlayer {
             playlist: Arc::new(Playlist::new()),
             db: Mutex::new(db),
             incognito: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            control: OnceLock::new(),
         }
     }
 

@@ -462,6 +462,8 @@ pub fn run(allow_dev: bool) {
             // goes before it jumps, so one left on a disc that is not in
             // the drive is refused instead of played as whatever is.
             commands::bookmark_target,
+            // Cast panel
+            commands::cast,
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.
@@ -637,6 +639,16 @@ fn spawn_embedded_control_server(
             allow_dev,
             dev: Some(dev_host as Arc<dyn core::dev::DevHost>),
         });
+
+        // ─── Cast panel ───────────────────────────────────────────────
+        // Hand the window the same context. Everything below this line
+        // already treats `ctx` as the single place a cast can live; the
+        // panel's Tauri command needs to reach that same place, or it
+        // would open a session `unflick cast status` cannot see.
+        let _ = app
+            .state::<GuiPlayer>()
+            .control
+            .set(Arc::clone(&ctx));
 
         // Keep the resume point true as playback moves. Started before the
         // handover for the same reason the open is: it matters to the
