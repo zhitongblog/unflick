@@ -133,3 +133,120 @@ test gui::dev_capture::tests::a_short_or_empty_buffer_is_not_mistaken_for_a_pict
 > （每个 350 MB）足以把 VM 内部从 13 GB 吃到 5 GB，而**稀疏文件同步增长会把宿主
 > 机撑爆**——本次验证中途就因此把宿主机写满、VM 的 sshd 被拖死，只能强停重启。
 > 在 Linux 上做这件事之前，先确认**宿主机**有 10 GB 以上余量，不只是 VM 内部。
+
+### `cargo test --test dev --test playback --test understanding`
+
+**`unverified` —— 没跑完，而且原因不在 unflick 身上。**
+
+命令发出去了，三个测试二进制正在链接的时候，**宿主机的磁盘被写满**：
+
+```
+$ cargo test --test dev --test playback --test understanding -- --test-threads=2
+（进程被杀，无输出）
+
+宿主机 /System/Volumes/Data:  228Gi 已用 182Gi，可用 124Mi
+```
+
+VM 的 `disk` 是宿主机上的稀疏文件，VM 内部从 13 GB 掉到 5 GB 的同时，宿主机
+被同步吃掉了约 20 GB。宿主机写满之后 VM 的 sshd 先没了响应，强停重启之后
+**guest 再也没有起来过**。
+
+排查过程留在这里，因为它排除了「镜像坏了」这个最吓人的解释：
+
+| 查的 | 结果 |
+|---|---|
+| GPT 分区表 | 完好：protective MBR + `EFI PART` 头，part1 / part15(ESP) / part16 都在 |
+| ESP 的 FAT32 超级块 | 完好（`mkfs.fat`、`FAT32`、`55aa`） |
+| ESP 里的引导链 | **完好**：`EFI/BOOT/BOOTAA64.EFI`、`EFI/ubuntu/shimaa64.efi`、`grubaa64.efi`，日期和大小都还是原装的 |
+| guest 是否在跑 | **没有**：VZ 报 `vm state change: running`，但进程 0.0% CPU、串口日志 0 字节、10 分钟无任何输出 |
+
+真正的原因是**宿主机内存**：
+
+```
+$ sysctl -n hw.memsize        →  16 GB
+$ vm_stat                     →  Pages free: 16949  （≈ 265 MB）
+$ sysctl vm.swapusage         →  total 23552M  used 22752M  free 799M
+```
+
+**16 GB 内存的机器，23.5 GB 交换区用掉了 22.8 GB，空闲物理内存 265 MB。**
+Virtualization.framework 拿不到给 guest 的内存，vCPU 一步都没执行——所以
+「状态是 running，但什么都没发生」。把 guest 从 6 GiB 降到 3 GiB 再试，一样。
+`sudo purge` 需要密码，拿不到。
+
+这是**环境**问题，不是 unflick 的问题，也不是我能在不删用户几十 GB 数据、
+不关用户正在跑的程序的前提下解决的。所以：**`--test dev` / `--test playback` /
+`--test understanding` 在 arm64 Linux 上的结果，本次给不出。**
+
+（用完之后 `lima.yaml` 的 `memory: 6GiB` 和 `vz-efi` 都已还原成原样。）
+
+---
+
+## 后面这些，一条都没验成
+
+`dev` 桥和所有 GUI 功能都需要一个能起来的窗口。VM 死了之后，
+**下面每一条都是 `unverified`，而且是同一个原因**，不是各自有各自的毛病：
+
+| 条目 | 状态 | 原因 |
+|---|---|---|
+| `dev wait` / `snapshot` / `text` / `eval` / `click` | `unverified` | VM 起不来，没有窗口可驱动 |
+| **`dev capture`（从没被编译过的那条）** | **编译通过，运行未验** | 见下 |
+| 播放与播放条、快捷键、鼠标手势 | `unverified` | 同上 |
+| 画面几何、均衡器、Music 模式 | `unverified` | 同上 |
+| 书签与进度条上的钉、速度微调 | `unverified` | 同上 |
+| 最近播放、会话续播 | `unverified` | 同上 |
+| 字幕菜单、双语字幕（含 `secondary-sub-pos` 在 0.37 上到底有没有） | `unverified` | 同上 |
+| 首启引导 | `unverified` | 同上 |
+| 网络路径拒绝（`smb://` / `nfs://` 的 Linux 措辞） | `unverified` | 同上 |
+| 光盘不走 Linux 这条路 | **仅代码层确认**，未实机 | 见下 |
+
+### `dev capture`：编译这一关过了，运行这一关没到
+
+任务书说它「从没被任何人编译过」。**现在它被编译过了**，而且是干净的：
+
+```
+$ cargo build --features custom-protocol
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 15s
+warning: `unflick` (lib) generated 1 warning   ← 只有一条，且在 gui/commands.rs，与 capture 无关
+```
+
+对着的是 **libwebkit2gtk-4.1 2.52.3**（比 CI 的 22.04 新得多），
+`webkit_web_view_get_snapshot` + `SnapshotRegion::Visible` + `cairo-rs/png`
+这一套在 2.52 上仍然存在、签名也仍然对得上——这件事本身之前是没人知道的。
+
+它的那条单元测试也跑了，而且是在 Linux 上第一次：
+
+```
+test gui::dev_capture::tests::a_short_or_empty_buffer_is_not_mistaken_for_a_picture ... ok
+```
+
+**但「在 Xvfb 下能不能真的出一张图」没验到。** 这正是最值得怀疑的一半：
+`linux.rs` 的超时文案自己就写着「window manager 从没 map 过的窗口没有可截的
+可见区域」，而 `xvfb-run` 下**没有 window manager**。这条仍然完全敞着。
+
+### 光盘：代码层确认「不走」，但没有实机复现
+
+任务书说的现象在代码里是坐实的，两边看：
+
+```rust
+// core/disc.rs:677  drives() 在 Linux 上返回的是设备节点
+if name.starts_with("sr") && name[2..].chars().all(|c| c.is_ascii_digit()) {
+    out.push(e.path());      // → /dev/sr0
+}
+```
+
+```rust
+// core/disc.rs:123  detect() 对一个设备节点无路可走
+if p.is_dir() { … }                              // /dev/sr0 不是目录
+if IMAGE_EXTENSIONS.contains(&ext.as_str()) { … } // 没有 .iso/.img/.udf 扩展名
+None                                              // ← 落到这里
+```
+
+`drives()` 列出 `/dev/sr0`，`detect("/dev/sr0")` 返回 `None`。
+**`disc list` 能报出来的东西，`play` 这条路认不出来**——macOS 靠
+`/Volumes/<label>` 是目录才走通，Windows 靠 `D:\` 是目录才走通，
+Linux 的设备节点两条都不是。
+
+**但这只是读代码，不是实机。** 而且这台 VM 上 `/dev/sr*` 根本不存在
+（`ls: cannot access '/dev/sr*': No such file or directory`），所以即使 VM 活着，
+能验的也只是「没有光驱时说没有光驱」，不是「有光驱时认不出来」。
+真要验这条，需要一台带光驱的 Linux 机器。
