@@ -97,3 +97,26 @@ error: could not compile `unflick` (lib) due to 2 previous errors
 > v0.1 到 v0.14.1 一次都没能从源码构建过。已发布的 `.deb`/`.rpm`/`.AppImage`
 > 是 x86_64 的，所以这条不影响下载安装包的人——但它意味着 arm64 Linux 从来
 > **不在**「三平台」里。
+
+---
+
+## headless 套件：arm64 Linux 上第一次跑
+
+CI 跑的是 **x86_64 Ubuntu 22.04**（libmpv 0.34）。这台是 **arm64 Ubuntu 24.04**
+（libmpv 0.37）。所以这一节里的任何失败，要么是 arm64 的问题，要么是
+libmpv 0.37 和 0.34 的差别——下面每一条都会说清是哪一种。
+
+### `cargo test --lib`
+
+```
+test result: ok. 183 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+finished in 0.85s
+```
+
+**183 通过，0 失败。**（macOS 那次是 178，v0.14.1 多了几条。）
+值得单独点名的是里面这条——它是 `dev capture` 的 Linux 侧唯一一条单元测试，
+在这台机器之前从没被编译过：
+
+```
+test gui::dev_capture::tests::a_short_or_empty_buffer_is_not_mistaken_for_a_picture ... ok
+```
