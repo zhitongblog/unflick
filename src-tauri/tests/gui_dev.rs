@@ -383,20 +383,27 @@ fn the_bridge_drives_the_real_window() {
         );
 
         // Let the panel's own discovery finish, then ask the same question
-        // through the same dispatcher the CLI uses.
-        std::thread::sleep(Duration::from_secs(8));
+        // through the same dispatcher the CLI uses. Polled rather than
+        // slept through: how long a search takes is a property of the
+        // televisions on the network, not of this machine, and a fixed
+        // wait would either be wrong on a quiet network or too short on a
+        // busy one.
+        const VIEW: &str = "document.querySelector('[data-cast-active]') ? 'casting' : \
+                            document.querySelector('[data-cast-list]') ? 'renderers' : \
+                            document.querySelector('[data-cast-empty]') ? 'empty' : \
+                            document.querySelector('[data-cast-searching]') ? 'searching' : 'none'";
+        let settled = std::time::Instant::now();
+        let mut shown = "searching".to_string();
+        while settled.elapsed() < Duration::from_secs(30) {
+            let view = gui.send("dev_eval", json!({ "script": VIEW }));
+            shown = view.data()["value"].as_str().unwrap_or("none").to_string();
+            if shown != "searching" {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
         let listed = gui.send("cast", json!({ "action": "list", "seconds": 2 }));
         let found = listed.data().as_array().map(|a| a.len()).unwrap_or(0);
-        let view = gui.send(
-            "dev_eval",
-            json!({
-                "script": "document.querySelector('[data-cast-active]') ? 'casting' : \
-                           document.querySelector('[data-cast-list]') ? 'renderers' : \
-                           document.querySelector('[data-cast-empty]') ? 'empty' : \
-                           document.querySelector('[data-cast-searching]') ? 'searching' : 'none'"
-            }),
-        );
-        let shown = view.data()["value"].as_str().unwrap_or("none").to_string();
         let casting = gui.send("cast", json!({ "action": "status" }));
         let is_casting = casting.data().get("renderer").is_some();
         let expected = if is_casting {
