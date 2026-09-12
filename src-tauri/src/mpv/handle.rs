@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 use std::sync::Arc;
 
@@ -310,9 +310,16 @@ impl MpvHandle {
     }
 
     /// Run a command like ["loadfile", "/path/to/file"].
+    ///
+    /// `c_char`, not `i8`. C's plain `char` is signed on x86_64 and on
+    /// Apple silicon but **unsigned on aarch64 Linux**, so `*const i8` is
+    /// the right type on every machine this was ever built on and the
+    /// wrong one on an ARM Linux box — where it is a compile error, not a
+    /// warning. Everything in `mpv/ffi.rs` already spells it `c_char`;
+    /// this one line did not, which is why the tree did not build there.
     pub fn command(&self, args: &[&str]) -> Result<()> {
         let c_args: Vec<CString> = args.iter().map(|s| CString::new(*s).unwrap()).collect();
-        let mut ptrs: Vec<*const i8> = c_args.iter().map(|s| s.as_ptr()).collect();
+        let mut ptrs: Vec<*const c_char> = c_args.iter().map(|s| s.as_ptr()).collect();
         ptrs.push(ptr::null());
         let err = unsafe { (self.api.command)(self.ctx, ptrs.as_ptr()) };
         self.check(err)
