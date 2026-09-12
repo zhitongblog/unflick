@@ -469,6 +469,25 @@
     "remove": "삭제",
     "namePlaceholder": "이 지점의 이름"
   },
+  "cast": {
+    "title": "TV로 전송",
+    "searching": "TV를 찾는 중…",
+    "searchingHint": "TV는 네트워크 검색에 저마다의 속도로 응답하므로 몇 초가 걸립니다. unflick은 기본 인터페이스뿐 아니라 모든 네트워크 인터페이스에서 검색합니다.",
+    "elapsed": "{seconds}초",
+    "searchAgain": "다시 검색",
+    "noneTitle": "TV를 찾지 못했습니다",
+    "noneBody": "이 네트워크에서 DLNA 검색에 응답한 기기가 없습니다. TV가 켜져 있고 대기 상태가 아닌지(많은 TV가 대기 중에는 응답하지 않습니다), 그리고 이 컴퓨터와 같은 네트워크에 있는지 확인하세요. 게스트 네트워크나 이 컴퓨터에서 실행 중인 VPN은 다른 네트워크로 취급됩니다.",
+    "pick": "TV 선택",
+    "connecting": "{name}(으)로 보내는 중…",
+    "playingOn": "{name}에서 재생 중",
+    "pause": "일시정지",
+    "resume": "계속",
+    "stop": "전송 중지",
+    "stopHint": "TV를 멈추고 이 창에서 이어서 재생합니다.",
+    "returned": "전송을 중지했습니다 — 이 창에서 다시 재생합니다",
+    "nothingToCast": "먼저 파일을 여세요 — 전송은 재생 중인 것을 보냅니다.",
+    "failed": "전송 실패"
+  },
   "music": {
     "section": "음악 모드",
     "noTrack": "재생 중이 아님",

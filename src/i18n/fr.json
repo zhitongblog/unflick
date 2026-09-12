@@ -469,6 +469,25 @@
     "remove": "Supprimer",
     "namePlaceholder": "Nommer cet endroit"
   },
+  "cast": {
+    "title": "Diffuser sur la TV",
+    "searching": "Recherche de téléviseurs…",
+    "searchingHint": "Les téléviseurs répondent à une recherche réseau à leur propre rythme, cela prend quelques secondes. unflick interroge toutes les interfaces réseau, pas seulement celle par défaut.",
+    "elapsed": "{seconds} s",
+    "searchAgain": "Relancer la recherche",
+    "noneTitle": "Aucun téléviseur trouvé",
+    "noneBody": "Aucun appareil de ce réseau n'a répondu à la recherche DLNA. Vérifiez que le téléviseur est allumé et sorti de veille — beaucoup ne répondent plus en veille — et qu'il est sur le même réseau que cet ordinateur. Un réseau invité, ou un VPN actif ici, compte comme un autre réseau.",
+    "pick": "Choisir un téléviseur",
+    "connecting": "Envoi vers {name}…",
+    "playingOn": "Lecture sur {name}",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "stop": "Arrêter la diffusion",
+    "stopHint": "Arrête le téléviseur et reprend la lecture dans cette fenêtre.",
+    "returned": "Diffusion arrêtée — lecture reprise dans cette fenêtre",
+    "nothingToCast": "Ouvrez d'abord un fichier — la diffusion envoie ce qui est en cours de lecture.",
+    "failed": "Échec de la diffusion"
+  },
   "music": {
     "section": "Mode musique",
     "noTrack": "Aucune lecture",

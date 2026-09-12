@@ -469,6 +469,25 @@
     "remove": "Löschen",
     "namePlaceholder": "Diese Stelle benennen"
   },
+  "cast": {
+    "title": "Auf Fernseher streamen",
+    "searching": "Suche nach Fernsehern…",
+    "searchingHint": "Fernseher antworten auf eine Netzwerksuche in ihrem eigenen Tempo, das dauert einige Sekunden. unflick sucht über jede Netzwerkschnittstelle, nicht nur über die voreingestellte.",
+    "elapsed": "{seconds} s",
+    "searchAgain": "Erneut suchen",
+    "noneTitle": "Keine Fernseher gefunden",
+    "noneBody": "Kein Gerät in diesem Netzwerk hat auf die DLNA-Suche geantwortet. Prüfe, ob der Fernseher eingeschaltet und wach ist — viele antworten im Standby nicht mehr — und ob er im selben Netzwerk hängt wie dieser Computer. Ein Gastnetzwerk oder ein hier laufendes VPN zählt als anderes Netzwerk.",
+    "pick": "Fernseher auswählen",
+    "connecting": "Wird an {name} gesendet…",
+    "playingOn": "Läuft auf {name}",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "stop": "Streaming beenden",
+    "stopHint": "Stoppt den Fernseher und setzt die Wiedergabe in diesem Fenster fort.",
+    "returned": "Streaming beendet — läuft wieder in diesem Fenster",
+    "nothingToCast": "Öffne zuerst eine Datei — gestreamt wird, was gerade läuft.",
+    "failed": "Streaming fehlgeschlagen"
+  },
   "music": {
     "section": "Musikmodus",
     "noTrack": "Nichts wird abgespielt",

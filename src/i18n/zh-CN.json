@@ -469,6 +469,25 @@
     "remove": "删除",
     "namePlaceholder": "给这个位置起个名字"
   },
+  "cast": {
+    "title": "投屏到电视",
+    "searching": "正在寻找电视…",
+    "searchingHint": "电视按自己的节奏回应网络搜索，所以这要花几秒钟。unflick 会从每一个网络接口发起搜索，不只是默认的那一个。",
+    "elapsed": "{seconds} 秒",
+    "searchAgain": "重新搜索",
+    "noneTitle": "没有找到电视",
+    "noneBody": "这个网络上没有任何设备回应 DLNA 搜索。请确认电视已开机并且处于唤醒状态——很多电视待机时不再回应——并且和这台电脑在同一个网络里。访客网络，或者这台电脑上开着的 VPN，都算另一个网络。",
+    "pick": "选择一台电视",
+    "connecting": "正在发送到 {name}…",
+    "playingOn": "正在 {name} 上播放",
+    "pause": "暂停",
+    "resume": "继续",
+    "stop": "停止投屏",
+    "stopHint": "停下电视，并在这个窗口里接着播放。",
+    "returned": "已停止投屏——回到这个窗口继续播放",
+    "nothingToCast": "先打开一个文件——投屏发送的是正在播放的内容。",
+    "failed": "投屏失败"
+  },
   "music": {
     "section": "音乐模式",
     "noTrack": "未在播放",

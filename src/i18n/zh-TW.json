@@ -469,6 +469,25 @@
     "remove": "刪除",
     "namePlaceholder": "為這個位置命名"
   },
+  "cast": {
+    "title": "投放到電視",
+    "searching": "正在尋找電視…",
+    "searchingHint": "電視會按自己的節奏回應網路搜尋，所以這需要幾秒鐘。unflick 會從每一個網路介面發出搜尋，不只是預設的那一個。",
+    "elapsed": "{seconds} 秒",
+    "searchAgain": "重新搜尋",
+    "noneTitle": "找不到電視",
+    "noneBody": "這個網路上沒有任何裝置回應 DLNA 搜尋。請確認電視已開機且不在待機狀態——很多電視待機時不再回應——並且和這台電腦在同一個網路裡。訪客網路，或是這台電腦上執行中的 VPN，都算是另一個網路。",
+    "pick": "選擇一台電視",
+    "connecting": "正在傳送到 {name}…",
+    "playingOn": "正在 {name} 上播放",
+    "pause": "暫停",
+    "resume": "繼續",
+    "stop": "停止投放",
+    "stopHint": "停下電視，並在這個視窗裡接著播放。",
+    "returned": "已停止投放——回到這個視窗繼續播放",
+    "nothingToCast": "請先開啟一個檔案——投放送出的是正在播放的內容。",
+    "failed": "投放失敗"
+  },
   "music": {
     "section": "音樂模式",
     "noTrack": "未在播放",

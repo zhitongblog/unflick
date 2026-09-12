@@ -15,6 +15,8 @@ import Equalizer from "../Equalizer";
 import { audioTrackLabel, type AudioTrack } from "../../lib/tracks";
 import ChapterMenu from "../ChapterMenu";
 import BookmarkMenu from "../BookmarkMenu";
+import CastMenu from "../CastMenu";
+import { useCastStore } from "../../stores/castStore";
 import { useStrings } from "../../i18n/utils";
 import { formatTime } from "../../lib/format";
 import { findSubtitlesOnline } from "../../lib/subtitleSearch";
@@ -131,6 +133,21 @@ function ChapterIcon() {
   );
 }
 
+/**
+ * A screen with the broadcast arcs in the corner. The one icon everyone
+ * already reads as "put this on the television".
+ */
+function CastIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 16.1a5 5 0 0 1 5.9 5.9" />
+      <path d="M2 12.05a9 9 0 0 1 9.95 9.95" />
+      <line x1="2" y1="20" x2="2.01" y2="20" />
+      <path d="M5 8V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
+    </svg>
+  );
+}
+
 function BookmarkIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -174,6 +191,11 @@ export default function PlayerBar() {
   const [showEqualizer, setShowEqualizer] = useState(false);
   const [showChapterMenu, setShowChapterMenu] = useState(false);
   const [showBookmarkMenu, setShowBookmarkMenu] = useState(false);
+  const [showCastMenu, setShowCastMenu] = useState(false);
+  // Whether a television is playing this. The panel keeps it current while
+  // it is open; this read is what puts the mark on the button when it is
+  // not — including for a cast someone started from the CLI.
+  const castSession = useCastStore((s) => s.session);
   const chapters = usePlayerStore((s) => s.chapters);
   const bookmarks = usePlayerStore((s) => s.bookmarks);
 
@@ -189,6 +211,15 @@ export default function PlayerBar() {
     };
     window.addEventListener("unflick:toggle-bookmarks", toggle);
     return () => window.removeEventListener("unflick:toggle-bookmarks", toggle);
+  }, []);
+
+  // Ask once, at startup, whether anything is already casting. A cast
+  // survives the window being closed and reopened — it is the television
+  // that is playing, not us — so the bar has to find out rather than
+  // assume. Free when nothing is casting: `cast status` only touches the
+  // network when there is a session to ask about.
+  useEffect(() => {
+    void useCastStore.getState().refresh();
   }, []);
   const t = useStrings();
 
@@ -491,6 +522,27 @@ export default function PlayerBar() {
               {showBookmarkMenu && (
                 <BookmarkMenu onClose={() => setShowBookmarkMenu(false)} />
               )}
+            </AnimatePresence>
+          </div>
+
+          {/* Cast. Stays a React popover on every platform, like the
+              bookmark menu and for the same reason: it is a surface that
+              has to keep showing a search running and then a television
+              being driven, and a native menu is a list that closes when
+              you touch it. */}
+          <div className="relative">
+            <button
+              className={barBtnClass(showCastMenu || castSession !== null)}
+              onClick={() => setShowCastMenu((v) => !v)}
+              title={t.cast.title}
+            >
+              <CastIcon />
+              {castSession && (
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand-purple" />
+              )}
+            </button>
+            <AnimatePresence>
+              {showCastMenu && <CastMenu onClose={() => setShowCastMenu(false)} />}
             </AnimatePresence>
           </div>
 

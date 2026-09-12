@@ -469,6 +469,25 @@
     "remove": "Delete",
     "namePlaceholder": "Name this spot"
   },
+  "cast": {
+    "title": "Cast to TV",
+    "searching": "Looking for televisions…",
+    "searchingHint": "Televisions answer a network search at their own pace, so this takes a few seconds. unflick asks from every network interface, not only the default one.",
+    "elapsed": "{seconds}s",
+    "searchAgain": "Search again",
+    "noneTitle": "No televisions found",
+    "noneBody": "Nothing on this network answered a DLNA search. Check that the television is on and awake — many stop answering from standby — and that it is on the same network as this computer. A guest network, or a VPN running here, counts as a different network.",
+    "pick": "Pick a television",
+    "connecting": "Sending to {name}…",
+    "playingOn": "Playing on {name}",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop casting",
+    "stopHint": "Stops the television and picks the film back up in this window.",
+    "returned": "Stopped casting — playing in this window again",
+    "nothingToCast": "Open a file first — casting sends what is playing.",
+    "failed": "Casting failed"
+  },
   "music": {
     "section": "Music mode",
     "noTrack": "Nothing playing",

@@ -469,6 +469,25 @@
     "remove": "Eliminar",
     "namePlaceholder": "Nombra este punto"
   },
+  "cast": {
+    "title": "Enviar al televisor",
+    "searching": "Buscando televisores…",
+    "searchingHint": "Los televisores responden a una búsqueda de red a su propio ritmo, así que esto tarda unos segundos. unflick busca desde todas las interfaces de red, no solo desde la predeterminada.",
+    "elapsed": "{seconds} s",
+    "searchAgain": "Buscar de nuevo",
+    "noneTitle": "No se encontró ningún televisor",
+    "noneBody": "Ningún dispositivo de esta red respondió a la búsqueda DLNA. Comprueba que el televisor esté encendido y despierto — muchos dejan de responder en reposo — y que esté en la misma red que este ordenador. Una red de invitados, o una VPN activa aquí, cuenta como otra red.",
+    "pick": "Elige un televisor",
+    "connecting": "Enviando a {name}…",
+    "playingOn": "Reproduciendo en {name}",
+    "pause": "Pausa",
+    "resume": "Reanudar",
+    "stop": "Detener el envío",
+    "stopHint": "Detiene el televisor y retoma la reproducción en esta ventana.",
+    "returned": "Envío detenido — se reanuda en esta ventana",
+    "nothingToCast": "Abre primero un archivo — se envía lo que se está reproduciendo.",
+    "failed": "Error al enviar"
+  },
   "music": {
     "section": "Modo música",
     "noTrack": "Nada en reproducción",
