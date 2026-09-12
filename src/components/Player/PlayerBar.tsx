@@ -532,6 +532,7 @@ export default function PlayerBar() {
               you touch it. */}
           <div className="relative">
             <button
+              data-cast-button
               className={barBtnClass(showCastMenu || castSession !== null)}
               onClick={() => {
                 const opening = !showCastMenu;

@@ -352,6 +352,104 @@ fn the_bridge_drives_the_real_window() {
         );
     }
 
+    // ── the cast panel agrees with `cast status` ────────────────────────
+    //
+    // Casting shipped in v0.13 with no entry point in the window on any
+    // platform — the CLI and MCP had it, the GUI did not, and nobody
+    // noticed for two releases because nothing headless can notice a
+    // button that does not exist. This phase is the thing that would
+    // have.
+    //
+    // Written to hold on a machine with a television and on one without,
+    // because the interesting assertion is the same either way: whatever
+    // the panel shows has to be what `cast list` and `cast status` say.
+    let opened = gui.send("dev_click", json!({ "selector": "[data-cast-button]" }));
+    check(&mut broken, "the player bar has a casting button", opened.ok(), &opened);
+
+    if opened.ok() {
+        // The search has to be visible from the first frame. Discovery
+        // takes seconds by design — SSDP replies are spread across the MX
+        // window — and a panel that looks empty while it waits is one
+        // people click twice.
+        let searching = gui.send(
+            "dev_eval",
+            json!({ "script": "document.querySelectorAll('[data-cast-searching]').length" }),
+        );
+        check_msg(
+            &mut broken,
+            "opening the panel starts a search and says so",
+            searching.data()["value"].as_f64().unwrap_or(0.0) >= 1.0,
+            || format!("{}: {}", searching.message(), searching.data()),
+        );
+
+        // Let the panel's own discovery finish, then ask the same question
+        // through the same dispatcher the CLI uses.
+        std::thread::sleep(Duration::from_secs(8));
+        let listed = gui.send("cast", json!({ "action": "list", "seconds": 2 }));
+        let found = listed.data().as_array().map(|a| a.len()).unwrap_or(0);
+        let view = gui.send(
+            "dev_eval",
+            json!({
+                "script": "document.querySelector('[data-cast-active]') ? 'casting' : \
+                           document.querySelector('[data-cast-list]') ? 'renderers' : \
+                           document.querySelector('[data-cast-empty]') ? 'empty' : \
+                           document.querySelector('[data-cast-searching]') ? 'searching' : 'none'"
+            }),
+        );
+        let shown = view.data()["value"].as_str().unwrap_or("none").to_string();
+        let casting = gui.send("cast", json!({ "action": "status" }));
+        let is_casting = casting.data().get("renderer").is_some();
+        let expected = if is_casting {
+            "casting"
+        } else if found == 0 {
+            // The case this machine can actually reach, and the one an
+            // empty box explains worst: nothing answered, so the panel
+            // must say what to check rather than showing a blank list.
+            "empty"
+        } else {
+            "renderers"
+        };
+        check_msg(
+            &mut broken,
+            "the panel shows what `cast list` and `cast status` report",
+            shown == expected,
+            || format!(
+                "panel is showing {:?} while cast list found {} renderer(s) and cast status says {:?}",
+                shown, found, casting.message()
+            ),
+        );
+
+        // Closing and reopening must re-ask. The trap is `AnimatePresence`:
+        // reopen a popover inside its own 120 ms close and the exit is
+        // reversed rather than the component remounted, so a panel that
+        // reads state in a mount effect goes on showing the televisions
+        // that answered the first time — including ones since switched off.
+        let closed = gui.send("dev_click", json!({ "selector": "[data-cast-button]" }));
+        check(&mut broken, "the casting button closes the panel again", closed.ok(), &closed);
+        let reopened = gui.send("dev_click", json!({ "selector": "[data-cast-button]" }));
+        check(&mut broken, "the casting button reopens the panel", reopened.ok(), &reopened);
+        let fresh = gui.send(
+            "dev_eval",
+            json!({
+                "script": "document.querySelectorAll('[data-cast-searching]').length + ':' + \
+                           document.querySelectorAll('[data-cast-empty]').length"
+            }),
+        );
+        let fresh_value = fresh.data()["value"].as_str().unwrap_or("").to_string();
+        check_msg(
+            &mut broken,
+            "reopening the panel searches again instead of showing the last answer",
+            fresh_value.starts_with("1:") && fresh_value.ends_with(":0"),
+            || format!(
+                "searching:empty is {:?} right after the reopen — anything but \"1:0\" means the \
+                 panel kept the previous search, which is the AnimatePresence reversal",
+                fresh_value
+            ),
+        );
+        // Leave it closed so the phases after this one see the bar.
+        let _ = gui.send("dev_click", json!({ "selector": "[data-cast-button]" }));
+    }
+
     // ── the render thread outlives a geometry storm ─────────────────────
     // Last, because it is the phase that can take the window down with it,
     // and everything above should get its answer first.
