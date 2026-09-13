@@ -1846,3 +1846,76 @@ assertion `left == right` failed: the bundled libmpv should play DVDs
 > 被一个测试读到的同时另一个还在写（`ffmpeg failed: Invalid data found`）。
 > 夹具生成完之后重跑就稳定全绿了。**首次运行的夹具竞争**，不是代码问题，
 > 但值得知道。
+
+---
+
+## 补验：`dev click` 曾经把每一次点击都投递在元素的左边缘（2026-09-13）
+
+这一轮验证用的工具本身有 bug。探针构造了完整的按压序列（pointerdown / mousedown /
+mousemove / mouseup，每一个都带着元素中心的坐标），最后一步却是 `el.click()` ——
+那是同一个 dispatch 但用**默认 init**，于是页面最终收到的 `click` 事件
+`clientX: 0`。
+
+所以问题是：**上面哪些结论是建立在"点在某个位置"之上的？**
+
+### 影响面，用代码划定而不是凭印象
+
+```
+$ grep -rn "clientX\|clientY" src/components src/lib src/stores | grep -v ".test."
+src/components/Player/ProgressBar.tsx     9
+src/components/Player/VolumeControl.tsx   4
+src/components/CastMenu.tsx               2      ← 这一轮之后才有的
+src/components/Player/PlayerBar.tsx       1      ← getBoundingClientRect，不读事件坐标
+```
+
+**只有两个当时就存在的控件读事件坐标**：进度条和音量条。其余所有 `dev click`
+的用处——首启卡的四个按钮、双语开关、视频滤镜按钮、最近播放条目——点的都是
+"这个元素被按了"，坐标不参与。
+
+### 书签钉子：结构上就免疫
+
+上面 1190 行那条"先 seek 到 17s，再点钉子"看起来最像受害者，其实不是。
+`ProgressBar.tsx:259`：
+
+```tsx
+onMouseDown={(e) => e.stopPropagation()}
+onClick={(e) => { e.stopPropagation(); void gotoBookmark(b); }}
+```
+
+钉子**吞掉按压、并跳到书签自己存的位置**，从不读坐标。重跑确认：
+
+```
+书签存在 24s，先 seek 到 3s
+  before: 3.9s   （在播，所以不是整数）
+  dev click 'button.absolute.h-2.w-2.rounded-sm' → clicked button.absolute.top-1/2 "reverify"
+  after:  25.9s  ← 用的是存下来的位置
+```
+
+**原结论成立，不需要改。**
+
+### 两个真正读坐标的控件：这一轮之前从来没被测过
+
+它们不是"验错了"，是**当时根本没验**——而现在能验了：
+
+```
+进度条（30 秒的片子，点正中间）
+  before: 12.2s  →  centred dev click  →  15.0s        ✓ 正好一半
+
+音量条（悬停才展开，量程 0..150，点正中间）
+  before: 100
+  slider present: 1
+  dev click 'div.group.flex.h-6.w-20.cursor-pointer' → clicked div.group.flex
+  after: 75                                            ✓ 正好一半
+```
+
+修复前，这两次点击都会落在 x=0：进度条 seek 到 0:00 并报告成功，音量条归零。
+
+### 结论
+
+**这一轮原有的判定没有一条因此翻案**，因为没有一条依赖坐标。工具的 bug 掩盖的是
+两个**从未被覆盖**的控件，它们现在被覆盖了，并且 `tests/gui_dev.rs` 里有一个阶段
+钉住进度条那条（把探针改回 `el.click()` 就会红在
+`landed at 0.0s of 20.0s — near 0 means the click arrived without coordinates`）。
+
+留下的教训比这两个控件重要：**验证工具自己也要被验证**。这次是靠另一条 track
+（投屏面板）里"手工派发的点击落对了、`dev click` 没落对"的对照才暴露出来的。
