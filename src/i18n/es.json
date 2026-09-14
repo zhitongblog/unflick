@@ -154,7 +154,7 @@
     "normalize": "Nivelar el volumen",
     "normalizeHint": "diálogos bajos frente a acción alta",
     "pitch": "Mantener el tono al acelerar",
-    "resetAll": "Restablecer todo"
+    "resetEq": "Restablecer ecualizador"
   },
   "filters": {
     "title": "Filtros de vídeo",

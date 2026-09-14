@@ -154,7 +154,7 @@
     "normalize": "Normalize loudness",
     "normalizeHint": "quiet dialogue vs. loud action",
     "pitch": "Keep pitch when speeding up",
-    "resetAll": "Reset all"
+    "resetEq": "Reset equalizer"
   },
   "filters": {
     "title": "Video Filters",

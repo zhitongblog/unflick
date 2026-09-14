@@ -102,6 +102,37 @@ pub fn mount_hint(scheme: &str) -> Option<String> {
     Some(format!("{} URLs are not supported — {}.", kind, how))
 }
 
+/// A path written the way Windows writes a share, on a machine that is not
+/// Windows — `\\server\share\film.mkv`, or the `//server/share/film.mkv`
+/// people type out of the same habit.
+///
+/// Only useful off Windows, and only for a path that is not there: on macOS a
+/// leading `//` is just a root-relative path, so `//Volumes/media/film.mkv`
+/// exists and plays and must never be second-guessed. What this catches is
+/// the case that otherwise ends in mpv's bare "could not open": someone typed
+/// the Windows spelling of a share on a Mac, where the answer is the same one
+/// `smb://` already gets — mount it first.
+///
+/// Returns the host, so the message can name what it recognised rather than
+/// telling someone about SMB when they mistyped a local path.
+pub fn windows_share_host(path: &str) -> Option<String> {
+    if cfg!(target_os = "windows") {
+        return None;
+    }
+    let rest = path
+        .strip_prefix(r"\\")
+        .or_else(|| path.strip_prefix("//"))?;
+    // A share is host + something on it. A bare `//host` names no file, and
+    // three slashes is a typo of a local path, not a share.
+    let mut parts = rest.splitn(2, |c| c == '/' || c == '\\');
+    let host = parts.next()?;
+    let on_it = parts.next()?;
+    if host.is_empty() || on_it.is_empty() || host.contains(' ') {
+        return None;
+    }
+    Some(host.to_string())
+}
+
 /// Whether `path` names a Windows share — a UNC path, reached over the
 /// network however local it looks.
 ///
@@ -182,6 +213,26 @@ mod tests {
         assert!(is_unc_path(r"\\server\share\film.mkv"));
         assert!(is_unc_path(r"\\192.168.1.10\media\film.mkv"));
         assert!(is_unc_path(r"\\?\UNC\server\share\film.mkv"));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn the_windows_spelling_of_a_share_is_recognised_off_windows() {
+        assert_eq!(windows_share_host(r"\\server\share\film.mkv").as_deref(), Some("server"));
+        assert_eq!(windows_share_host("//server/share/film.mkv").as_deref(), Some("server"));
+        assert_eq!(windows_share_host("//192.168.1.10/media/film.mkv").as_deref(), Some("192.168.1.10"));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn an_ordinary_path_is_never_mistaken_for_a_share() {
+        // The shapes that matter: a real absolute path, a root-relative one
+        // that macOS resolves happily, and a host with nothing on it.
+        assert_eq!(windows_share_host("/Volumes/media/film.mkv"), None);
+        assert_eq!(windows_share_host("///Volumes/media/film.mkv"), None);
+        assert_eq!(windows_share_host("//server"), None);
+        assert_eq!(windows_share_host("//server/"), None);
+        assert_eq!(windows_share_host("film.mkv"), None);
     }
 
     #[test]

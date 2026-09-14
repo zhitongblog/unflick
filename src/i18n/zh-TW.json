@@ -154,7 +154,7 @@
     "normalize": "響度正規化",
     "normalizeHint": "對白太小聲、動作太大聲",
     "pitch": "變速不變調",
-    "resetAll": "全部重設"
+    "resetEq": "重設等化器"
   },
   "filters": {
     "title": "影片濾鏡",

@@ -154,7 +154,7 @@
     "normalize": "响度归一化",
     "normalizeHint": "对白太轻、动作太响",
     "pitch": "变速不变调",
-    "resetAll": "全部重置"
+    "resetEq": "重置均衡器"
   },
   "filters": {
     "title": "视频滤镜",

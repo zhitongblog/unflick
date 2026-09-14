@@ -154,7 +154,7 @@
     "normalize": "음량 평준화",
     "normalizeHint": "대사는 작고 액션은 큰 경우",
     "pitch": "빠르게 재생해도 음정 유지",
-    "resetAll": "모두 초기화"
+    "resetEq": "이퀄라이저 초기화"
   },
   "filters": {
     "title": "비디오 필터",

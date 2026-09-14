@@ -154,7 +154,7 @@
     "normalize": "Uniformiser le volume",
     "normalizeHint": "dialogues faibles vs action forte",
     "pitch": "Garder la hauteur en accéléré",
-    "resetAll": "Tout réinitialiser"
+    "resetEq": "Réinitialiser l'égaliseur"
   },
   "filters": {
     "title": "Filtres vidéo",

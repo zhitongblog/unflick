@@ -250,6 +250,13 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
 
       <button
         className="mt-3 w-full rounded-lg py-1.5 text-[11px] text-white/40 transition-colors hover:bg-white/6 hover:text-white/70"
+        // "Reset all" was a promise this button does not keep: it calls
+        // `equalizer_reset`, which is the equaliser and nothing else, while
+        // the pitch switch sits in the same panel and survives. Widening the
+        // action was the other option and the wrong one — `unflick audio eq
+        // reset` is the same call, and a command named after the equaliser
+        // should not quietly change a playback setting too. So the label
+        // matches the behaviour, and all three interfaces still agree.
         onClick={async () => {
           try {
             setState(await invoke<AudioState>("equalizer_reset"));
@@ -259,7 +266,7 @@ export default function Equalizer({ onClose }: { onClose: () => void }) {
           }
         }}
       >
-        {t.equalizer.resetAll}
+        {t.equalizer.resetEq}
       </button>
     </motion.div>
   );

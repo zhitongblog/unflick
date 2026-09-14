@@ -524,6 +524,26 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 }
             }
 
+            // The same advice, for the same share, written the other way.
+            // `\\server\share\film.mkv` is a path rather than a URL, so the
+            // scheme check above never sees it — and off Windows it is a path
+            // that does not exist, which came back as mpv's bare "could not
+            // open". The person did not mistype a local file; they typed the
+            // Windows spelling of a share, and the fix is the one `smb://`
+            // already hands out.
+            if !std::path::Path::new(file).exists() {
+                if let Some(host) = source::windows_share_host(file) {
+                    if let Some(how) = source::mount_hint("smb") {
+                        return CommandResult::err(format!(
+                            "{} is a Windows share path, and {} is not mounted here. {}",
+                            file,
+                            host,
+                            how.trim_start_matches("SMB URLs are not supported — ")
+                        ));
+                    }
+                }
+            }
+
             // If the input is an http(s) URL, resolve it through yt-dlp
             // before handing it to mpv. mpv can play HLS / direct-MP4 URLs
             // natively, but YouTube/Bilibili/etc. need an extraction step.

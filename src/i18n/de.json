@@ -154,7 +154,7 @@
     "normalize": "Lautheit angleichen",
     "normalizeHint": "leise Dialoge vs. laute Action",
     "pitch": "Tonhöhe beim Schnellerspielen halten",
-    "resetAll": "Alle zurücksetzen"
+    "resetEq": "Equalizer zurücksetzen"
   },
   "filters": {
     "title": "Videofilter",

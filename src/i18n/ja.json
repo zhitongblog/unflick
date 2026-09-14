@@ -154,7 +154,7 @@
     "normalize": "音量を均一化",
     "normalizeHint": "セリフは小さく、アクションは大きい",
     "pitch": "速度を変えても音程を保つ",
-    "resetAll": "すべてリセット"
+    "resetEq": "イコライザーをリセット"
   },
   "filters": {
     "title": "ビデオフィルター",
