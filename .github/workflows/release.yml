@@ -90,13 +90,34 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Linux packages (deb / rpm / AppImage)
-    runs-on: ubuntu-22.04
+    name: Linux packages (deb / rpm / AppImage, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # An arm64 failure shouldn't hide whether x86_64 packaged cleanly.
+      fail-fast: false
+      matrix:
+        # Both architectures, because up to v0.14.2 the released .deb/.rpm/
+        # .AppImage were x86_64 only — so every ARM Linux user had no package
+        # at all, on a platform where the tree had also never been compiled
+        # (see the `*const i8` fix in v0.14.2). ci.yml compiles and tests on
+        # ARM now; this is the half that actually reaches a user.
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+            mine: 'amd64|x86_64|x64'
+            theirs: 'arm64|aarch64'
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+            mine: 'arm64|aarch64'
+            theirs: 'amd64|x86_64|x64'
     steps:
       - uses: actions/checkout@v4
 
       # 22.04 rather than the newest image on purpose: a .deb built against a
       # newer glibc refuses to install on the distro the user actually runs.
+      # Same reason for pinning the ARM leg to 22.04 instead of the 24.04-arm
+      # image ci.yml uses — there a newer glibc only has to compile, here it
+      # becomes the floor of every machine that can install the package.
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -123,9 +144,37 @@ jobs:
       - name: Build
         run: pnpm tauri build
 
+      # The draft job uploads every artifact into one release with --clobber,
+      # so two packages of the same name would mean the second architecture
+      # silently replaces the first and half the users get the wrong binary.
+      # Today tauri spells the arch into each name (unflick_0.14.2_amd64.deb,
+      # unflick-0.14.2-1.x86_64.rpm) — assert it rather than trust it, since
+      # the failure is a shipped package that is quietly for another machine.
+      - name: Verify the packages name the architecture they are for
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(src-tauri/target/release/bundle/deb/*.deb \
+                 src-tauri/target/release/bundle/rpm/*.rpm \
+                 src-tauri/target/release/bundle/appimage/*.AppImage)
+          [ ${#files[@]} -gt 0 ] || { echo "no packages were produced" >&2; exit 1; }
+          for f in "${files[@]}"; do
+            n="$(basename "$f")"
+            echo "==> $n"
+            if ! grep -Eq '${{ matrix.mine }}' <<<"$n"; then
+              echo "  $n does not say it is ${{ matrix.arch }}" >&2; exit 1
+            fi
+            if grep -Eq '${{ matrix.theirs }}' <<<"$n"; then
+              echo "  $n claims the other architecture" >&2; exit 1
+            fi
+          done
+          echo "all ${#files[@]} package(s) are named for ${{ matrix.arch }}"
+
+      # Named per architecture: upload-artifact@v4 rejects a duplicate name,
+      # so one shared name would fail the second leg to finish.
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
+          name: linux-packages-${{ matrix.arch }}
           path: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/rpm/*.rpm

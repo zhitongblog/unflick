@@ -320,6 +320,9 @@ pub struct Daemon {
     child: Child,
     addr: String,
     data_dir: PathBuf,
+    /// Where the daemon's own stdout/stderr went. Read only when startup
+    /// fails, which is the one moment it is worth anything.
+    log_path: PathBuf,
     /// Set while handing the data dir over to a replacement process; see
     /// `restart`.
     keep_data_on_drop: bool,
@@ -337,7 +340,7 @@ impl Daemon {
     /// gate would be the only thing ever exercised, and a dev command that
     /// silently claimed success on a windowless host would pass.
     pub fn start_with_dev() -> Self {
-        let daemon = Self::spawn_with_args(|_| {}, &["--allow-dev"]);
+        let mut daemon = Self::spawn_with_args(|_| {}, &["--allow-dev"]);
         daemon.wait_until_listening();
         daemon
     }
@@ -347,7 +350,7 @@ impl Daemon {
     /// The only way to find out whether a database written by an older
     /// version still opens is to hand the real binary one and see.
     pub fn start_seeded(seed: impl FnOnce(&Path)) -> Self {
-        let daemon = Self::spawn_with(seed);
+        let mut daemon = Self::spawn_with(seed);
         daemon.wait_until_listening();
         daemon
     }
@@ -370,6 +373,10 @@ impl Daemon {
         std::fs::create_dir_all(&data_dir).expect("create test data dir");
         seed(&data_dir);
 
+        let log_path = data_dir.join("daemon.log");
+        let log = std::fs::File::create(&log_path).expect("create daemon log");
+        let log_err = log.try_clone().expect("clone daemon log handle");
+
         let child = Command::new(env!("CARGO_BIN_EXE_unflick"))
             .arg("daemon")
             .args(extra)
@@ -379,8 +386,14 @@ impl Daemon {
             // its own copy, tests would rewrite the developer's real
             // preferences and race each other over the same file.
             .env(unflick_lib::core::settings::CONFIG_DIR_ENV, &data_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // Not `Stdio::null()`. A daemon that cannot start says why on
+            // stderr, and throwing that away is what let a missing libmpv
+            // read as "did not start listening" for four days of red CI.
+            // A file rather than a pipe: nothing reads it until the process
+            // is over, and a full pipe would block the very process being
+            // diagnosed.
+            .stdout(Stdio::from(log))
+            .stderr(Stdio::from(log_err))
             .spawn()
             .expect("failed to spawn unflick daemon");
 
@@ -388,11 +401,12 @@ impl Daemon {
             child,
             addr,
             data_dir,
+            log_path,
             keep_data_on_drop: false,
         }
     }
 
-    fn wait_until_listening(&self) {
+    fn wait_until_listening(&mut self) {
         // Generous on purpose. Starting a daemon means loading libmpv and
         // initialising it, and these tests routinely run while rustc is
         // saturating the machine compiling the next test binary. A tight
@@ -403,13 +417,44 @@ impl Daemon {
             if TcpStream::connect(&self.addr).is_ok() {
                 return;
             }
+            // A process that has already exited is never going to answer, so
+            // waiting out the deadline only delays the same verdict. It is
+            // not a micro-optimisation: a daemon that dies on startup dies
+            // for every test, and at 45s each that is the difference between
+            // a red build in two minutes and one in forty-seven.
+            if let Some(status) = self.child.try_wait().expect("poll the daemon") {
+                panic!(
+                    "the daemon exited with {} before listening on {}.\n{}",
+                    status,
+                    self.addr,
+                    self.startup_log()
+                );
+            }
             std::thread::sleep(Duration::from_millis(100));
         }
         panic!(
-            "daemon did not start listening on {}. If libmpv is missing this is \
-             where it shows up — the daemon exits immediately when it can't load it.",
-            self.addr
+            "daemon did not start listening on {} within 45s — it is still \
+             running, so it is stuck rather than broken.\n{}",
+            self.addr,
+            self.startup_log()
         );
+    }
+
+    /// Whatever the daemon said before it gave up.
+    ///
+    /// Worth its own method because the alternative is what this harness
+    /// used to do: guess in the panic message. "If libmpv is missing this is
+    /// where it shows up" was a plausible guess that happened to be right,
+    /// and it still cost days — it is equally consistent with every other
+    /// way a process can fail to start, so it could not be acted on.
+    fn startup_log(&self) -> String {
+        match std::fs::read_to_string(&self.log_path) {
+            Ok(text) if text.trim().is_empty() => {
+                "It wrote nothing to stdout or stderr.".to_string()
+            }
+            Ok(text) => format!("What it wrote:\n{}", text.trim_end()),
+            Err(e) => format!("Its log ({}) could not be read: {e}", self.log_path.display()),
+        }
     }
 
     /// Send a command and return the parsed result. Panics on transport
@@ -498,20 +543,33 @@ impl Daemon {
         // Drop would delete the data dir, which is the thing under test.
         self.keep_data_on_drop = true;
 
+        // A restart is a fresh process and gets a fresh log; the old one
+        // belonged to a daemon that already did its job.
+        let log_path = data_dir.join("daemon.log");
+        let log = std::fs::File::create(&log_path).expect("create daemon log");
+        let log_err = log.try_clone().expect("clone daemon log handle");
+
         let child = Command::new(env!("CARGO_BIN_EXE_unflick"))
             .arg("daemon")
             .env(unflick_lib::core::daemon::CONTROL_ADDR_ENV, &addr)
             .env(unflick_lib::db::DATA_DIR_ENV, &data_dir)
             .env(unflick_lib::core::settings::CONFIG_DIR_ENV, &data_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // Not `Stdio::null()`. A daemon that cannot start says why on
+            // stderr, and throwing that away is what let a missing libmpv
+            // read as "did not start listening" for four days of red CI.
+            // A file rather than a pipe: nothing reads it until the process
+            // is over, and a full pipe would block the very process being
+            // diagnosed.
+            .stdout(Stdio::from(log))
+            .stderr(Stdio::from(log_err))
             .spawn()
             .expect("failed to respawn unflick daemon");
 
-        let daemon = Self {
+        let mut daemon = Self {
             child,
             addr,
             data_dir,
+            log_path,
             keep_data_on_drop: false,
         };
         daemon.wait_until_listening();

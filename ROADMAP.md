@@ -678,6 +678,55 @@ VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的�
 | v0.13.0 | **已发布**（2026-09-09）。v0.10–v0.13 一并出版——上一个 GitHub release 还是 v0.9.2。Windows 双版本与 Linux 三包由 CI 构建，macOS dmg 本机签名公证；CI 三平台首次全绿 |
 | v0.14 | 双语字幕、首启引导、dev 桥三条已落地。**双语字幕与首启引导 2026-09-11 在 macOS 上实机验证**（双语是真窗口合成像素）|
 | v0.14.1 | **arm64 Linux 上根本编译不过**（`mpv/handle.rs` 把 `c_char` 写死成 `i8`，2026-09-13 已修）。Linux 的 GUI 功能**仍然一条都没有实机验证过**——见下 |
+| v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）|
+
+### Windows CI 连红四天：libmpv 被缓存动作删掉了（2026-09-15）
+
+从 `8291b6a4`（09-10）起，`Rust tests (windows-latest)` **每一次 push 都红**，
+而且每次都跑满 **47 分钟**才红。113 个集成测试全部失败，理由都是同一句：
+
+```
+daemon did not start listening on 127.0.0.1:29542.
+If libmpv is missing this is where it shows up …
+```
+
+那句话猜对了，但**它只是一句猜测**，而且四天里没人能据此往下走一步。
+
+**真正发生的事**，在 `Swatinem/rust-cache` 自己的源码里写着。CI 把 `mpv-dev/`、
+`ffmpeg/`、`yt-dlp/` 拷进 `src-tauri/target/debug/`，好让测试 spawn 的
+`unflick.exe` 在身边找得到 libmpv。**而 `src-tauri/target` 正是 rust-cache 的缓存
+路径之一**，它那一步跑在拷贝**之后**：
+
+```js
+if (!match) { for (const w of config.workspaces) await cleanTargetDir(w.target, [], true) }
+// cleanProfileTarget: keepProfile = new Set(["build", ".fingerprint", "deps"])
+```
+
+也就是说，缓存键**部分命中**时，restore 会把每个 profile 目录清成只剩
+`build` / `.fingerprint` / `deps` —— 刚拷进去的三个目录，连同 libmpv，在几秒后
+被删干净。
+
+**为什么它自己好不了**：`cache-on-failure` 默认 false，红的那次不会保存新缓存，
+于是旧键一直留着，下一次仍然是部分命中，仍然清，仍然红。自我维持。
+
+**为什么偏偏是 09-10 那个提交**：它改了源码 → 缓存键变了 → 从 full match 掉成
+partial match。提交内容本身（几句 JS 错误文案）与此毫无关系，所以照着提交去找
+原因永远找不到。也解释了为什么只有 Windows：macOS / Linux 的 libmpv 来自系统包
+管理器，不在 `target/` 里。
+
+**修法**：拷贝挪到 rust-cache **之后**、测试之前，并当场断言
+`target/debug/mpv-dev/libmpv-2.dll` 真的在。`release.yml` 不受影响——那边
+`fetch-windows-deps.sh` 本来就跑在 rust-cache 之后。
+
+**连带修掉测试脚手架**，因为这个 bug 的代价几乎全部来自"失败说不出自己是谁"：
+
+- daemon 的 stdout/stderr 原本是 `Stdio::null()`。它**一直在 stderr 上说原因**，
+  被直接丢进黑洞。现在写进 `data_dir/daemon.log`，panic 时原样引用。
+  （用文件不用管道：没人在进程结束前读它，管道写满会把正在诊断的进程卡死。）
+- 原本只会等满 45 秒再说"没监听"。现在每轮 `try_wait()`——进程已经退出就立刻
+  报出退出码和它自己的话。**47 分钟变约 2 分钟**，而且日志里有原因。
+- 一条回归测试守着这两点（`a_daemon_that_dies_on_startup_reports_its_own_words`，
+  用一个名叫 `library.db` 的**目录**制造必然失败——任何平台都打不开）。
 
 ### Linux 首次尝试逐条实机验证（2026-09-13）：**没做成，但发现了更基本的事**
 
@@ -719,8 +768,17 @@ Xvfb 下能不能真出图、播放条、快捷键、鼠标手势、画面几何
 > **另记两件必须写在账上的事**：
 > 1. 发布的 Linux `.deb`/`.rpm`/`.AppImage` 是 CI 在 **x86_64** 上构建的，
 >    这次是在 **arm64** 上从源码编译。**本次验的是代码，不是那三个包。**
-> 2. **CI 应该加一条 `ubuntu-24.04-arm`。** 上面那个缺陷是纯粹的「没人在这个
->    架构上编译过」，任何 Rust 测试都守不住它，而它在每一台 ARM Linux 上必现。
+>    —— **2026-09-15 已补**：`release.yml` 的 linux job 改成
+>    `[ubuntu-22.04, ubuntu-22.04-arm]` 矩阵，arm64 从此也出三个包。钉 22.04
+>    而不是 ci.yml 用的 24.04-arm：那边新 glibc 只需要编译得过，这边它会变成
+>    每一台能装这个包的机器的下限。附一步校验——包名里必须写着自己是哪个架构，
+>    否则 `gh release upload --clobber` 会让一个架构顶掉另一个，而用户拿到的是
+>    一个悄悄属于别的机器的包。
+> 2. ~~**CI 应该加一条 `ubuntu-24.04-arm`。**~~ **2026-09-13 已经加了**
+>    （`e2354c36`，`test` 与 `build` 两个矩阵都有），此后每次 push 都绿：
+>    185 lib + 113 playback + 26 understanding 全过。这条记在账上时就已经做完，
+>    是账目本身过期了。上面那个缺陷是纯粹的「没人在这个架构上编译过」，
+>    任何 Rust 测试都守不住它，而它在每一台 ARM Linux 上必现。
 
 ### macOS 首次逐条实机验证（2026-09-11）
 

@@ -55,18 +55,14 @@ jobs:
       # media with ffmpeg. macOS and Linux take both from the system package
       # manager; Windows has no such package, so the same binaries the
       # installers bundle are downloaded instead.
+      # Only the download here. Putting these beside the test binary has to
+      # wait until after rust-cache has run — see the copy step below.
       - name: Install mpv + ffmpeg (Windows)
         if: runner.os == 'Windows'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ./scripts/fetch-windows-deps.sh --no-whisper
-          # The tests spawn the built `unflick.exe`, which looks for these
-          # beside itself — src-tauri/ alone would leave every test failing
-          # to load libmpv.
-          mkdir -p src-tauri/target/debug
-          cp -r src-tauri/mpv-dev src-tauri/ffmpeg src-tauri/yt-dlp src-tauri/target/debug/
+        run: ./scripts/fetch-windows-deps.sh --no-whisper
 
       - name: Install mpv + ffmpeg (Linux)
         if: runner.os == 'Linux'
@@ -96,6 +92,33 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+      # The tests spawn the built `unflick.exe`, which looks for these beside
+      # itself — src-tauri/ alone would leave every test failing to load
+      # libmpv.
+      #
+      # This cannot move up next to the download, which is where it used to
+      # be and why Windows CI was red on every run from 2026-09-10 to -09-15.
+      # `src-tauri/target` is one of rust-cache's cache paths, and on a
+      # partial key match its restore pre-cleans that directory, keeping only
+      # `build`, `.fingerprint` and `deps` in each profile dir — so it
+      # deleted all three of these moments after they were copied in. The
+      # reason it never recovered on its own: `cache-on-failure` defaults to
+      # false, so a red run saves no new cache, the stale key stays, and the
+      # next run mismatches and cleans again.
+      - name: Put libmpv + ffmpeg beside the test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/target/debug
+          cp -r src-tauri/mpv-dev src-tauri/ffmpeg src-tauri/yt-dlp src-tauri/target/debug/
+          # Assert rather than trust: this is the exact failure being fixed,
+          # and without libmpv every integration test burns its 45s deadline
+          # before saying so.
+          test -f src-tauri/target/debug/mpv-dev/libmpv-2.dll
+          test -f src-tauri/target/debug/ffmpeg/ffmpeg.exe
+          echo "libmpv and ffmpeg are beside unflick.exe"
 
       - name: Unit tests
         working-directory: src-tauri

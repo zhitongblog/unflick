@@ -11,6 +11,58 @@ mod common;
 use common::{Daemon, fixtures, mcp_roundtrip};
 use serde_json::json;
 
+/// A daemon that dies on startup must say what it said, not what the
+/// harness guesses it might have meant.
+///
+/// This is the regression for four days of red Windows CI. libmpv was being
+/// deleted out from under the test binary by rust-cache, and every test
+/// reported only "daemon did not start listening" after burning its full
+/// 45-second deadline — 113 of those is a 47-minute build whose log names
+/// no cause. The daemon had been saying why on stderr the whole time, into
+/// `Stdio::null()`.
+///
+/// A directory where `library.db` should be is the portable way to make it
+/// fail for certain: no platform can open one as a SQLite file.
+#[test]
+fn a_daemon_that_dies_on_startup_reports_its_own_words() {
+    let start = std::time::Instant::now();
+    let outcome = std::panic::catch_unwind(|| {
+        Daemon::start_seeded(|data_dir| {
+            std::fs::create_dir(data_dir.join("library.db")).expect("seed a bad database");
+        })
+    });
+    // Not `expect_err`: that would need `Daemon: Debug` for the success arm
+    // it can never take.
+    let panic = match outcome {
+        Ok(_) => panic!("a daemon with an unopenable database was reported as started"),
+        Err(p) => p,
+    };
+
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("")
+        .to_string();
+
+    assert!(
+        message.contains("failed to open database"),
+        "the panic should quote the daemon's own stderr, got: {message}"
+    );
+    assert!(
+        message.contains("exited with"),
+        "the panic should say the process exited and with what, got: {message}"
+    );
+    // The point of noticing the exit rather than waiting: at 45s per test a
+    // broken dependency costs an hour of CI to say nothing.
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(30),
+        "a dead daemon should be reported at once, not after the deadline; \
+         took {:?}",
+        start.elapsed()
+    );
+}
+
 #[test]
 fn reports_status_for_a_loaded_file() {
     let f = fixtures();
