@@ -1,3 +1,7 @@
+<!--
+  Generated from CLAUDE.md by scripts/gen-agents.sh — do not edit by hand.
+  Edit CLAUDE.md and re-run the script; CI fails if the two drift apart.
+-->
 # unflick
 
 A modern, beautiful, AI-ready video player for Windows and macOS.
@@ -22,19 +26,19 @@ All three interfaces share a unified Rust core.
 This is non-negotiable. The development loop is:
 1. Build the Rust core logic
 2. Expose it via CLI command + MCP tool
-3. Self-test through CLI/MCP (Claude can verify its own work)
+3. Self-test through CLI/MCP (the agent can verify its own work)
 4. Only then build the GUI layer on top
 
 A feature without CLI/MCP coverage does NOT ship. The first usable release (v0.1) must be 100% operable through CLI and MCP — GUI is a bonus, not a requirement for v0.1.
 
 ### Why
-- Claude can self-test every feature during development via CLI and MCP
+- The agent can self-test every feature during development via CLI and MCP
 - Ensures the Rust core is clean and decoupled from any UI
 - CLI/MCP users get first-class support, not an afterthought
 - Forces good architecture: if it works headless, the GUI is just a skin
 
 ### Self-Test Protocol
-After implementing any feature, Claude MUST verify it by:
+After implementing any feature, the agent MUST verify it by:
 1. Running the CLI command and checking stdout/exit code
 2. Calling the MCP tool and validating the JSON response
 3. If either fails, fix before moving on — do NOT defer to "test later"
@@ -476,7 +480,7 @@ blank page.
 - libmpv integration working
 - CLI fully functional for all playback commands
 - MCP server responding to all playback tools
-- Self-tested by Claude through CLI and MCP
+- Self-tested by the agent through CLI and MCP
 
 ### v0.2 — GUI Shell
 - Tauri window with video rendering (mpv --wid)

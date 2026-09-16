@@ -18,6 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # AGENTS.md is generated from CLAUDE.md; the two differ by four lines
+      # out of five hundred. The last hand-maintained copy sat at its June
+      # text while CLAUDE.md grew through v0.11-v0.14, so an agent reading it
+      # was briefed on a project three versions gone. Nothing but a check
+      # catches that — it is still a valid Markdown file when it is wrong.
+      # Needs no toolchain, so it runs first and fails in seconds.
+      - name: AGENTS.md is current with CLAUDE.md
+        run: ./scripts/gen-agents.sh --check
+
       - uses: pnpm/action-setup@v4
         with:
           version: 10
