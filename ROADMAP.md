@@ -678,7 +678,7 @@ VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的�
 | v0.13.0 | **已发布**（2026-09-09）。v0.10–v0.13 一并出版——上一个 GitHub release 还是 v0.9.2。Windows 双版本与 Linux 三包由 CI 构建，macOS dmg 本机签名公证；CI 三平台首次全绿 |
 | v0.14 | 双语字幕、首启引导、dev 桥三条已落地。**双语字幕与首启引导 2026-09-11 在 macOS 上实机验证**（双语是真窗口合成像素）|
 | v0.14.1 | **arm64 Linux 上根本编译不过**（`mpv/handle.rs` 把 `c_char` 写死成 `i8`，2026-09-13 已修）。Linux 的 GUI 功能**仍然一条都没有实机验证过**——见下 |
-| v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）|
+| v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）。**2026-09-17：Linux GUI 首次逐条实机验证完成**，「三平台同等」里最后一栏不再是空的；抓到 `smb://` 缺少挂载指引一个缺陷 |
 
 ### Windows CI 连红四天：libmpv 被缓存动作删掉了（2026-09-15）
 
@@ -727,6 +727,38 @@ partial match。提交内容本身（几句 JS 错误文案）与此毫无关系
   报出退出码和它自己的话。**47 分钟变约 2 分钟**，而且日志里有原因。
 - 一条回归测试守着这两点（`a_daemon_that_dies_on_startup_reports_its_own_words`，
   用一个名叫 `library.db` 的**目录**制造必然失败——任何平台都打不开）。
+
+### Linux 逐条实机验证，第二次：**做成了**（2026-09-17）
+
+上一次停在「VM 起不来」，而死因不在代码：`~/.lima` 所在卷只剩 9.5 GiB，
+VM 稀疏磁盘上限 30 GiB，一个 debug 构建树 20+ GB。这次**先修宿主机再开始**——
+`LIMA_HOME` 挪到有 173 GiB 的卷，`CARGO_PROFILE_DEV_DEBUG=0` 把构建树从
+20+ GB 压到 **2.7 G**，`CARGO_BUILD_JOBS=2` 压住内存峰值。全程 VM 可用内存
+不低于 5.4 GB。
+
+于是 **unflick 的窗口第一次在 Linux 上真正起来了**（Xvfb 1280×800 + openbox），
+上次那张 `unverified` 清单逐条跑完，详见 `VERIFICATION-linux.md`：
+
+- **`dev` 桥六个动词全通**，包括上次完全敞着的 **`dev capture`——真出图**，
+  1024×615 PNG，人眼核对过。补 openbox 是关键：它的超时文案讲的正是
+  「WM 从没 map 过的窗口」。
+- **视频真的在解码**：`frame capture` 的 testsrc 图案上七段显示器显示 `8`，
+  与 `seek 8` 对得上。
+- **ROADMAP 悬着的那个问题有答案了**：libmpv 0.37 上**没有 `secondary-sub-pos`**，
+  而双语字幕检测到了、降级成 `top` 布局、并在回文里说出来。
+- **拿到了 macOS 那次因为锁屏没能拿到的像素**：Video Filters、Music 模式、
+  首启引导、六个面板，全部有截图。
+- **快捷键**用真实 XTEST 事件验过（空格 / → / ↓）。滚轮**功能**通过
+  （一格走满 5 步，没有 macOS 那个「N 格只走 1 步」的 bug），但合成 X11
+  滚轮事件到不了 WebKitGTK——**是工具限制，不是产品缺陷**。
+
+**抓到一个真缺陷**：`smb://` 在 Linux 上只回 mpv 的裸 `could not open`，没有挂载
+指引，而 `nfs://` 有。成因是 **Ubuntu 的 libmpv 协议表里有 `smb://`**（68 个协议），
+unflick 问「支不支持」得到「支持」就直接下发了。Windows / macOS 打包的 mpv 不列 smb，
+所以这个洞只在 Linux 露出来。**没有顺手改**——让一个声称支持的构建去试一次、
+还是一律先给指引，是产品判断。
+
+---
 
 ### Linux 首次尝试逐条实机验证（2026-09-13）：**没做成，但发现了更基本的事**
 

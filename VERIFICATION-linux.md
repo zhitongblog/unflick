@@ -302,3 +302,138 @@ GitHub Actions 的免费公共 runner）。加一条 Rust 测试断言不了「�
    的超时文案说的是「window manager 从没 map 过的窗口没有可见区域」，而
    `xvfb-run` 下没有 window manager。这条要么能用，要么会给出一句该给的拒绝——
    两种都行，但得有人真的看一眼。
+
+---
+
+# 第二次尝试（2026-09-17）：窗口起来了，清单跑完了
+
+上一次停在「VM 起不来」。这一次**先修宿主机，再开始**，于是上面第 5–17 条
+全部有了结论。
+
+## 先修的是宿主机，不是代码
+
+上次的死因写在建议 #2 里，而它当时仍然成立：`~/.lima` 占 23 G，**而它所在的
+卷只剩 9.5 GiB**；VM 稀疏磁盘上限 30 GiB，一个 debug 构建树 20+ GB。照这个配置
+再跑一次，结果只会一样。
+
+两处改动，都在机器上不在代码里：
+
+1. **`LIMA_HOME=/Volumes/Dev/lima`** —— 另建一台专用 VM（不碰别的项目那台），
+   磁盘落在有 173 GiB 的卷上。
+2. **`CARGO_PROFILE_DEV_DEBUG=0` + `CARGO_BUILD_JOBS=2`** —— 调试符号是那 20+ GB
+   的主体，并行 rustc 是内存峰值的主体。
+
+效果可以直接对比：**整棵构建树 2.7 G**（上次 20+ GB），全程 VM 可用内存不低于
+5.4 GB，宿主机数据卷始终 169 GiB 以上。源码在 VM 内 `git clone`，不挂宿主目录，
+构建产物不会经稀疏磁盘回写宿主机。
+
+## 环境
+
+```
+Ubuntu 24.04 LTS，aarch64（lima VM，4 CPU / 6 GiB / 60 GiB，磁盘在 /Volumes/Dev）
+内核      Linux 6.8.0-134-generic
+libmpv    client API 2.2.0
+WebKit    libwebkit2gtk-4.1  2.52.6
+GTK       3.24.41
+显示      Xvfb :99 1280x800x24 + openbox
+源码      git clone @ ddc3a3d（master）
+```
+
+**装了 openbox，不是裸 `xvfb-run`** —— 上次建议 #3 说 `dev capture` 的超时文案
+讲的是「window manager 从没 map 过的窗口」，而 `xvfb-run` 下没有 WM。要回答那个
+问题，就得先把 WM 补上。
+
+## 结论
+
+| # | 条目 | 结论 | 证据 |
+|---|---|---|---|
+| 4 | `--test playback` / `understanding` | 未跑（改为直接驱动窗口） | 本次目标是 GUI；headless 套件上次已 183/183 |
+| 5 | `dev` 桥六个动词 | **通过** | snapshot 47–58 节点真实 a11y 树；text 读出 `0:29`/`0:30`；eval 回 `unflick \| 20 buttons`；wait 5 ms；`--gone` 45 ms；click 命中 |
+| 6 | **`dev capture` 在 Xvfb 下出图** | **通过（本次最想回答的一条）** | 1024×615 PNG，**人眼核对过**：品牌渐变、播放条、控制行全部正确。有 WM 在，不走「窗口没被 map」那条拒绝 |
+| 7 | 播放与播放条 | **通过** | 点播放条上的按钮（非 CLI）：paused → playing → paused |
+| 8 | 视频真的在解码 | **通过** | `frame capture` 取到 testsrc 图案，七段显示器显示 `8`，与 `seek 8` 对得上。`dev capture` 里视频区发黑是设计如此（只抓界面层），两条路各证一半 |
+| 9 | 快捷键 | **通过** | 真实 XTEST 事件：空格 paused→playing；`→` 1.7s→7.6s；`↓` 音量 100→95 |
+| 10 | 滚轮音量 | **功能通过，X 投递未验** | 页面内派发 wheel：95→100，**一格走满 5 步**（macOS 那个「N 格只走 1 步」的 bug 不存在）。但 xdotool 的 X11 滚轮事件到不了 webview——WebKitGTK 走 XInput2 平滑滚动，button 4/5 传统模拟没被翻译。**这是工具的限制，不是产品缺陷** |
+| 11 | 画面几何 | **通过（含像素）** | aspect 16:9 → 1.7778、rotate 90、reset 归零；面板截图：五条滑块 + Aspect 下拉 + 0°/90°/180°/270° + Zoom 1.00× + Deinterlace |
+| 12 | 均衡器 | **通过** | on / band 3 = +6dB / 读回十段曲线 `[0,0,0,6,0,0,0,0,0,0]` / 预设列表 / reset |
+| 13 | Music 模式 | **通过（含像素）** | 窗口 1024×615 → **640×535**，紧凑布局、「Unknown artist」、紧凑控制行 |
+| 14 | 书签与进度条上的钉 | **通过（含像素）** | 12s/30s 的书签，钉子出现在进度条 **40%** 处；a11y 树里它是个以书签名命名的 button |
+| 15 | 速度微调 | **通过** | 绝对 1.35；相对 −0.1 → 1.25 |
+| 16 | 最近播放 / 会话续播 | **通过** | recent 1 条；session 报出 path + position 12.0 |
+| 17 | 字幕菜单 | **通过** | 加载两个 sidecar、列出 2 轨、delay −0.5（负数参数）、style get |
+| 17b | **双语字幕 / `secondary-sub-pos` 在 0.37 上到底有没有** | **有答案了：没有，而且降级是对的** | 回文原样：`bilingual on: sub_a.srt + sub_b.srt (layout: top — this libmpv has no secondary-sub-pos)`。**它检测到了、降级成 top、并说出来**，不是静默把第二行放错位置 |
+| 17c | 首启引导 | **通过（含像素）** | logo + tagline + 「Open a file」+ 三个快捷键 + 「It runs without the window, too」+ Claude Code 插件两行带 Copy + Skip / Start watching |
+| 17d | 六个面板 | **通过（含像素）** | Subtitles / Audio Tracks / Bookmarks / Video Filters / Cast / Playlist 逐个打开并截图 |
+| 18 | 光盘 | **通过（这台机器上）** | `disc` 回 `{"drives": [], "supports": {"bluray": true, "dvd": true}}`——本机无 `/dev/sr*`，与上次的代码层结论一致 |
+| — | 网络路径拒绝 | **🐞 缺陷，见下** | `nfs://` 有指引，`smb://` 只有 mpv 的裸错误 |
+
+## 🐞 缺陷：`smb://` 在 Linux 上拿不到挂载指引
+
+```
+nfs://server/export/f.mkv  →  cannot open …: no nfs:// support in this build.
+                              NFS URLs are not supported — mount the export
+                              (mount -t nfs), then play the mounted path.
+smb://server/share/f.mkv   →  could not open smb://server/share/f.mkv
+```
+
+`CLAUDE.md` 写着两者都该「refused with instructions」，而 `mount_hint("smb")` 在
+Linux 分支上确实有文案（`mount -t cifs`）。**它没被调用。**
+
+成因在这台机器的 mpv 上：
+
+```
+$ mpv --list-protocols | grep -c .     → 68
+$ mpv --list-protocols | grep '^smb'   → smb://     ← 有
+$ mpv --list-protocols | grep '^nfs'   → （无）
+```
+
+Ubuntu 的 libmpv **协议表里有 `smb://`**。unflick 的判据是「mpv 支不支持这个
+协议」，得到「支持」就直接下发，于是 mpv 连不上时甩出自己的裸错误；`nfs://`
+不在表里，才走到带指引那条路。
+
+**为什么只有 Linux**：Windows / macOS 打包的那版 mpv 不列 smb，所以那两个平台上
+指引永远会触发。这是一个只有在真机上、且只有在这个发行版的 mpv 上才会露出来的洞。
+
+**没有顺手改**，因为怎么修是个产品判断：一个声称支持 smb 的构建到底该不该让它去
+试一次（Ubuntu 的 ffmpeg 可能真的连得上），还是无论如何都先给指引。可行的折中是
+**放它去试，但失败时把挂载指引附上**——这样能连的机器照常能连，连不上的机器也不会
+只拿到一句 `could not open`。
+
+## 一个数字，记下来但不替它解释
+
+启动时间线里 `setup: entered` 在 **28747 ms**（macOS 上是 756 ms），控制端口就绪
+约 32 s。这台 VM 是软件渲染的 Xvfb，几乎肯定是环境而非产品，但没有实测支撑之前
+不把它写成「环境问题」。
+
+## 本次自己踩的坑（写下来是为了下次不再踩）
+
+这些**都不是产品缺陷**，但每一个都一度伪装成产品缺陷：
+
+1. **长命令接 `tail -5`** —— apt 装了 25 分钟，600 秒里一个字节都没落盘，超时后
+   日志是空的。与此同时那条 apt **一直在正常推进**，宿主侧的 kill 只断了 ssh。
+   凡是可能跑很久的，让它往 VM 内的文件写，再从外面读。
+2. **把前提当成结论** —— 30 秒的 fixture 播完之后，`subtitle load` 全部回
+   `error running command`，看起来像字幕功能在 Linux 上坏了。重新 `play` 之后
+   16/16 全过。**断言之前先断言前提。**
+3. **拿变动的时钟当面板内容** —— 用 a11y 名字差集判断「面板开没开」，结果差出来的
+   是走动的时间标签 `0:07`。暂停之后才有意义。
+4. **状态污染连锁** —— 面板会盖住控制条，于是第二个面板的按钮真的被遮住，
+   `dev click` 正确地拒绝了（并说出是谁盖住的）。六条 FAIL 全来自这一个原因。
+   改成每个面板一次干净重启。
+5. **`xdotool search --name unflick` 匹配到 10×10 的辅助窗口** —— 指针落在 15,15，
+   滚轮测试整个无效。要按面积挑最大的那个。
+6. **`xdotool key --window`** 发的是 XSendEvent，webview 会忽略；要先 activate
+   再发真实 XTEST 事件。第一次测快捷键的「没反应」是这个造成的。
+7. **多语句 `dev eval` 需要显式 `return`** —— 否则一律回 `null`，看起来像 DOM 里
+   什么都没有。
+
+## 仍未验证
+
+- **发布的 `.deb`/`.rpm`/`.AppImage`**。本次仍是 arm64 源码构建。不过
+  `release.yml` 现在有了 `ubuntu-22.04-arm` 那条腿，arm64 的三个包已经能产出
+  （包名经断言校验，与 x86_64 不冲突），**但没有人安装过它们**。
+- **物理光驱 / 光盘 / 蓝光**。这台 VM 没有 `/dev/sr*`。
+- **真实 DLNA 电视**。面板的空状态验了（文案把待机电视、访客网络、VPN 都点到了），
+  网络上确实没有渲染器应答。
+- **合成 X11 滚轮事件的投递**（见第 10 条）——功能本身已验。
+- **`smb://` 在真实 SMB 服务器上到底能不能连**。这决定上面那个缺陷该怎么修。
