@@ -365,7 +365,7 @@ GTK       3.24.41
 | 17c | 首启引导 | **通过（含像素）** | logo + tagline + 「Open a file」+ 三个快捷键 + 「It runs without the window, too」+ Claude Code 插件两行带 Copy + Skip / Start watching |
 | 17d | 六个面板 | **通过（含像素）** | Subtitles / Audio Tracks / Bookmarks / Video Filters / Cast / Playlist 逐个打开并截图 |
 | 18 | 光盘 | **通过（这台机器上）** | `disc` 回 `{"drives": [], "supports": {"bluray": true, "dvd": true}}`——本机无 `/dev/sr*`，与上次的代码层结论一致 |
-| — | 网络路径拒绝 | **🐞 缺陷，见下** | `nfs://` 有指引，`smb://` 只有 mpv 的裸错误 |
+| — | 网络路径拒绝 | **🐞 缺陷，见下（2026-09-24 已修）** | `nfs://` 有指引，`smb://` 只有 mpv 的裸错误 |
 
 ## 🐞 缺陷：`smb://` 在 Linux 上拿不到挂载指引
 
@@ -398,6 +398,41 @@ Ubuntu 的 libmpv **协议表里有 `smb://`**。unflick 的判据是「mpv 支�
 试一次（Ubuntu 的 ffmpeg 可能真的连得上），还是无论如何都先给指引。可行的折中是
 **放它去试，但失败时把挂载指引附上**——这样能连的机器照常能连，连不上的机器也不会
 只拿到一句 `could not open`。
+
+### 已修（2026-09-24）：放它去试，失败时附上挂载指引
+
+先回答了上面悬着的问题——**Ubuntu 的 mpv 到底能不能连 SMB**。在同一台 VM 里起了
+真 Samba（`pub` 匿名可读、`priv` 要密码），结论是**不能，连匿名共享都不能**：
+
+```
+$ mpv --list-protocols | grep smb         → smb://        ← 声称支持
+$ mpv smb://127.0.0.1/pub/film.mkv        → [ffmpeg] Protocol not found
+$ ffprobe smb://127.0.0.1/pub/film.mkv    → Protocol not found
+```
+
+mpv 的协议表列了 smb，底下的 ffmpeg 却没编 libsmbclient。**这张表不是证据。**
+
+修法照上面写的折中：声称支持就放它去试（毫秒级失败，零成本；真带 libsmbclient 的
+发行版照常能直连），`play` 失败时由 `source::share_open_failed_message` 保留 mpv
+原话、**列出几种可能而不替它挑一个**（ffmpeg 缺 SMB / 服务器不可达 / 要登录——
+mpv 的 "could not open" 分不出这三者），再附上与其它平台相同的挂载指引。
+
+逐条实测（VM 内，隔离端口 39542）：
+
+| 场景 | 结果 |
+|---|---|
+| CLI `play smb://127.0.0.1/pub/film.mkv`（匿名共享） | 失败 + 指引 `mount -t cifs` |
+| CLI `play smb://127.0.0.1/priv/film.mkv`（要密码） | 失败 + 指引 |
+| CLI `play smb://10.255.255.1/…`（不存在的主机） | 失败 + 指引 |
+| CLI `play nfs://…` | 不变，前置拒绝 + NFS 指引 |
+| MCP `tools/call play` smb | `isError: true`，同一段指引 |
+| **照指引做**：`mount -t cifs //127.0.0.1/priv /mnt/nas` 后 `play /mnt/nas/film.mkv` | `loaded: true`，3 秒后 `state: playing` |
+| 本地文件 | 不受影响 |
+
+`share_urls_are_refused_with_a_way_forward` 收紧了：原来「mpv 自己失败」那一支只要求
+出现 `could not open`——**正是这个缺陷能通过测试的原因**。现在那一支也必须带指引。
+Linux VM 与 macOS 上均通过。GUI 那条路（`player_play` → `openError.ts`）本来就对所有
+`smb://` 失败给翻译过的挂载指引，未改动。
 
 ## 一个数字，记下来但不替它解释
 
@@ -436,4 +471,4 @@ Ubuntu 的 libmpv **协议表里有 `smb://`**。unflick 的判据是「mpv 支�
 - **真实 DLNA 电视**。面板的空状态验了（文案把待机电视、访客网络、VPN 都点到了），
   网络上确实没有渲染器应答。
 - **合成 X11 滚轮事件的投递**（见第 10 条）——功能本身已验。
-- **`smb://` 在真实 SMB 服务器上到底能不能连**。这决定上面那个缺陷该怎么修。
+- ~~**`smb://` 在真实 SMB 服务器上到底能不能连**~~ —— 2026-09-24 答了：不能，见上。

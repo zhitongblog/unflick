@@ -159,7 +159,10 @@ The binary detects the mode from arguments and routes accordingly. All three mod
 unflick play <file> [--seek <seconds>] [--volume <0-100>] [--speed <rate>]
 # <file> is a path, an http(s) URL, or a path on a mounted share
 # (\\server\share\film.mkv, /Volumes/…, /mnt/…). smb:// and nfs:// URLs are
-# refused with instructions — no mpv build we ship speaks either protocol.
+# refused with mount instructions when the loaded libmpv has no such protocol
+# (Windows, macOS). A distro libmpv that lists smb:// (Ubuntu's) is let try,
+# and a failure carries the same instructions — on Ubuntu it always fails:
+# mpv lists the protocol, but its ffmpeg has no SMB underneath.
 # The reply carries `loaded`: false means still opening, not on screen yet.
 unflick pause
 unflick resume

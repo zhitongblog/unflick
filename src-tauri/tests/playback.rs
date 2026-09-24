@@ -353,14 +353,20 @@ fn share_urls_are_refused_with_a_way_forward() {
                 || message.contains("Finder");
             assert!(says_how, "a refusal has to say what to do instead, got: {}", message);
         } else {
-            // This build does speak the protocol, so the attempt reached mpv
-            // and failed on the server that is not there — which is the right
-            // error for a host nobody can reach.
+            // This build does speak the protocol (Ubuntu's libmpv lists
+            // smb://), so the attempt reached mpv and failed on the server
+            // that is not there. mpv's own words stay — but on their own they
+            // were the Linux defect of 2026-09-17: nothing to act on.
             assert!(
                 message.contains("could not open"),
                 "either refuse with advice or report mpv's own failure, got: {}",
                 message
             );
+            assert!(message.contains(kind), "{} failed as something else: {}", url, message);
+            let says_how = message.contains("mount")
+                || message.contains("Explorer")
+                || message.contains("Finder");
+            assert!(says_how, "a failed share still has to say how to mount it, got: {}", message);
         }
     }
 }

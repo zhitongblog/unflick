@@ -533,12 +533,10 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             // already hands out.
             if !std::path::Path::new(file).exists() {
                 if let Some(host) = source::windows_share_host(file) {
-                    if let Some(how) = source::mount_hint("smb") {
+                    if let Some(how) = source::mount_how("smb") {
                         return CommandResult::err(format!(
-                            "{} is a Windows share path, and {} is not mounted here. {}",
-                            file,
-                            host,
-                            how.trim_start_matches("SMB URLs are not supported — ")
+                            "{} is a Windows share path, and {} is not mounted here. {}.",
+                            file, host, how
                         ));
                     }
                 }
@@ -688,7 +686,18 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                         json!({ "file": file, "loaded": loaded }),
                     )
                 }
-                Err(e) => CommandResult::err(e.to_string()),
+                Err(e) => {
+                    // A share URL this build's mpv claims to speak (Ubuntu's
+                    // lists smb:// without an ffmpeg that has it) got past the
+                    // refusal above and failed in mpv, which says only "could
+                    // not open". Keep its words, and hand out the advice the
+                    // refusal would have.
+                    let msg = e.to_string();
+                    let advised = source::scheme_of(file).and_then(|scheme| {
+                        source::share_open_failed_message(file, &scheme, &msg)
+                    });
+                    CommandResult::err(advised.unwrap_or(msg))
+                }
             }
         }
         // Sending what is playing to a television.

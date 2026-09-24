@@ -76,7 +76,14 @@ pub fn scheme_of(input: &str) -> Option<String> {
 /// Deliberately concrete about the platform in hand: "mount the share" is
 /// true everywhere and actionable nowhere.
 pub fn mount_hint(scheme: &str) -> Option<String> {
-    let how = match scheme {
+    let how = mount_how(scheme)?;
+    Some(format!("{} URLs are not supported — {}.", share_kind(scheme), how))
+}
+
+/// The platform-specific "mount it, then play the mounted path" clause on its
+/// own, for the messages that need it without the "not supported" in front.
+pub fn mount_how(scheme: &str) -> Option<&'static str> {
+    Some(match scheme {
         "smb" | "cifs" => {
             if cfg!(target_os = "windows") {
                 r"map or open the share in Explorer, then play the UNC path (\\server\share\file.mkv)"
@@ -96,10 +103,41 @@ pub fn mount_hint(scheme: &str) -> Option<String> {
             }
         }
         _ => return None,
-    };
+    })
+}
 
-    let kind = if scheme == "nfs" { "NFS" } else { "SMB" };
-    Some(format!("{} URLs are not supported — {}.", kind, how))
+fn share_kind(scheme: &str) -> &'static str {
+    if scheme == "nfs" { "NFS" } else { "SMB" }
+}
+
+/// The message for a share URL that this build's mpv *claims* to speak, but
+/// could not open.
+///
+/// Some libmpv builds list `smb://` among their protocols — Ubuntu 24.04's
+/// does — so the refusal in [`unsupported_message`] never fires and the
+/// attempt goes through to mpv. Letting it try costs nothing (it fails in
+/// milliseconds) and keeps a build whose ffmpeg really has libsmbclient able
+/// to play a share directly. But the listing is not proof: on Ubuntu the
+/// ffmpeg underneath has no SMB at all and answers "Protocol not found" even
+/// for an open guest share on localhost (seen 2026-09-24). mpv reports all of
+/// it as "could not open", which cannot tell that apart from a server that is
+/// down or a share that wants a password — so the message names the
+/// possibilities rather than picking one, and ends with the advice every
+/// other build hands out up front.
+///
+/// `None` for anything that is not a share, so other failures keep their
+/// own wording.
+pub fn share_open_failed_message(input: &str, scheme: &str, error: &str) -> Option<String> {
+    let how = mount_how(scheme)?;
+    Some(format!(
+        "{}. This build's mpv lists {}:// but could not open it — its ffmpeg may \
+         lack {} support, the server may be unreachable, or the share may need a \
+         login. To play it, {}.",
+        error.trim_end_matches('.'),
+        scheme,
+        share_kind(scheme),
+        how
+    ))
 }
 
 /// A path written the way Windows writes a share, on a machine that is not
@@ -206,6 +244,29 @@ mod tests {
         assert!(nfs.to_lowercase().contains("export"), "{}", nfs);
 
         assert_eq!(mount_hint("https"), None);
+    }
+
+    #[test]
+    fn a_share_that_was_tried_and_failed_still_says_how_to_mount_it() {
+        let msg = share_open_failed_message(
+            "smb://nas/media/f.mkv",
+            "smb",
+            "could not open smb://nas/media/f.mkv",
+        )
+        .expect("smb carries advice");
+        // mpv's own words stay first, for the bug report …
+        assert!(msg.starts_with("could not open smb://nas/media/f.mkv. "), "{}", msg);
+        // … and the advice is the same clause the up-front refusal uses.
+        assert!(msg.contains(mount_how("smb").unwrap()), "{}", msg);
+        assert!(msg.contains("SMB"), "{}", msg);
+        assert!(!msg.contains("not supported"), "this build does support it: {}", msg);
+
+        let nfs = share_open_failed_message("nfs://h/e/f.mkv", "nfs", "could not open x")
+            .expect("nfs carries advice");
+        assert!(nfs.contains(mount_how("nfs").unwrap()), "{}", nfs);
+
+        // Anything that is not a share keeps its own error untouched.
+        assert_eq!(share_open_failed_message("https://h/f.mp4", "https", "nope"), None);
     }
 
     #[test]
