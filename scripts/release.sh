@@ -61,9 +61,12 @@ if [ "$SKIP_TESTS" = "0" ]; then
   pnpm build
 
   echo "==> Rust: unit and integration tests"
-  # The integration tests drive the real binary against a real libmpv, so they
-  # need mpv and ffmpeg on PATH — the same two things a user needs.
-  (cd src-tauri && cargo test --lib && cargo test --test playback --test understanding -- --test-threads=2)
+  # The integration tests drive the real binary against a real libmpv: on
+  # macOS the one the app ships (scripts/build-mac-libmpv.sh, copied beside
+  # the test binary), elsewhere the system's. `disc` is here for the same
+  # reason it is in CI — it is the suite that says whether that libmpv plays
+  # DVDs, and it went unrun for as long as nobody asked it.
+  (cd src-tauri && cargo test --lib && cargo test --test playback --test understanding --test disc -- --test-threads=2)
 fi
 
 echo "==> Bumping version to $VERSION"
