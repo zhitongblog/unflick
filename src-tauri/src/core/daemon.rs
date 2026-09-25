@@ -694,7 +694,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                     // refusal would have.
                     let msg = e.to_string();
                     let advised = source::scheme_of(file).and_then(|scheme| {
-                        source::share_open_failed_message(file, &scheme, &msg)
+                        source::share_open_failed_message(&scheme, &msg)
                     });
                     CommandResult::err(advised.unwrap_or(msg))
                 }

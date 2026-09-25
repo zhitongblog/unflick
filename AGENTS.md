@@ -87,7 +87,13 @@ Fixture media is generated once with the bundled ffmpeg into
 `src-tauri/target/test-fixtures/` and reused. `cargo clean` disposes of it.
 
 Integration tests need libmpv and ffmpeg present: vendored on Windows,
-`brew install mpv ffmpeg` / `apt install libmpv-dev ffmpeg` elsewhere.
+`apt install libmpv-dev ffmpeg` on Linux. On macOS the libmpv is the one
+the app ships — `./scripts/build-mac-libmpv.sh`, then copy
+`src-tauri/mpv-dev/libmpv.2.dylib` into `src-tauri/target/debug/mpv-dev/` —
+and ffmpeg comes from `brew install ffmpeg`. Delete the old copy first rather
+than copying over it: macOS caches a dylib's signature by file, and a process
+that maps one overwritten in place is killed with SIGKILL at startup. A Homebrew libmpv still loads as
+a fallback, but it has no libdvdnav, so `tests/disc.rs` fails against it.
 CI (`.github/workflows/ci.yml`) runs all of it on Windows, macOS and Linux.
 
 ## Tech Stack

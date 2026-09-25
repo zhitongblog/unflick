@@ -462,7 +462,8 @@ fn kind_of_image(path: &Path) -> Option<DiscKind> {
     let mut f = std::fs::File::open(path).ok()?;
 
     let mut iso_root: Option<(u64, u64)> = None;
-    let mut saw_udf = false;
+    // Which edition of ECMA-167 the UDF recognition sequence names, if any.
+    let mut udf: Option<&'static [u8]> = None;
 
     for i in 0..MAX_DESCRIPTORS {
         let mut sector = [0u8; SECTOR as usize];
@@ -483,8 +484,9 @@ fn kind_of_image(path: &Path) -> Option<DiscKind> {
             }
         } else if id == b"NSR02" || id == b"NSR03" {
             // The marker that this really is UDF, rather than merely
-            // beginning with the "extended area" descriptor.
-            saw_udf = true;
+            // beginning with the "extended area" descriptor — and which
+            // edition, which is what tells the two kinds of disc apart below.
+            udf = Some(if id == b"NSR02" { b"NSR02" } else { b"NSR03" });
         } else if id != b"BEA01" && id != b"TEA01" && iso_root.is_none() {
             // Not a filesystem we recognise, and nothing found yet.
             break;
@@ -497,14 +499,21 @@ fn kind_of_image(path: &Path) -> Option<DiscKind> {
         }
     }
 
-    // UDF with no ISO9660 bridge to read. BD-ROM is UDF 2.50 and usually
-    // carries no ISO9660 at all, while DVD-Video images are written with a
-    // bridge — so this is Blu-ray by elimination. It is an inference, and
-    // the reason the ISO9660 path above is tried first.
-    if saw_udf {
-        return Some(DiscKind::BluRay);
+    // UDF with no ISO9660 bridge to read, so no directory to look in. The
+    // two specs pin different UDF revisions, and the revision shows in the
+    // recognition sequence: DVD-Video requires UDF 1.02, which is ECMA-167
+    // 2nd edition (NSR02); BD-ROM requires UDF 2.50, which is 3rd edition
+    // (NSR03). This used to call every UDF-only image a Blu-ray, on the
+    // grounds that DVD images carry a bridge — and a DVD written without one
+    // (hdiutil makehybrid -udf does exactly that) was opened as bd:// and
+    // failed as a file mpv "could not open". Still an inference from the
+    // filesystem rather than a look inside it, which is why the ISO9660 path
+    // above is tried first.
+    match udf {
+        Some(b"NSR02") => Some(DiscKind::Dvd),
+        Some(_) => Some(DiscKind::BluRay),
+        None => None,
     }
-    None
 }
 
 /// The root directory's extent (LBA, byte length) out of a primary volume
@@ -771,7 +780,8 @@ mod tests {
     #[test]
     fn a_udf_only_image_is_taken_for_a_bluray() {
         // BD-ROM carries no ISO9660 bridge, so there is no directory to
-        // read — the filesystem itself is the only evidence.
+        // read — the filesystem itself is the only evidence: UDF 2.50 is
+        // ECMA-167 3rd edition, NSR03.
         const S: usize = SECTOR as usize;
         let mut img = vec![0u8; 20 * S];
         img[16 * S + 1..16 * S + 6].copy_from_slice(b"BEA01");
@@ -779,6 +789,23 @@ mod tests {
         img[18 * S + 1..18 * S + 6].copy_from_slice(b"TEA01");
         let p = write_temp("unflick-disc-udf.iso", &img);
         assert_eq!(detect(&p.to_string_lossy()).map(|d| d.kind), Some(DiscKind::BluRay));
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn a_udf_1_image_with_no_bridge_is_taken_for_a_dvd() {
+        // DVD-Video is UDF 1.02 — ECMA-167 2nd edition, NSR02. Written
+        // without an ISO9660 bridge (hdiutil makehybrid -udf), it used to be
+        // called a Blu-ray and opened as bd://, which fails.
+        const S: usize = SECTOR as usize;
+        let mut img = vec![0u8; 20 * S];
+        img[16 * S + 1..16 * S + 6].copy_from_slice(b"BEA01");
+        img[17 * S + 1..17 * S + 6].copy_from_slice(b"NSR02");
+        img[18 * S + 1..18 * S + 6].copy_from_slice(b"TEA01");
+        let p = write_temp("unflick-disc-udf102.iso", &img);
+        let disc = detect(&p.to_string_lossy()).expect("should be a DVD");
+        assert_eq!(disc.kind, DiscKind::Dvd);
+        assert_eq!(disc.url, "dvd://");
         let _ = std::fs::remove_file(p);
     }
 

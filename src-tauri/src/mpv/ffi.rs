@@ -153,6 +153,17 @@ impl MpvApi {
             "libmpv.so.2"
         };
 
+        // macOS ships its own libmpv (scripts/build-mac-libmpv.sh) — the only
+        // one that plays a DVD, since Homebrew's is built without libdvdnav.
+        // So the copy beside us wins before anything dyld would find: on an
+        // Intel Mac a Homebrew mpv sits in /usr/local/lib, which is on dyld's
+        // default search path, and the generic lookup below would load it
+        // instead of the one in the bundle.
+        #[cfg(target_os = "macos")]
+        if let Some(lib) = Self::bundled_macos(lib_name) {
+            return Self::from_library(lib);
+        }
+
         // Try loading from multiple locations:
         // 1. Default search path (exe directory, system, PATH)
         // 2. Tauri resource directory (for bundled installs)
@@ -168,26 +179,6 @@ impl MpvApi {
                     if resource_path.exists() {
                         return unsafe { Library::new(&resource_path) };
                     }
-                    // .app bundle (macOS): <Contents/MacOS>/../Resources/mpv-dev/
-                    #[cfg(target_os = "macos")]
-                    {
-                        let bundle_path = dir
-                            .parent()
-                            .map(|p| p.join("Resources").join("mpv-dev").join(lib_name));
-                        if let Some(p) = bundle_path {
-                            if p.exists() {
-                                return unsafe { Library::new(&p) };
-                            }
-                        }
-                        let bundle_frameworks = dir
-                            .parent()
-                            .map(|p| p.join("Frameworks").join(lib_name));
-                        if let Some(p) = bundle_frameworks {
-                            if p.exists() {
-                                return unsafe { Library::new(&p) };
-                            }
-                        }
-                    }
                     // Try <exe_dir>/mpv-dev/libmpv-2.dll
                     let direct_path = dir.join("mpv-dev").join(lib_name);
                     if direct_path.exists() {
@@ -199,9 +190,10 @@ impl MpvApi {
                         return unsafe { Library::new(&beside_path) };
                     }
                 }
-                // macOS brew install paths — dyld doesn't search these
-                // by default on Apple Silicon, but most users will have
-                // mpv installed via Homebrew.
+                // macOS brew install paths — dyld doesn't search these by
+                // default on Apple Silicon. Only reached when the bundled
+                // libmpv is missing (a dev build nobody ran the libmpv
+                // script for); a Homebrew mpv plays everything but discs.
                 #[cfg(target_os = "macos")]
                 {
                     for p in &[
@@ -217,7 +209,28 @@ impl MpvApi {
                 unsafe { Library::new(lib_name) }
             })
             .map_err(|e| format!("failed to load {}: {}", lib_name, e))?;
+        Self::from_library(lib)
+    }
 
+    /// The libmpv the app carries, if it carries one: inside the .app, in
+    /// `Contents/Frameworks` (where the bundler puts it and signs it), or in
+    /// `mpv-dev/` beside the executable, which is where a dev build and the
+    /// integration tests find the output of `build-mac-libmpv.sh`.
+    #[cfg(target_os = "macos")]
+    fn bundled_macos(lib_name: &str) -> Option<Library> {
+        let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+        let mut candidates = vec![dir.join("mpv-dev").join(lib_name)];
+        if let Some(contents) = dir.parent() {
+            candidates.insert(0, contents.join("Frameworks").join(lib_name));
+            candidates.insert(1, contents.join("Resources").join("mpv-dev").join(lib_name));
+        }
+        candidates
+            .into_iter()
+            .filter(|p| p.exists())
+            .find_map(|p| unsafe { Library::new(&p) }.ok())
+    }
+
+    fn from_library(lib: Library) -> Result<Self, String> {
         unsafe {
             let api = Self {
                 create: std::mem::transmute(load_fn!(lib, b"mpv_create\0")),

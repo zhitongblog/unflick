@@ -544,7 +544,7 @@
     "hintNfsLinux": "Monta la exportación (mount -t nfs) y reproduce la ruta montada.",
     "hintSchemeOther": "Esta versión no admite ese protocolo. Usa una ruta local, un recurso montado o un enlace http(s).",
     "hintNetwork": "Comprueba el enlace y tu conexión. Algunos servidores también rechazan todo lo que no sea un navegador.",
-    "hintDiscUnsupported": "unflick ha encontrado el disco: simplemente, el libmpv de esta compilación no puede reproducir discos. Un rip o una imagen de disco se reproducen con normalidad; el disco en sí necesita un mpv compilado con libdvdnav y libbluray.",
+    "hintDiscUnsupported": "unflick ha encontrado el disco: simplemente, el libmpv de esta compilación no puede reproducir discos. Un rip (.mkv, .mp4) se reproduce con normalidad; el disco en sí, o una imagen suya, necesita un mpv compilado con libdvdnav y libbluray.",
     "hintYtdlp": "Instala yt-dlp, asegúrate de que está en el PATH y vuelve a intentarlo.",
     "hintDrm": "Netflix, Disney+ y otros servicios protegidos con DRM solo se reproducen en sus propias aplicaciones.",
     "hintUnreadable": "unflick no pudo leerlo. Comprueba que el archivo sigue ahí y que tienes permiso para abrirlo.",

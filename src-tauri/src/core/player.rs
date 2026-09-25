@@ -195,9 +195,9 @@ impl Player {
                 {
                     bail!(
                         "this build cannot play {} — the libmpv it loaded was built without \
-                         disc support. The disc is recognised, so a rip or an image of it plays \
-                         normally; playing the disc itself needs an mpv built with libdvdnav \
-                         and libbluray.",
+                         disc support. The disc is recognised, and a rip of it (an .mkv or .mp4) \
+                         plays normally; the disc itself, or an image of it, needs an mpv built \
+                         with libdvdnav and libbluray.",
                         d.kind.label()
                     );
                 }

@@ -544,7 +544,7 @@
     "hintNfsLinux": "내보내기를 마운트(mount -t nfs)한 다음 마운트된 경로를 재생하세요.",
     "hintSchemeOther": "이 빌드는 해당 프로토콜을 지원하지 않습니다. 로컬 경로, 마운트된 공유, 또는 http(s) 링크를 사용하세요.",
     "hintNetwork": "링크와 네트워크 연결을 확인하세요. 브라우저가 아닌 클라이언트를 거부하는 사이트도 있습니다.",
-    "hintDiscUnsupported": "디스크는 인식되었습니다. 이 빌드의 libmpv가 디스크 재생을 지원하지 않을 뿐입니다. 추출한 파일이나 이미지는 정상적으로 재생됩니다. 디스크 자체를 재생하려면 libdvdnav와 libbluray로 빌드된 mpv가 필요합니다.",
+    "hintDiscUnsupported": "디스크는 인식되었습니다. 이 빌드의 libmpv가 디스크 재생을 지원하지 않을 뿐입니다. 추출한 파일(.mkv, .mp4)은 정상적으로 재생됩니다. 디스크 자체나 그 이미지를 재생하려면 libdvdnav와 libbluray로 빌드된 mpv가 필요합니다.",
     "hintYtdlp": "yt-dlp를 설치하고 PATH에 있는지 확인한 뒤 다시 시도하세요.",
     "hintDrm": "Netflix, Disney+ 등 DRM으로 보호된 서비스는 각자의 앱에서만 재생됩니다.",
     "hintUnreadable": "unflick이 읽지 못했습니다. 파일이 그대로 있는지, 열 권한이 있는지 확인하세요.",

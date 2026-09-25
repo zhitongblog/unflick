@@ -663,11 +663,73 @@ screenshot / info（`container: "disc"`，AC-3）/ 会话自动保存（并在 1
 另有 6 条集成测试（`tests/playback.rs`，`two_discs_in_one_drive_…` 起）守着，用的是
 假光驱（目录内容互换）。**仍未验**：Windows 真光驱里的物理光盘。
 
-**顺带发现，未改 —— macOS 上 DVD 根本播不了。** Homebrew 的 mpv 链了 libbluray，
-**没有链 libdvdnav**，于是 `play` 一张 DVD 回「this build cannot play DVDs」。
-`tests/disc.rs` 里 `listing_says_whether_this_build_can_play_discs_at_all` 断言的正是
-「应该能播 DVD」，在 macOS 上**是红的**——但 CI 只跑 `--lib`、`playback`、`understanding`，
-从来不跑 `disc.rs`，所以没人看见。
+**macOS 上 DVD 根本播不了 —— 2026-09-24 已修。** Homebrew 的 mpv 链了 libbluray，
+**没有链 libdvdnav**，homebrew-core 的 formula 又不接受编译选项，于是 Mac 上没有任何
+能播 DVD 的 libmpv。`tests/disc.rs` 断言的正是「应该能播 DVD」，在 macOS 上一直是红的
+——但 CI 只跑 `--lib`、`playback`、`understanding`，从来不跑 `disc.rs`。
+
+修法：**macOS 版自带 libmpv。** `scripts/build-mac-libmpv.sh` 从固定版本的源码构建
+mpv 0.41 + ffmpeg 9.0.2 + dav1d / libass / libplacebo / uchardet /
+libdvdcss / libdvdread / libdvdnav / libbluray，全部静态链进**一个**通用
+`libmpv.2.dylib`（arm64 + x86_64，62 MB，只依赖系统库，最低 macOS 11.0），
+`build-mac.sh` 把它放进 `Contents/Frameworks` 与 app 一起签名。加载器改成 macOS 上
+**先找包内的**——Intel Mac 上 Homebrew 的 mpv 在 `/usr/local/lib`，在 dyld 默认
+搜索路径里，原来的顺序会先加载它。Homebrew 的 mpv 仍是开发构建的兜底。
+libdvdcss 按决定一起打包（商店买的碟基本都有 CSS）。
+
+实测（macOS 本机，隔离端口）：ISO 文件、VIDEO_TS 目录、挂到 `/Volumes` 的碟、
+`dvd://0/<iso>` 指定标题全部播放，daemon 全程存活，报出 AC-3 音轨与章节，
+截图是碟上真实解码的画面。x86_64 那一半用 Rosetta 跑 x86_64 版 unflick 播同一张
+ISO，`vmmap` 确认加载的是包内这份。全部测试：lib 187、九个集成测试二进制、前端 125，全绿。
+
+**构建过程中踩到的，写下来是因为每一个都会再来：**
+
+- **mpv 0.41 在 macOS 上关掉 Cocoa 能链接、能加载，一出声就段错误。** CoreAudio 输出
+  要用的 `cfstr_get_cstr` 在 `osdep/utils-mac.c`，只在 Cocoa 打开时编译；而 Cocoa 又
+  离不开 Swift。能链接是因为 **mpv 自己设了 `b_lundef=false`**，在 macOS 上就是
+  `-undefined dynamic_lookup`：缺的符号不报错，留到运行时变成空指针。现在
+  `-Db_lundef=true`，脚本的校验也会拒绝任何「dynamically looked up」的符号。
+- **往一个已经加载过的签名 dylib 上 `cp` 覆盖，进程会在启动时被 SIGKILL**（内核按
+  文件缓存签名）。先删再拷。
+- `otool -L` 对通用二进制每个切片打印一行表头；`nm | grep -q` 在 `pipefail` 下会因
+  SIGPIPE 误报失败。两处校验都改了。
+
+**顺带修的两个老 bug：**
+
+- **不带 ISO9660 桥的 UDF DVD 镜像被当成蓝光。** 原逻辑是「只有 UDF 就是蓝光」，
+  于是 `hdiutil makehybrid -udf` 做出来的 DVD 镜像被当 `bd://` 打开、失败成一句
+  「could not open」。现在按 UDF 识别序列里的版本判断：DVD-Video 规定 UDF 1.02
+  （NSR02），BD-ROM 规定 UDF 2.50（NSR03）。拒绝文案里「镜像可以正常播放」也改了
+  ——没有光盘支持时镜像同样播不了（八种语言）。
+- **集成测试在 macOS 上约四分之一的 `disc.rs` 运行会随机失败**（换回 Homebrew 的
+  libmpv 一样，与本次无关）。用临时诊断在「daemon is already running」那一刻抓了
+  `lsof`：**同一个监听 socket 被四个别的测试的 daemon 同时持有**。测试脚手架为了
+  确认端口空闲会先 `TcpListener::bind` 一下；macOS 没有原子的 `SOCK_CLOEXEC`，
+  std 分两步设 close-on-exec，别的测试线程恰好在中间 spawn daemon，就把这个监听
+  socket 继承走了——端口一直「在听」却没人 accept，真正的 daemon 以为已有实例、
+  直接退出。改成用 connect 探测（泄漏一个连接 socket 占不住端口）：连跑 40 次零失败
+  （改前 25 次失败 7 次）。Linux 原子地设 CLOEXEC，所以 CI 从没见过。
+  同时 `send` 失败时会把 daemon 自己写的日志引出来——这次就是靠它看到
+  「already running」的。
+
+CI：macOS 测试不再装 Homebrew 的 mpv，改为构建（按脚本哈希缓存）并测试随包的这份；
+`disc.rs` 加进三平台的集成测试。
+
+打包后的 `.app`（通用、Developer ID 签名、未公证）实测：`vmmap` 确认进程加载的是
+`Contents/Frameworks/libmpv.2.dylib`，窗口里播 ISO，渲染循环画了 2370 帧
+（1024×528）无错误，窗口内播放器取出的帧是碟上 39 秒处的画面。**窗口合成后的像素
+没拿到**——当时屏幕是锁着的（`CGSSessionScreenIsLocked = 1`），整屏截图全黑。
+
+**发现但没改 —— DVD 标题播完之后不停。** 标题结束后状态一直是 playing，画面停在
+最后一帧，position 和 duration 一起往上涨（40 秒的标题，一分钟后报 1:20 / 1:21）。
+普通文件在结尾正确地停在 10.0 / 10.0 并暂停。**Linux 上用 Ubuntu 自带的 mpv 0.37
+复现出一样的行为**，所以是 mpv + libdvdnav 在标题末尾的行为，不是这次引入的。
+测试碟是 dvdauthor 做的、只有标题没有菜单；商业碟标题结束通常跳回菜单，真碟上
+影响多大还不知道。可能的修法是按 `duration` 不再是定值来判定标题已结束，单独做。
+
+**仍未验**：macOS 11 真机（依赖是按链接结果判断的：比 11 新的 Swift 库全是弱链接）；
+锁屏之外的窗口像素；Mac 上接真光驱的物理光盘；蓝光实碟；CI 上首次构建这份
+libmpv（要等推上去才跑得到）。
 
 ## v1.0 — 打磨与开放
 
@@ -706,6 +768,7 @@ VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的�
 | v0.14 | 双语字幕、首启引导、dev 桥三条已落地。**双语字幕与首启引导 2026-09-11 在 macOS 上实机验证**（双语是真窗口合成像素）|
 | v0.14.1 | **arm64 Linux 上根本编译不过**（`mpv/handle.rs` 把 `c_char` 写死成 `i8`，2026-09-13 已修）。Linux 的 GUI 功能**仍然一条都没有实机验证过**——见下 |
 | v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）。**2026-09-17：Linux GUI 首次逐条实机验证完成**，「三平台同等」里最后一栏不再是空的；抓到 `smb://` 缺少挂载指引一个缺陷——**2026-09-24 已修**：Ubuntu 的 mpv 列了 smb 却连匿名共享都打不开（ffmpeg 没有 libsmbclient），现在失败时附上挂载指引，照指引挂载后实测可播 |
+| 2026-09-24 | **macOS 能播 DVD 了**：Homebrew 的 mpv 没有 libdvdnav，改为随包自带自己构建的通用 libmpv（`scripts/build-mac-libmpv.sh`，含 libdvdcss）。顺带修了 UDF-only 的 DVD 镜像被认成蓝光、测试脚手架在 macOS 上约四分之一概率的随机失败；`disc.rs` 进 CI |
 
 ### Windows CI 连红四天：libmpv 被缓存动作删掉了（2026-09-15）
 

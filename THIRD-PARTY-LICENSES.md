@@ -6,7 +6,8 @@ unflick is **MIT-licensed** (see [LICENSE](LICENSE)). It bundles, statically lin
 
 | Component | License | Linkage | Source |
 |---|---|---|---|
-| **libmpv-2.dll** (Windows) / system `libmpv` (macOS Homebrew, Linux distro pkg) | **LGPL-2.1-or-later** | Dynamic load via `libloading` | https://github.com/mpv-player/mpv |
+| **libmpv-2.dll** (Windows) / system `libmpv` (Linux distro pkg) | **LGPL-2.1-or-later** | Dynamic load via `libloading` | https://github.com/mpv-player/mpv |
+| **libmpv.2.dylib** (macOS, built by `scripts/build-mac-libmpv.sh`) — mpv with ffmpeg, dav1d, libass, freetype, harfbuzz, fribidi, libplacebo, uchardet, libdvdcss, libdvdread, libdvdnav and libbluray linked in statically | **GPL-2.0-or-later** as a whole (mpv `-Dgpl=true`, ffmpeg `--enable-gpl`, libdvdcss / libdvdread / libdvdnav GPL-2.0+); components: libbluray, fribidi, libplacebo LGPL-2.1+, dav1d BSD-2-Clause, libass ISC, harfbuzz MIT, freetype FTL, uchardet MPL-1.1 | Dynamic load via `libloading` | Exact upstream tags pinned at the top of `scripts/build-mac-libmpv.sh` |
 | **ffmpeg.exe** (Windows, gyan.dev "essentials" build) | **GPL-3.0-or-later** (`--enable-gpl --enable-version3`, includes libx264 / libx265 / libxvid) | Subprocess invocation only — never linked into unflick | https://www.gyan.dev/ffmpeg/builds/ · https://github.com/FFmpeg/FFmpeg |
 | **yt-dlp.exe** | Unlicense (public domain dedication) | Subprocess invocation only | https://github.com/yt-dlp/yt-dlp |
 | **whisper-cli + ggml libraries** (AI edition only) | MIT | Subprocess invocation only | https://github.com/ggml-org/whisper.cpp |
@@ -110,6 +111,9 @@ ffmpeg is invoked as an **external subprocess** via `std::process::Command` for 
 
 ### LGPL-2.1+ (libmpv)
 libmpv is loaded dynamically at runtime via `libloading::Library::new`. Users can replace the bundled DLL or link a different libmpv build without recompiling unflick. Full LGPL-2.1 text: [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt). Source code: https://github.com/mpv-player/mpv .
+
+### GPL-2.0-or-later (the macOS libmpv)
+The macOS app carries a libmpv built from source by `scripts/build-mac-libmpv.sh`, with every dependency linked statically into that one library. Because it includes libdvdcss, libdvdread, libdvdnav and a GPL-enabled ffmpeg, the library as a whole is GPL-2.0-or-later — the same terms as the shinchiro libmpv the Windows installers carry. unflick loads it at runtime via `libloading` and does not link it; users can replace it with any libmpv build. Corresponding source: the script names each upstream repository and the exact tag it builds, and running it reproduces the library. Full GPL text: [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt) (GPL-2.0-or-later may be taken under GPL-3.0).
 
 ### MPL-2.0 (cssparser, selectors, et al.)
 A handful of crates pulled in by the Servo HTML parsing chain are MPL-2.0 (file-level copyleft). unflick does not modify any MPL-2.0 file. Each MPL-2.0 covered file retains its original notice in `cargo`'s registry cache. Full MPL-2.0 text: [`licenses/MPL-2.0.txt`](licenses/MPL-2.0.txt).

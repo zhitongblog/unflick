@@ -22,7 +22,7 @@
 #![allow(dead_code)] // each test binary uses a different subset
 
 use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -362,9 +362,19 @@ impl Daemon {
     fn spawn_with_args(seed: impl FnOnce(&Path), extra: &[&str]) -> Self {
         let port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
         let addr = format!("127.0.0.1:{}", port);
+        // Asked by connecting, never by binding. A probe *listener* here
+        // leaked into other tests' daemons: macOS has no atomic
+        // SOCK_CLOEXEC, so std creates the socket and marks it close-on-exec
+        // in two steps, and a daemon spawned by another test thread in
+        // between inherits it — still listening, with nobody to accept. The
+        // real daemon for this port then found it "already running" and
+        // exited, and the test talked to the orphan until a reset. About one
+        // disc-suite run in four failed that way on macOS (2026-09-24);
+        // Linux sets CLOEXEC atomically and never showed it. A leaked
+        // connecting socket cannot hold a port open.
         assert!(
-            TcpListener::bind(&addr).is_ok(),
-            "test port {} is already in use",
+            TcpStream::connect(&addr).is_err(),
+            "test port {} already has something answering on it",
             addr
         );
 
@@ -461,7 +471,18 @@ impl Daemon {
     /// failure; a command that legitimately fails still returns a value with
     /// `success: false`, which is what the negative tests assert on.
     pub fn send(&self, command: &str, args: Value) -> Reply {
-        let stream = TcpStream::connect(&self.addr).expect("connect to test daemon");
+        // A transport failure means the daemon went away mid-test, and the
+        // only account of why is what it wrote — which Drop deletes with the
+        // data dir moments later. Quote it now or it is gone.
+        let lost = |what: &str, e: std::io::Error| -> ! {
+            panic!(
+                "{what} `{command}` on {}: {e}.\n{}",
+                self.addr,
+                self.startup_log()
+            )
+        };
+        let stream = TcpStream::connect(&self.addr)
+            .unwrap_or_else(|e| lost("could not connect to send", e));
         stream
             .set_read_timeout(Some(Duration::from_secs(120)))
             .expect("set read timeout");
@@ -472,7 +493,9 @@ impl Daemon {
             .expect("write command");
 
         let mut line = String::new();
-        reader.read_line(&mut line).expect("read reply");
+        reader
+            .read_line(&mut line)
+            .unwrap_or_else(|e| lost("no reply to", e));
         let value: Value = serde_json::from_str(&line)
             .unwrap_or_else(|e| panic!("daemon returned invalid JSON: {e}: {line}"));
         Reply { command: command.to_string(), value }

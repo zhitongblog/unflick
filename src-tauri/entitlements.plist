@@ -4,10 +4,11 @@
 <dict>
     <!--
         Allow loading dylibs that aren't signed with our Developer ID.
-        We dynamically link libmpv.dylib at runtime via libloading; on
-        the user's machine it usually comes from Homebrew, signed by
-        the Homebrew team, not by us. Without this entitlement the
-        hardened runtime refuses to map it ("different Team IDs").
+        We dynamically link libmpv.dylib at runtime via libloading. The
+        app carries its own, signed with the app — but when it is missing
+        (a dev build) the fallback is Homebrew's, signed by the Homebrew
+        team, not by us. Without this entitlement the hardened runtime
+        refuses to map that one ("different Team IDs").
         Apple permits this for notarization with a justification.
     -->
     <key>com.apple.security.cs.disable-library-validation</key>

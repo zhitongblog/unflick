@@ -544,7 +544,7 @@
     "hintNfsLinux": "エクスポートをマウント（mount -t nfs）してから、マウント先のパスを再生してください。",
     "hintSchemeOther": "このビルドはそのプロトコルに対応していません。ローカルのパス、マウント済みの共有、または http(s) のリンクをお使いください。",
     "hintNetwork": "リンクと接続を確認してください。ブラウザー以外を拒否するサイトもあります。",
-    "hintDiscUnsupported": "ディスクは認識されています。この build の libmpv がディスク再生に対応していないだけです。リッピングしたファイルやイメージは通常どおり再生できます。ディスク自体を再生するには libdvdnav と libbluray を含む mpv が必要です。",
+    "hintDiscUnsupported": "ディスクは認識されています。この build の libmpv がディスク再生に対応していないだけです。リッピングしたファイル（.mkv、.mp4）は通常どおり再生できます。ディスク自体やそのイメージを再生するには libdvdnav と libbluray を含む mpv が必要です。",
     "hintYtdlp": "yt-dlp をインストールし、PATH に入っていることを確認してから、もう一度お試しください。",
     "hintDrm": "Netflix や Disney+ など DRM で保護されたサービスは、それぞれの公式アプリでしか再生できません。",
     "hintUnreadable": "unflick から読み取れませんでした。ファイルがまだあるか、開く権限があるかを確認してください。",

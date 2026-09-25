@@ -19,9 +19,10 @@
 #   APPLE_API_KEY + APPLE_API_ISSUER + APPLE_API_KEY_PATH   (preferred)
 #   APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID               (fallback)
 #
-# The app dlopens libmpv at runtime rather than linking it, so the .dmg stays
-# ~15 MB and works on both architectures from one bundle. Users get mpv from
-# Homebrew — install.sh does that for them.
+# The app dlopens libmpv at runtime rather than linking it. The libmpv it
+# opens is our own (scripts/build-mac-libmpv.sh — universal, self-contained,
+# and the only one that plays DVDs; Homebrew's has no libdvdnav), carried in
+# Contents/Frameworks where the bundler signs it with the app.
 
 set -euo pipefail
 
@@ -60,8 +61,15 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
 
 pnpm install --frozen-lockfile
 
+# Cached per library and version, so this is seconds unless a pin moved.
+./scripts/build-mac-libmpv.sh
+
+# Passed here rather than written into tauri.conf.json: the file only exists
+# once the script above has run, and the CI release build compiles the app
+# without it.
 APPLE_SIGNING_IDENTITY="$APPLE_SIGNING_IDENTITY" \
-  pnpm tauri build --target universal-apple-darwin
+  pnpm tauri build --target universal-apple-darwin \
+  --config '{"bundle":{"macOS":{"frameworks":["mpv-dev/libmpv.2.dylib"]}}}'
 
 BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
 APP="$BUNDLE/macos/unflick.app"
@@ -74,6 +82,12 @@ DMG="$BUNDLE/dmg/unflick_${VERSION}_universal.dmg"
 # is it universal, is the signature valid, did Apple actually staple a ticket.
 echo "==> Verifying"
 lipo -archs "$APP/Contents/MacOS/unflick"
+# The player itself: present, both architectures, and signed by us — an
+# unsigned dylib inside a notarized app is refused at load, not at install.
+LIBMPV="$APP/Contents/Frameworks/libmpv.2.dylib"
+[ -f "$LIBMPV" ] || { echo "ERROR: no libmpv in the bundle at $LIBMPV" >&2; exit 1; }
+lipo -archs "$LIBMPV"
+codesign --verify --strict --verbose=2 "$LIBMPV"
 codesign --verify --deep --strict --verbose=2 "$APP"
 xcrun stapler validate "$APP" || {
   echo "ERROR: the .app has no notarization ticket — Gatekeeper will refuse it." >&2

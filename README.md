@@ -101,7 +101,7 @@ pnpm tauri build
 #          bash build-both.sh                builds both Standard and AI editions
 ```
 
-Requires Rust stable + Node 22 + pnpm 10 + the Tauri 2 platform prerequisites (WebView2 on Windows, WKWebView on macOS, webkit2gtk-4.1 on Linux). macOS and Linux load the system libmpv, so `brew install mpv` / `apt install libmpv-dev` first.
+Requires Rust stable + Node 22 + pnpm 10 + the Tauri 2 platform prerequisites (WebView2 on Windows, WKWebView on macOS, webkit2gtk-4.1 on Linux). Linux loads the system libmpv, so `apt install libmpv-dev` first. macOS ships its own universal libmpv (it is the only way to play DVDs there — Homebrew's mpv is built without libdvdnav): `./scripts/build-mac-libmpv.sh` builds it once, and `brew install mpv` still works as a fallback for everything but discs.
 
 Releases are cut with `./scripts/release.sh <version>` — see [scripts/README.md](scripts/README.md) for how the three platforms are built and why macOS is the one that is not built in CI.
 

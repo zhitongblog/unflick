@@ -32,6 +32,7 @@ install page starts handing out 404s.
 | `release.sh <version>` | Refuses a dirty tree, a non-`master` branch, a diverged remote or an existing tag. Runs the frontend and Rust test suites. Bumps `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` (and `Cargo.lock`), commits, tags, pushes. |
 | `build-mac.sh [--upload]` | Universal `.app`, Developer ID signature, notarization, stapled `.dmg`. Verifies all three before it finishes. `--upload` attaches it to the draft. |
 | `fetch-windows-deps.sh` | Downloads libmpv, ffmpeg, yt-dlp and whisper.cpp into `src-tauri/`. Used by CI; also what you run on a fresh Windows checkout. |
+| `build-mac-libmpv.sh [--clean]` | Builds the macOS app's libmpv from pinned sources — mpv, ffmpeg, dav1d, libass, libplacebo, uchardet, libdvdcss/dvdread/dvdnav, libbluray — statically, for arm64 and x86_64, joined into one universal `src-tauri/mpv-dev/libmpv.2.dylib` that depends only on the system. Stages are cached in `src-tauri/vendor/libmpv-mac`; a first build is about half an hour, a rebuild after bumping one pin is that library and what links it. `build-mac.sh` runs it. |
 
 ## Credentials
 
@@ -56,5 +57,7 @@ CI needs nothing beyond the default `GITHUB_TOKEN`.
 `fetch-windows-deps.sh` pulls them from upstream, which is what made the
 Windows installers buildable anywhere rather than only on one machine.
 
-Only Windows bundles them. macOS and Linux load the system libmpv (Homebrew /
-the distro package), which is why those downloads are ~15 MB rather than 80.
+Windows bundles all of them. macOS bundles only libmpv, built by
+`build-mac-libmpv.sh` rather than downloaded — no upstream publishes a macOS
+libmpv with DVD support, and Homebrew's has none. Linux loads the distro's
+libmpv, which is why its packages are the smallest.

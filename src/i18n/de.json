@@ -544,7 +544,7 @@
     "hintNfsLinux": "Export einhängen (mount -t nfs), dann den eingehängten Pfad abspielen.",
     "hintSchemeOther": "Dieser Build unterstützt das Protokoll nicht. Nutzen Sie einen lokalen Pfad, eine eingebundene Freigabe oder einen http(s)-Link.",
     "hintNetwork": "Prüfen Sie Link und Verbindung. Manche Anbieter weisen außerdem alles ab, was kein Browser ist.",
-    "hintDiscUnsupported": "unflick hat die Disc erkannt — nur kann das libmpv dieses Builds keine Discs abspielen. Ein Rip oder ein Disc-Image läuft normal; die Disc selbst braucht ein mpv mit libdvdnav und libbluray.",
+    "hintDiscUnsupported": "unflick hat die Disc erkannt — nur kann das libmpv dieses Builds keine Discs abspielen. Ein Rip (.mkv, .mp4) läuft normal; die Disc selbst oder ein Image davon braucht ein mpv mit libdvdnav und libbluray.",
     "hintYtdlp": "Installieren Sie yt-dlp, stellen Sie sicher, dass es im PATH liegt, und versuchen Sie es erneut.",
     "hintDrm": "Netflix, Disney+ und andere DRM-geschützte Dienste laufen nur in ihren eigenen Apps.",
     "hintUnreadable": "unflick konnte sie nicht lesen. Prüfen Sie, ob die Datei noch da ist und ob Sie sie öffnen dürfen.",

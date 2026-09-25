@@ -127,7 +127,7 @@ fn share_kind(scheme: &str) -> &'static str {
 ///
 /// `None` for anything that is not a share, so other failures keep their
 /// own wording.
-pub fn share_open_failed_message(input: &str, scheme: &str, error: &str) -> Option<String> {
+pub fn share_open_failed_message(scheme: &str, error: &str) -> Option<String> {
     let how = mount_how(scheme)?;
     Some(format!(
         "{}. This build's mpv lists {}:// but could not open it — its ffmpeg may \
@@ -248,11 +248,7 @@ mod tests {
 
     #[test]
     fn a_share_that_was_tried_and_failed_still_says_how_to_mount_it() {
-        let msg = share_open_failed_message(
-            "smb://nas/media/f.mkv",
-            "smb",
-            "could not open smb://nas/media/f.mkv",
-        )
+        let msg = share_open_failed_message("smb", "could not open smb://nas/media/f.mkv")
         .expect("smb carries advice");
         // mpv's own words stay first, for the bug report …
         assert!(msg.starts_with("could not open smb://nas/media/f.mkv. "), "{}", msg);
@@ -261,12 +257,12 @@ mod tests {
         assert!(msg.contains("SMB"), "{}", msg);
         assert!(!msg.contains("not supported"), "this build does support it: {}", msg);
 
-        let nfs = share_open_failed_message("nfs://h/e/f.mkv", "nfs", "could not open x")
+        let nfs = share_open_failed_message("nfs", "could not open x")
             .expect("nfs carries advice");
         assert!(nfs.contains(mount_how("nfs").unwrap()), "{}", nfs);
 
         // Anything that is not a share keeps its own error untouched.
-        assert_eq!(share_open_failed_message("https://h/f.mp4", "https", "nope"), None);
+        assert_eq!(share_open_failed_message("https", "nope"), None);
     }
 
     #[test]
