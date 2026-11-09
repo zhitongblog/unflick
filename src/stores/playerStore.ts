@@ -626,6 +626,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const clamped = Math.max(0, Math.min(150, level));
     lastLocalChange = Date.now();
     set({ volume: clamped });
+    // Coalesce bursts fired in the same synchronous turn (e.g. a multi-step
+    // wheel event calling volume_down 5 times in a tight loop) so WebView2's
+    // concurrent IPC workers cannot apply step 4 after step 5.
+    await Promise.resolve();
+    if (get().volume !== clamped) return;
     try {
       await invoke("player_set_volume", { level: clamped });
     } catch (e) {

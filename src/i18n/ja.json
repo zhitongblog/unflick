@@ -70,7 +70,12 @@
     "confirmHint": "もう一度クリックで確定",
     "close": "閉じる（L）",
     "items": "{count} 件",
-    "itemsOne": "{count} 件"
+    "itemsOne": "{count} 件",
+    "modeTitles": "タイトル",
+    "modeTranscript": "セリフ",
+    "searchTranscript": "ライブラリ全体の字幕を検索…",
+    "noTranscriptMatch": "「{query}」に一致する字幕はありません。",
+    "transcriptHint": "フレーズを入力すると、動画と同じフォルダの字幕（.srt / .vtt / .ass）を横断検索します。"
   },
   "playlist": {
     "title": "プレイリスト",
@@ -562,5 +567,12 @@
     "generating": "字幕を生成しています…（whisper、数分かかることがあります）",
     "generated": "字幕を生成して読み込みました",
     "failed": "字幕の生成に失敗しました：{error}"
+  },
+  "scripts": {
+    "section": "ユーザースクリプト",
+    "hint": "scripts フォルダ内の mpv 用 .lua / .js スクリプトは再生開始時に自動で読み込まれます。",
+    "add": "スクリプトを追加…",
+    "empty": "ユーザースクリプトはまだありません。",
+    "remove": "スクリプトを削除"
   }
 }

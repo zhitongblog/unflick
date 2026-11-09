@@ -70,7 +70,12 @@
     "confirmHint": "再按一次確認",
     "close": "關閉（L）",
     "items": "{count} 項",
-    "itemsOne": "{count} 項"
+    "itemsOne": "{count} 項",
+    "modeTitles": "標題",
+    "modeTranscript": "台詞",
+    "searchTranscript": "跨媒體庫搜尋字幕台詞…",
+    "noTranscriptMatch": "沒有字幕台詞符合「{query}」。",
+    "transcriptHint": "輸入台詞即可檢索媒體庫影片旁的同名字幕（.srt / .vtt / .ass）。"
   },
   "playlist": {
     "title": "播放列表",
@@ -562,5 +567,12 @@
     "generating": "正在產生字幕……（whisper，可能需要幾分鐘）",
     "generated": "字幕已產生並載入",
     "failed": "字幕產生失敗：{error}"
+  },
+  "scripts": {
+    "section": "使用者腳本",
+    "hint": "放入 scripts 目錄的 mpv .lua 與 .js 腳本會在播放啟動時自動載入。",
+    "add": "安裝腳本…",
+    "empty": "尚未安裝使用者腳本。",
+    "remove": "移除腳本"
   }
 }

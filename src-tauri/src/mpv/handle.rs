@@ -125,6 +125,16 @@ impl MpvHandle {
         handle.set_option("input-vo-keyboard", "no")?;
         handle.set_option("wid", &wid.to_string())?;
         handle.set_option("keepaspect", "yes")?;
+        handle.set_option("volume-max", "200")?;
+        handle.set_option("keep-open", "yes")?;
+
+        if let Some(path) = std::env::var_os(MPV_LOG_ENV) {
+            let path = path.to_string_lossy().into_owned();
+            if !path.is_empty() {
+                let _ = handle.set_option("msg-level", "all=v");
+                let _ = handle.set_option("log-file", &path);
+            }
+        }
 
         let err = unsafe { (handle.api.initialize)(handle.ctx) };
         if err < 0 {

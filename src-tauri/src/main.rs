@@ -160,7 +160,9 @@ fn gui_launch_file(args: &[String]) -> Option<(String, bool)> {
             allow_dev = true;
         } else if arg.starts_with('-') || file.is_some() {
             return None;
-        } else if std::path::Path::new(arg).is_file() {
+        } else if std::path::Path::new(arg).is_file()
+            || unflick_lib::core::source::parse_unflick_uri(arg).is_some()
+        {
             file = Some(arg.clone());
         } else {
             // A subcommand, or a path that is not there. Either way clap
@@ -211,24 +213,9 @@ fn init_file_log() {
             std::mem::forget(f);
         }
 
-        // Line a header so each run is visible in the rolling log.
-        let _ = std::io::Write::write_all(
-            &mut std::io::stderr(),
-            format!(
-                "\n=== unflick {} starting at {} ===\n",
-                env!("CARGO_PKG_VERSION"),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs().to_string())
-                    .unwrap_or_else(|_| "?".into()),
-            )
-            .as_bytes(),
-        );
-        // Best-effort stderr redirect on Windows. We re-open stderr to point
-        // at the log file so all the eprintln in render_loop / lib.rs land
-        // there. If we attached to a parent console above, those eprintlns
-        // will *also* show in the console because of how Windows file
-        // descriptors work — that's fine.
+        // Best-effort stderr redirect on Windows. Must happen *before* the
+        // banner write below so `=== unflick ... ===` lands in the log file
+        // ahead of the startup marks (`parse_last_launch` splits on it).
         #[cfg(target_os = "windows")]
         unsafe {
             use std::os::windows::io::AsRawHandle;
@@ -242,6 +229,20 @@ fn init_file_log() {
             // Leak the file handle so it stays open for the program lifetime.
             std::mem::forget(f);
         }
+
+        // Line a header so each run is visible in the rolling log.
+        let _ = std::io::Write::write_all(
+            &mut std::io::stderr(),
+            format!(
+                "\n=== unflick {} starting at {} ===\n",
+                env!("CARGO_PKG_VERSION"),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs().to_string())
+                    .unwrap_or_else(|_| "?".into()),
+            )
+            .as_bytes(),
+        );
     }
 }
 

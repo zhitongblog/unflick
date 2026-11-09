@@ -25,6 +25,7 @@ pub mod sponsorblock;
 pub mod opensubtitles;
 pub mod thumbnail;
 pub mod transcript;
+pub mod scripts;
 pub mod vision;
 pub mod auto_subs;
 // Track C — bilingual subtitles

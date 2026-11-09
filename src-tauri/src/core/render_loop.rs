@@ -148,14 +148,12 @@ impl RenderLoop {
         })
     }
 
-    /// Linux-only constructor: the surface is owned by this loop for
-    /// geometry forwarding (set_geometry / refresh_geometry / set_visible),
-    /// but no render thread runs. mpv was created with `vo=x11 wid=<xid>`
-    /// in lib.rs::bring_up_video_pipeline and renders into the X11 child
-    /// window by itself via XPutImage — bypassing GL entirely so we work
-    /// on every X11 system, including software-rendered virtual machines
-    /// where llvmpipe-via-Composite leaves the window black.
-    #[cfg(target_os = "linux")]
+    /// Passive constructor (Linux & Windows): the surface is owned by this
+    /// loop for geometry forwarding (set_geometry / refresh_geometry /
+    /// set_visible / set_exclusions), while mpv renders directly into the
+    /// native child/popup window via `--wid=<id>` (X11 on Linux, D3D11 on
+    /// Windows), bypassing WGL/GLX driver issues on hybrid-GPU and VM setups.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn start_passive(player: Arc<Player>, surface: Arc<dyn VideoSurface>) -> Self {
         let signal = Arc::new(RenderSignal {
             state: Mutex::new(RenderState {

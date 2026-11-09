@@ -129,6 +129,8 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "transcript_get" => ("transcript_get", json!({})),
         "search_transcript" => ("transcript_search", args.clone()),
         "seek_to_text" => ("transcript_seek", args.clone()),
+        "transcript_summary" => ("transcript_summary", args.clone()),
+        "library_transcript_search" => ("library_transcript_search", args.clone()),
         "generate_chapters" => ("chapters_generate", args.clone()),
         "set_chapters" => ("chapters_set", args.clone()),
         "clear_chapters" => ("chapters_clear", json!({})),
@@ -138,6 +140,10 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "mouse_list" => ("mouse_list", json!({})),
         "mouse_set" => ("mouse_set", args.clone()),
         "mouse_reset" => ("mouse_reset", args.clone()),
+        "script_list" => ("script_list", json!({})),
+        "script_add" => ("script_add", args.clone()),
+        "script_toggle" => ("script_toggle", args.clone()),
+        "script_remove" => ("script_remove", args.clone()),
         "recent_files" => ("recent_list", args.clone()),
         "record_play" => ("record_play", args.clone()),
         "incognito" => ("incognito", args.clone()),
@@ -1235,6 +1241,29 @@ fn tools_understanding() -> Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
+            "name": "transcript_summary",
+            "description": "Return a compact, structured overview of a video's transcript: cue count, word count, speaking duration, top keywords, and timeline segments with representative lead lines. Much smaller than transcript_get on a long video, so reach for this first when asked what a video is about or how it is structured.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "segments": { "type": "integer", "description": "Number of timeline segments to divide the transcript into (1-20, default 5)" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
+                }
+            }
+        },
+        {
+            "name": "library_transcript_search",
+            "description": "Search spoken dialogue across every video in the media library that has a sidecar (.srt/.vtt) or cached transcript. Returns each matching cue with its video path, title, and timestamp so you can immediately open that video at that line with `play` (passing `file` and `seek`).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Phrase to search for across the library (case-insensitive)" },
+                    "limit": { "type": "integer", "description": "Maximum matches to return (1-200, default 20)" }
+                },
+                "required": ["query"]
+            }
+        },
+        {
             "name": "generate_chapters",
             "description": "Give a file that has no chapters a set of them, derived from the pauses in its transcript. The result becomes real navigation: it shows up in chapter_list, marks the progress bar, and responds to chapter_seek. This is a rough heuristic — if you have read the transcript, set_chapters will give better titles and boundaries.",
             "inputSchema": {
@@ -1430,6 +1459,45 @@ fn tools_understanding() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": { "trigger": { "type": "string" } }
+            }
+        },
+        {
+            "name": "script_list",
+            "description": "List installed mpv user scripts (.lua and .js) in the config scripts folder, with each script's path, language, description, and whether it is enabled.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "script_add",
+            "description": "Install a .lua or .js mpv user script into the config scripts directory, enable it, and load it into the running player immediately.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the .lua or .js script file to install" }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "script_toggle",
+            "description": "Enable or disable an installed mpv user script by filename (e.g. \"autocrop.lua\") or stem (\"autocrop\"). Enabling loads the script immediately; disabling takes effect on the next launch.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Script filename or stem" },
+                    "enabled": { "type": "boolean", "description": "True to enable, false to disable" }
+                },
+                "required": ["name", "enabled"]
+            }
+        },
+        {
+            "name": "script_remove",
+            "description": "Delete an installed mpv user script from the config scripts directory.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Script filename or stem to remove" }
+                },
+                "required": ["name"]
             }
         },
         {

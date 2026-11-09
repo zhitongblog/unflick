@@ -70,7 +70,12 @@
     "confirmHint": "Cliquez à nouveau pour confirmer",
     "close": "Fermer (L)",
     "items": "{count} éléments",
-    "itemsOne": "{count} élément"
+    "itemsOne": "{count} élément",
+    "modeTitles": "Titres",
+    "modeTranscript": "Dialogues",
+    "searchTranscript": "Rechercher dans les sous-titres de la bibliothèque…",
+    "noTranscriptMatch": "Aucune ligne de sous-titre ne correspond à « {query} ».",
+    "transcriptHint": "Saisissez une réplique pour chercher dans les sous-titres (.srt / .vtt / .ass) à côté de vos vidéos."
   },
   "playlist": {
     "title": "Playlist",
@@ -562,5 +567,12 @@
     "generating": "Génération des sous-titres… (whisper, cela peut prendre plusieurs minutes)",
     "generated": "Sous-titres générés et chargés",
     "failed": "Échec de la génération des sous-titres : {error}"
+  },
+  "scripts": {
+    "section": "Scripts utilisateur",
+    "hint": "Les scripts .lua et .js pour mpv placés dans le dossier scripts sont chargés automatiquement.",
+    "add": "Installer un script…",
+    "empty": "Aucun script utilisateur installé.",
+    "remove": "Supprimer le script"
   }
 }

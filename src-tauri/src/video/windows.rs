@@ -122,14 +122,15 @@ unsafe extern "system" fn window_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-/// Context slot — glutin uses the type-state pattern (NotCurrent vs
-/// PossiblyCurrent) to enforce correct usage at compile time. Our render
-/// thread is the only one that ever binds the context, but the surface
-/// constructor runs on a different thread, so we store it as NotCurrent
-/// initially and transition on the first `make_current` call.
-enum ContextSlot {
-    NotCurrent(NotCurrentContext),
-    Current(PossiblyCurrentContext),
+/// WGL state owned by the render thread.
+///
+/// Order in the struct matters for drop: the context and surface must drop
+/// before the display. Rust drops fields top-to-bottom, so list them
+/// context → surface → display.
+struct WglState {
+    context: PossiblyCurrentContext,
+    surface: Surface<WindowSurface>,
+    display: Display,
 }
 
 /// A WGL-backed video surface positioned over the Tauri window.
@@ -167,19 +168,18 @@ pub struct WindowsVideoSurface {
     geom: Mutex<Option<(i32, i32, i32, i32)>>,
     /// Rects to cut out, in logical window-client px. Empty = no region.
     exclusions: Mutex<Vec<(i32, i32, i32, i32)>>,
-    // glutin objects. Order in the struct matters for drop: the context and
-    // surface must drop before the display. Rust drops fields top-to-bottom,
-    // so list them context → surface → display.
-    context: Mutex<Option<ContextSlot>>,
-    surface: Surface<WindowSurface>,
-    display: Display,
+    /// Lazily initialized on the dedicated render thread during the first
+    /// `make_current()` call so WGL / GPU ICD driver initialization never
+    /// blocks the Tauri / WebView2 UI thread during setup.
+    wgl: Mutex<Option<WglState>>,
 }
 
 unsafe impl Send for WindowsVideoSurface {}
 unsafe impl Sync for WindowsVideoSurface {}
 
 impl WindowsVideoSurface {
-    /// Create a child HWND beneath `parent` and bind a WGL context to it.
+    /// Create a child HWND beneath `parent`. The WGL context is initialized
+    /// on the render thread on the first [`VideoSurface::make_current`] call.
     /// The child starts at 0,0 with the parent's client size; callers should
     /// reposition via [`set_geometry`] once the WebView lays out the
     /// transparent video region.
@@ -228,21 +228,34 @@ impl WindowsVideoSurface {
             SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
         }
 
-        // Wrap our HWND in raw-window-handle to feed glutin. windows-sys 0.59
-        // exposes HWND as `*mut c_void`; raw-window-handle 0.6 wants the
-        // numeric value as NonZeroIsize, so cast through that.
+        Ok(Self {
+            hwnd,
+            owner_hwnd,
+            cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
+            cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
+            geom: Mutex::new(None),
+            exclusions: Mutex::new(Vec::new()),
+            wgl: Mutex::new(None),
+        })
+    }
+
+    /// Raw HWND cast to `i64` for passing to mpv's `--wid=<hwnd>`.
+    pub fn window_id(&self) -> i64 {
+        self.hwnd as isize as i64
+    }
+
+    fn init_wgl(&self) -> Result<WglState> {
+        let hinst = unsafe { GetModuleHandleW(ptr::null()) };
         let mut win_handle = Win32WindowHandle::new(
-            std::num::NonZeroIsize::new(hwnd as isize)
+            std::num::NonZeroIsize::new(self.hwnd as isize)
                 .ok_or_else(|| anyhow!("hwnd is zero"))?,
         );
         win_handle.hinstance = std::num::NonZeroIsize::new(hinst as isize);
         let raw_window = RawWindowHandle::Win32(win_handle);
         let raw_display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
 
-        // WGL display. Pass our window so glutin can pick a pixel format
-        // compatible with it.
         let display = unsafe {
-            Display::new(raw_display, DisplayApiPreference::Wgl(Some(raw_window)))
+            Display::new(raw_display, DisplayApiPreference::Wgl(None))
                 .map_err(|e| anyhow!("create WGL display: {e}"))?
         };
 
@@ -260,18 +273,16 @@ impl WindowsVideoSurface {
         };
 
         let context_attrs = ContextAttributesBuilder::new()
-            // mpv uses GL 2.1+ functions. Don't pin a version; let the driver
-            // pick the highest profile available. mpv selects the path it
-            // needs at runtime via get_proc_address.
             .with_context_api(ContextApi::OpenGl(None))
             .build(Some(raw_window));
 
-        let not_current = unsafe {
+        let not_current: NotCurrentContext = unsafe {
             display
                 .create_context(&config, &context_attrs)
                 .map_err(|e| anyhow!("create_context: {e}"))?
         };
 
+        let (w, h) = self.size();
         let surface_attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
             raw_window,
             std::num::NonZeroU32::new(w.max(1) as u32).unwrap(),
@@ -283,20 +294,19 @@ impl WindowsVideoSurface {
                 .map_err(|e| anyhow!("create_window_surface: {e}"))?
         };
 
-        // Stay un-current. WGL contexts are thread-affine — binding here on
-        // the Tauri setup thread would make the render thread's first
-        // make_current fail with ERROR_BUSY. Hand the un-current context to
-        // the render thread and let it claim ownership.
-        Ok(Self {
-            hwnd,
-            owner_hwnd,
-            cur_w: std::sync::atomic::AtomicI32::new(w.max(1)),
-            cur_h: std::sync::atomic::AtomicI32::new(h.max(1)),
-            geom: Mutex::new(None),
-            exclusions: Mutex::new(Vec::new()),
-            display,
+        let context = not_current
+            .make_current(&surface)
+            .map_err(|e| anyhow!("make_current (first): {e}"))?;
+        if let Err(e) = surface
+            .set_swap_interval(&context, SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()))
+        {
+            eprintln!("[unflick-render] set_swap_interval failed (continuing): {e}");
+        }
+
+        Ok(WglState {
+            context,
             surface,
-            context: Mutex::new(Some(ContextSlot::NotCurrent(not_current))),
+            display,
         })
     }
 
@@ -366,38 +376,22 @@ impl WindowsVideoSurface {
 impl VideoSurface for WindowsVideoSurface {
     fn make_current(&self) -> Result<()> {
         let mut guard = self
-            .context
+            .wgl
             .lock()
             .map_err(|_| anyhow!("video surface mutex poisoned"))?;
-        // Two-phase: the very first call promotes NotCurrent → Current and
-        // claims the context for the calling (render) thread. Subsequent
-        // calls just rebind on the same thread — cheap.
-        match guard.take() {
-            Some(ContextSlot::NotCurrent(ctx)) => {
-                let now = ctx
-                    .make_current(&self.surface)
-                    .map_err(|e| anyhow!("make_current (first): {e}"))?;
-                // Cap the swap rate to the display refresh. Without vsync
-                // the render thread issues SwapBuffers as fast as mpv
-                // calls update_callback, which on some Win11 drivers
-                // produces visible tearing/flicker because the popup
-                // window's compositor present is racing the GL flip.
-                if let Err(e) = self
-                    .surface
-                    .set_swap_interval(&now, SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()))
-                {
-                    eprintln!("[unflick-render] set_swap_interval failed (continuing): {e}");
-                }
-                *guard = Some(ContextSlot::Current(now));
-                Ok(())
-            }
-            Some(ContextSlot::Current(ctx)) => {
-                ctx.make_current(&self.surface)
+        match guard.as_ref() {
+            Some(state) => {
+                state
+                    .context
+                    .make_current(&state.surface)
                     .map_err(|e| anyhow!("make_current: {e}"))?;
-                *guard = Some(ContextSlot::Current(ctx));
                 Ok(())
             }
-            None => Err(anyhow!("context already released")),
+            None => {
+                let state = self.init_wgl()?;
+                *guard = Some(state);
+                Ok(())
+            }
         }
     }
 
@@ -406,8 +400,13 @@ impl VideoSurface for WindowsVideoSurface {
             Ok(c) => c,
             Err(_) => return ptr::null_mut(),
         };
-        // glutin display knows how to resolve via WGL.
-        self.display.get_proc_address(cname.as_c_str()) as *mut c_void
+        let Ok(guard) = self.wgl.lock() else {
+            return ptr::null_mut();
+        };
+        match guard.as_ref() {
+            Some(state) => state.display.get_proc_address(cname.as_c_str()) as *mut c_void,
+            None => ptr::null_mut(),
+        }
     }
 
     fn set_geometry(&self, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
@@ -484,18 +483,10 @@ impl VideoSurface for WindowsVideoSurface {
         }
         self.apply_region();
 
-        // Resize the GL backing surface to match the HWND. Without this,
-        // mpv keeps rendering into the original FBO size while the popup
-        // is whatever size we last asked Win32 for, so SwapBuffers
-        // stretches/clips the result. (Note: glutin::Surface::resize is
-        // a no-op on WGL — the size atomic above is the actual fix.)
-        if let Ok(guard) = self.context.lock() {
-            if let Some(ContextSlot::Current(ctx)) = guard.as_ref() {
-                let nw = std::num::NonZeroU32::new(scaled_w as u32).unwrap();
-                let nh = std::num::NonZeroU32::new(scaled_h as u32).unwrap();
-                self.surface.resize(ctx, nw, nh);
-            }
-        }
+        // Note: glutin::Surface::resize is a no-op on WGL — the size atomic
+        // above is what feeds mpv's FBO dimensions. Avoiding locking `self.wgl`
+        // here also ensures UI-thread geometry updates never contend with
+        // render-thread WGL initialization.
         Ok(())
     }
 
@@ -556,18 +547,15 @@ impl VideoSurface for WindowsVideoSurface {
 
     fn swap_buffers(&self) -> Result<()> {
         let guard = self
-            .context
+            .wgl
             .lock()
             .map_err(|_| anyhow!("video surface mutex poisoned"))?;
         match guard.as_ref() {
-            Some(ContextSlot::Current(ctx)) => self
+            Some(state) => state
                 .surface
-                .swap_buffers(ctx)
+                .swap_buffers(&state.context)
                 .map_err(|e| anyhow!("swap_buffers: {e}")),
-            Some(ContextSlot::NotCurrent(_)) => {
-                Err(anyhow!("swap_buffers before first make_current"))
-            }
-            None => Err(anyhow!("context already released")),
+            None => Err(anyhow!("swap_buffers before first make_current")),
         }
     }
 }

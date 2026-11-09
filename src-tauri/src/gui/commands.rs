@@ -2403,3 +2403,96 @@ pub async fn cast(
         Err(result.message)
     }
 }
+
+// ─── Cross-library transcript search & transcript summary (v1.0) ──────────
+
+#[command]
+pub fn library_transcript_search(
+    query: String,
+    limit: Option<usize>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let db_lock = gui_player.db.lock().unwrap();
+    let db = db_lock.as_ref().ok_or("database not available")?;
+    let entries = db.list_all().map_err(|e| e.to_string())?;
+    let hits = crate::core::transcript::search_library(
+        &entries,
+        &query,
+        limit.unwrap_or(30).clamp(1, 200),
+    );
+    serde_json::to_value(&hits).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn transcript_summary(
+    segments: Option<usize>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let transcript =
+        crate::core::transcript::load_or_current(&player, file.as_deref()).map_err(|e| e.to_string())?;
+    let duration = if file.is_none() || player.status().file == file {
+        player.status().duration
+    } else {
+        0.0
+    };
+    let summary = crate::core::transcript::summarize(
+        &transcript,
+        segments.unwrap_or(5).clamp(1, 20),
+        duration,
+    );
+    serde_json::to_value(&summary).map_err(|e| e.to_string())
+}
+
+// ─── User scripts (v1.0) ──────────────────────────────────────────────────
+
+#[command]
+pub fn script_list() -> Result<Value, String> {
+    let list = crate::core::scripts::list().map_err(|e| e.to_string())?;
+    Ok(json!({
+        "dir": crate::core::scripts::scripts_dir().to_string_lossy(),
+        "scripts": list,
+    }))
+}
+
+#[command]
+pub fn script_add(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().ok();
+    let entry = crate::core::scripts::add(&path, player).map_err(|e| e.to_string())?;
+    serde_json::to_value(&entry).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn script_toggle(
+    name: String,
+    enabled: bool,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().ok();
+    let entry =
+        crate::core::scripts::set_enabled(&name, enabled, player).map_err(|e| e.to_string())?;
+    serde_json::to_value(&entry).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn script_remove(name: String) -> Result<Value, String> {
+    let entry = crate::core::scripts::remove(&name).map_err(|e| e.to_string())?;
+    serde_json::to_value(&entry).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn open_script_dialog() -> Result<Value, String> {
+    let result = tokio::task::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .add_filter("mpv Scripts", &["lua", "js"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(path) => Ok(json!({ "path": path.to_string_lossy().to_string() })),
+        None => Ok(json!({ "path": null })),
+    }
+}

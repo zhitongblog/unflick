@@ -70,7 +70,12 @@
     "confirmHint": "再点一次确认",
     "close": "关闭（L）",
     "items": "{count} 项",
-    "itemsOne": "{count} 项"
+    "itemsOne": "{count} 项",
+    "modeTitles": "标题",
+    "modeTranscript": "台词",
+    "searchTranscript": "跨媒体库搜索字幕台词…",
+    "noTranscriptMatch": "没有字幕台词匹配“{query}”。",
+    "transcriptHint": "输入台词即可检索媒体库视频旁的同名字幕（.srt / .vtt / .ass）。"
   },
   "playlist": {
     "title": "播放列表",
@@ -562,5 +567,12 @@
     "generating": "正在生成字幕……（whisper，可能需要几分钟）",
     "generated": "字幕已生成并加载",
     "failed": "字幕生成失败：{error}"
+  },
+  "scripts": {
+    "section": "用户脚本",
+    "hint": "放入 scripts 目录的 mpv .lua 与 .js 脚本会在播放启动时自动加载。",
+    "add": "安装脚本…",
+    "empty": "尚未安装用户脚本。",
+    "remove": "移除脚本"
   }
 }

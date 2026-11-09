@@ -40,8 +40,15 @@ pub fn run(allow_dev: bool) {
                 let file = args
                     .iter()
                     .skip(1)
-                    .find(|a| !a.starts_with('-') && std::path::Path::new(a).is_file())
-                    .cloned();
+                    .find_map(|a| {
+                        if a.starts_with('-') {
+                            return None;
+                        }
+                        if let Some((_, target)) = core::source::parse_unflick_uri(a) {
+                            return Some(target);
+                        }
+                        std::path::Path::new(a).is_file().then(|| a.clone())
+                    });
                 if let Some(path) = file {
                     let _ = window.emit("open-file", path);
                 }
@@ -143,7 +150,10 @@ pub fn run(allow_dev: bool) {
                 core::boot::mark("pipeline: starting");
                 match bring_up_video_pipeline(&window, app.state::<GuiPlayer>()) {
                     Ok(()) => core::boot::mark("pipeline: ready"),
-                    Err(e) => eprintln!("[unflick] video pipeline init failed: {e}"),
+                    Err(e) => {
+                        core::boot::mark(&format!("pipeline: failed: {e}"));
+                        eprintln!("[unflick] video pipeline init failed: {e}");
+                    }
                 }
             }
             #[cfg(target_os = "macos")]
@@ -464,6 +474,14 @@ pub fn run(allow_dev: bool) {
             commands::bookmark_target,
             // Cast panel
             commands::cast,
+            // v1.0 — Library transcript search, transcript summary, user scripts
+            commands::library_transcript_search,
+            commands::transcript_summary,
+            commands::script_list,
+            commands::script_add,
+            commands::script_toggle,
+            commands::script_remove,
+            commands::open_script_dialog,
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.
@@ -750,20 +768,26 @@ fn bring_up_video_pipeline(
         .inner_size()
         .map_err(|e| format!("inner_size: {e}"))?;
 
-    // Hidden child window beneath WebView. Geometry is bogus until the
-    // frontend calls video_surface_set_geometry once it's mounted.
-    let surface = video::windows::WindowsVideoSurface::new(
+    // Hidden popup window owned by the main window. Geometry is updated once
+    // the frontend calls video_surface_set_geometry after mount.
+    let surface_struct = video::windows::WindowsVideoSurface::new(
         hwnd,
         size.width as i32,
         size.height as i32,
     )
     .map_err(|e| format!("create video surface: {e}"))?;
-    let surface: Arc<dyn VideoSurface> = Arc::new(surface);
+    let popup_wid = surface_struct.window_id();
+    let surface: Arc<dyn VideoSurface> = Arc::new(surface_struct);
 
-    let player = Arc::new(Player::new_for_render().map_err(|e| format!("create render player: {e}"))?);
+    // Use mpv's native `--wid=<hwnd>` rendering (D3D11 swapchain on Windows)
+    // instead of WGL, avoiding `opengl32.dll` `ChoosePixelFormat` hangs on
+    // hybrid-GPU + virtual-display setups.
+    let player = Arc::new(
+        Player::new_with_wid(popup_wid)
+            .map_err(|e| format!("create render player: {e}"))?,
+    );
 
-    let render_loop = RenderLoop::start(Arc::clone(&player), Arc::clone(&surface))
-        .map_err(|e| format!("start render loop: {e}"))?;
+    let render_loop = RenderLoop::start_passive(Arc::clone(&player), Arc::clone(&surface));
 
     // SponsorBlock auto-skip polling task. Cheap (250 ms tick, just reads
     // a property and runs an in-memory check) so it stays running for the

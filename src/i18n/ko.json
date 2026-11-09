@@ -70,7 +70,12 @@
     "confirmHint": "한 번 더 누르면 실행됩니다",
     "close": "닫기 (L)",
     "items": "{count}개",
-    "itemsOne": "{count}개"
+    "itemsOne": "{count}개",
+    "modeTitles": "제목",
+    "modeTranscript": "대사",
+    "searchTranscript": "라이브러리 전체 자막 검색…",
+    "noTranscriptMatch": "“{query}”와(과) 일치하는 자막이 없습니다.",
+    "transcriptHint": "대사를 입력하면 라이브러리 영상 옆의 자막(.srt / .vtt / .ass)을 검색합니다."
   },
   "playlist": {
     "title": "재생목록",
@@ -562,5 +567,12 @@
     "generating": "자막을 만드는 중… (whisper, 몇 분 걸릴 수 있습니다)",
     "generated": "자막을 만들어 불러왔습니다",
     "failed": "자막 생성 실패: {error}"
+  },
+  "scripts": {
+    "section": "사용자 스크립트",
+    "hint": "scripts 폴더의 mpv .lua 및 .js 스크립트는 재생 시작 시 자동으로 불러옵니다.",
+    "add": "스크립트 설치…",
+    "empty": "설치된 사용자 스크립트가 없습니다.",
+    "remove": "스크립트 제거"
   }
 }

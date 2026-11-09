@@ -148,19 +148,72 @@ pub fn detect(path: &str) -> Option<Disc> {
         });
     }
 
-    // An image file: the marker directory is inside it.
+    // An image file or an optical drive block device (`/dev/sr0` on Linux):
+    // the marker directory is inside the ISO9660/UDF sectors.
     let ext = p
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
-    if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-        return kind_of_image(p).map(|kind| Disc {
-            kind,
-            url: kind.url().to_string(),
-            device: path.to_string(),
-        });
+    if IMAGE_EXTENSIONS.contains(&ext.as_str()) || is_optical_device(p) {
+        if let Some(kind) = kind_of_image(p) {
+            return Some(Disc {
+                kind,
+                url: kind.url().to_string(),
+                device: path.to_string(),
+            });
+        }
+        if is_optical_device(p) {
+            if let Some(mount_dir) = linux_mount_point(path) {
+                return kind_of_directory(Path::new(&mount_dir)).map(|kind| Disc {
+                    kind,
+                    url: kind.url().to_string(),
+                    device: path.to_string(),
+                });
+            }
+        }
     }
 
+    None
+}
+
+/// Whether `p` names an optical drive device node such as `/dev/sr0`.
+///
+/// On Linux `drives()` returns `/dev/sr*` block devices rather than mounted
+/// directories. Matching `.../dev/sr<N>` (plus standard aliases) lets
+/// `detect` and `identity` probe the raw ISO9660/UDF sectors on the device
+/// and lets unit tests exercise the exact path on every platform.
+pub fn is_optical_device(p: &Path) -> bool {
+    let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let is_dev_parent = p
+        .parent()
+        .and_then(|parent| parent.file_name().or_else(|| parent.iter().next_back()))
+        .and_then(|n| n.to_str())
+        .map(|n| n.eq_ignore_ascii_case("dev"))
+        .unwrap_or(false);
+    if !is_dev_parent {
+        return false;
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.starts_with("sr") && !lower[2..].is_empty() && lower[2..].chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    matches!(lower.as_str(), "cdrom" | "dvd" | "bluray")
+}
+
+/// If a block device such as `/dev/sr0` is currently mounted on Linux,
+/// return its mount point so directory-based inspection can fall back to it.
+fn linux_mount_point(device: &str) -> Option<String> {
+    let mounts = std::fs::read_to_string("/proc/mounts").ok()?;
+    for line in mounts.lines() {
+        let mut parts = line.split_whitespace();
+        let dev = parts.next()?;
+        let mnt = parts.next()?;
+        if dev == device {
+            return Some(mnt.replace("\\040", " "));
+        }
+    }
     None
 }
 
@@ -295,6 +348,12 @@ fn index_files(kind: DiscKind) -> &'static [&'static str] {
 pub fn identity(device: &str) -> Option<DiscIdentity> {
     let dir = Path::new(device);
     if !dir.is_dir() {
+        if is_optical_device(dir) {
+            if let Some(mount_dir) = linux_mount_point(device) {
+                return identity(&mount_dir);
+            }
+            return identity_of_optical_device(dir);
+        }
         return None;
     }
     let (kind, marker) = marker_in(dir)?;
@@ -1018,5 +1077,176 @@ mod tests {
 
         assert_eq!(detect("bd://2").map(|d| d.kind), Some(DiscKind::BluRay));
         assert_eq!(detect("DVD://1").map(|d| d.url), Some("DVD://1".to_string()));
+    }
+
+    #[test]
+    fn an_optical_device_node_is_probed_like_a_drive() {
+        let dev_dir = std::env::temp_dir().join("unflick-fake-dev").join("dev");
+        let _ = std::fs::remove_dir_all(&dev_dir);
+        std::fs::create_dir_all(&dev_dir).unwrap();
+        let sr0 = dev_dir.join("sr0");
+        std::fs::write(&sr0, iso_with_root_entry("VIDEO_TS", false)).unwrap();
+
+        let sr0_str = sr0.to_string_lossy();
+        let disc = detect(&sr0_str).expect("/dev/sr0 holding a DVD image is a DVD");
+        assert_eq!(disc.kind, DiscKind::Dvd);
+        assert_eq!(disc.url, "dvd://");
+        assert_eq!(disc.device, sr0_str);
+
+        let id = identity(&sr0_str).expect("/dev/sr0 holding a DVD has an identity");
+        assert!(id.key.starts_with("disc:dvd:"), "{}", id.key);
+
+        let _ = std::fs::remove_dir_all(dev_dir.parent().unwrap());
+    }
+
+    #[test]
+    fn title_end_watch_catches_runaway_dvd_tail_without_touching_normal_play() {
+        let mut watch = TitleEndWatch::default();
+        // Disarmed: live streams or ordinary files whose duration grows never trigger.
+        watch.arm(false);
+        assert_eq!(watch.observe(0.2, 40.0, false), None);
+        assert_eq!(watch.observe(45.0, 45.0, false), None);
+
+        // Armed on a 40s disc title.
+        watch.arm(true);
+        assert_eq!(watch.observe(0.2, 40.0, false), None);
+        assert_eq!(watch.observe(20.0, 40.0, false), None);
+        assert_eq!(watch.observe(39.8, 40.0, false), None);
+        // Past 40.0s, position and duration climb together — caught once at 40.0s.
+        assert_eq!(watch.observe(40.8, 40.9, false), Some(40.0));
+        assert!(watch.is_triggered());
+        assert_eq!(watch.observe(41.2, 41.2, false), None);
+
+        // Seeking re-arms so the user can still scrub or replay.
+        watch.reset_after_seek();
+        assert!(!watch.is_triggered());
+        assert_eq!(watch.observe(10.0, 40.0, false), None);
+
+        // Jumping to a longer second title (position resets near 0, duration is 120s)
+        // updates the baseline instead of mistaking 41s for the end of title 1.
+        assert_eq!(watch.observe(0.3, 120.0, false), None);
+        assert_eq!(watch.observe(41.0, 120.0, false), None);
+        assert_eq!(watch.observe(120.8, 121.0, false), Some(120.0));
+    }
+}
+
+/// Derive a stable identity for an unmounted optical block device (`/dev/sr0`)
+/// by hashing the kind marker and the volume descriptor / root directory sectors.
+fn identity_of_optical_device(path: &Path) -> Option<DiscIdentity> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let kind = kind_of_image(path)?;
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut hash = FNV_OFFSET;
+    hash = fnv_bytes(hash, kind.marker().as_bytes());
+
+    let mut label: Option<String> = None;
+    let mut iso_root: Option<(u64, u64)> = None;
+    for i in 0..MAX_DESCRIPTORS {
+        let mut sector = [0u8; SECTOR as usize];
+        if f.seek(SeekFrom::Start(VOLUME_DESCRIPTOR_START + i * SECTOR))
+            .is_err()
+        {
+            break;
+        }
+        if f.read_exact(&mut sector).is_err() {
+            break;
+        }
+        hash = fnv_bytes(hash, &sector);
+        let id = &sector[1..6];
+        if id == b"CD001" {
+            if sector[0] == 1 {
+                iso_root = root_directory_extent(&sector);
+                let raw_label = String::from_utf8_lossy(&sector[40..72]).trim().to_string();
+                if !raw_label.is_empty() {
+                    label = Some(raw_label);
+                }
+            } else if sector[0] == 255 {
+                break;
+            }
+        }
+    }
+    if let Some((lba, len)) = iso_root {
+        let capped = len.min(64 * SECTOR) as usize;
+        let mut buf = vec![0u8; capped];
+        if f.seek(SeekFrom::Start(lba * SECTOR)).is_ok() && f.read_exact(&mut buf).is_ok() {
+            hash = fnv_bytes(hash, &buf);
+        }
+    }
+    Some(DiscIdentity {
+        key: format!("{}{}:{:016x}", KEY_PREFIX, kind.slug(), hash),
+        label,
+        kind,
+    })
+}
+
+/// Watches a playing disc title for the libdvdnav tail-runaway quirk.
+///
+/// On a menu-less DVD, mpv + libdvdnav can stay in `playing` after the title's
+/// last frame while `time-pos` and `duration` climb together past the title's
+/// true length (e.g. a 40s title reports 80s / 81s a minute later). This
+/// watcher records the stable title duration observed while inside the title
+/// and signals once if both `position` and `duration` march past it in lockstep.
+#[derive(Debug, Default, Clone)]
+pub struct TitleEndWatch {
+    armed: bool,
+    settled_duration: Option<f64>,
+    triggered: bool,
+}
+
+impl TitleEndWatch {
+    pub fn arm(&mut self, is_disc: bool) {
+        self.armed = is_disc;
+        self.settled_duration = None;
+        self.triggered = false;
+    }
+
+    pub fn reset_after_seek(&mut self) {
+        self.triggered = false;
+    }
+
+    pub fn is_triggered(&self) -> bool {
+        self.triggered
+    }
+
+    pub fn clamped_end(&self) -> Option<f64> {
+        self.settled_duration.filter(|_| self.triggered)
+    }
+
+    /// Returns `Some(true_duration)` once when a disc title has overrun its
+    /// settled duration with `position` and `duration` marching up together.
+    pub fn observe(&mut self, position: f64, duration: f64, paused: bool) -> Option<f64> {
+        if !self.armed
+            || self.triggered
+            || paused
+            || !position.is_finite()
+            || !duration.is_finite()
+            || duration <= 0.5
+        {
+            return None;
+        }
+
+        // At the start of a title (initial open or a jump to another title on
+        // the disc), capture the new title's duration.
+        if position < 1.0 && position + 1.0 < duration {
+            self.settled_duration = Some(duration);
+            return None;
+        }
+
+        if position + 1.0 < duration {
+            if self.settled_duration.is_none() {
+                self.settled_duration = Some(duration);
+            }
+            return None;
+        }
+
+        if let Some(base) = self.settled_duration {
+            if position >= base + 0.5 && duration >= base + 0.4 && (duration - position).abs() < 2.0
+            {
+                self.triggered = true;
+                return Some(base);
+            }
+        }
+        None
     }
 }

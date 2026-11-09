@@ -71,18 +71,27 @@ pub struct Player {
     /// without chapters. Cleared whenever the file changes, since they
     /// describe one specific recording.
     virtual_chapters: Mutex<Vec<Chapter>>,
+    /// Catches menu-less DVD titles that run past their end in libdvdnav.
+    disc_title_watch: Mutex<disc::TitleEndWatch>,
 }
 
 impl Player {
-    pub fn new() -> Result<Self> {
-        let mpv = MpvHandle::new("null")?;
-        Ok(Self {
+    fn from_mpv(mpv: MpvHandle) -> Self {
+        let player = Self {
             mpv,
             current_source: Mutex::new(None),
             audio: Mutex::new(audio::load()),
             sponsor_segments: Mutex::new(Vec::new()),
             virtual_chapters: Mutex::new(Vec::new()),
-        })
+            disc_title_watch: Mutex::new(disc::TitleEndWatch::default()),
+        };
+        super::scripts::load_enabled_into(&player);
+        player
+    }
+
+    pub fn new() -> Result<Self> {
+        let mpv = MpvHandle::new("null")?;
+        Ok(Self::from_mpv(mpv))
     }
 
     /// Build an mpv handle wired for render-context output. Sets vo=libmpv so
@@ -94,13 +103,7 @@ impl Player {
     /// pair this with an MpvRenderContext on a live GL thread.
     pub fn new_for_render() -> Result<Self> {
         let mpv = MpvHandle::new("libmpv")?;
-        Ok(Self {
-            mpv,
-            current_source: Mutex::new(None),
-            audio: Mutex::new(audio::load()),
-            sponsor_segments: Mutex::new(Vec::new()),
-            virtual_chapters: Mutex::new(Vec::new()),
-        })
+        Ok(Self::from_mpv(mpv))
     }
 
     /// Borrow the underlying mpv handle. Used by the render loop to bind a
@@ -109,28 +112,21 @@ impl Player {
         &self.mpv
     }
 
+    /// Load a user script (`.lua` or `.js`) into the running mpv instance.
+    pub fn load_script(&self, path: &str) -> Result<()> {
+        self.mpv.command(&["load-script", path])
+    }
+
     /// Create a player with video output (mpv opens its own window).
     pub fn new_with_video() -> Result<Self> {
         let mpv = MpvHandle::new_with_video()?;
-        Ok(Self {
-            mpv,
-            current_source: Mutex::new(None),
-            audio: Mutex::new(audio::load()),
-            sponsor_segments: Mutex::new(Vec::new()),
-            virtual_chapters: Mutex::new(Vec::new()),
-        })
+        Ok(Self::from_mpv(mpv))
     }
 
     /// Create a player that renders video into an existing window handle (HWND on Windows).
     pub fn new_with_wid(wid: i64) -> Result<Self> {
         let mpv = MpvHandle::new_with_wid(wid)?;
-        Ok(Self {
-            mpv,
-            current_source: Mutex::new(None),
-            audio: Mutex::new(audio::load()),
-            sponsor_segments: Mutex::new(Vec::new()),
-            virtual_chapters: Mutex::new(Vec::new()),
-        })
+        Ok(Self::from_mpv(mpv))
     }
 
     /// Linux variant: mpv embeds into the given X11 Window XID and uses
@@ -140,13 +136,7 @@ impl Player {
     #[cfg(target_os = "linux")]
     pub fn new_with_wid_x11(wid: i64) -> Result<Self> {
         let mpv = MpvHandle::new_with_wid_x11(wid)?;
-        Ok(Self {
-            mpv,
-            current_source: Mutex::new(None),
-            audio: Mutex::new(audio::load()),
-            sponsor_segments: Mutex::new(Vec::new()),
-            virtual_chapters: Mutex::new(Vec::new()),
-        })
+        Ok(Self::from_mpv(mpv))
     }
 
     pub fn play(
@@ -178,6 +168,7 @@ impl Player {
         // is `dvd://` plus a device pointing at the image. Deciding it here
         // rather than in the daemon means the window's drag-and-drop, which
         // reaches `player_play` directly, gets it too.
+        let is_disc = disc::detect(path).is_some();
         let target = match disc::detect(path) {
             Some(d) => {
                 // Ask before trying. A libmpv built without libdvdnav has no
@@ -258,6 +249,9 @@ impl Player {
         if let Ok(mut ch) = self.virtual_chapters.lock() {
             ch.clear();
         }
+        if let Ok(mut watch) = self.disc_title_watch.lock() {
+            watch.arm(is_disc);
+        }
 
         if let Some(pos) = seek {
             // A loaded file can be seeked immediately. One that is still
@@ -310,6 +304,9 @@ impl Player {
         if let Ok(mut ch) = self.virtual_chapters.lock() {
             ch.clear();
         }
+        if let Ok(mut watch) = self.disc_title_watch.lock() {
+            watch.arm(false);
+        }
     }
 
     pub fn pause(&self) -> Result<()> {
@@ -324,8 +321,16 @@ impl Player {
         // time-pos and duration.
         let pos = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
         let dur = self.mpv.get_property_f64("duration").unwrap_or(0.0);
-        if dur > 0.0 && pos >= dur - 0.5 {
+        let ended_disc = self
+            .disc_title_watch
+            .lock()
+            .map(|w| w.is_triggered())
+            .unwrap_or(false);
+        if ended_disc || (dur > 0.0 && pos >= dur - 0.5) {
             let _ = self.mpv.set_property_f64("time-pos", 0.0);
+            if let Ok(mut watch) = self.disc_title_watch.lock() {
+                watch.reset_after_seek();
+            }
         }
         self.mpv.set_property_bool("pause", false)
     }
@@ -338,6 +343,9 @@ impl Player {
         }
         if let Ok(mut ch) = self.virtual_chapters.lock() {
             ch.clear();
+        }
+        if let Ok(mut watch) = self.disc_title_watch.lock() {
+            watch.arm(false);
         }
         Ok(())
     }
@@ -374,6 +382,9 @@ impl Player {
     }
 
     pub fn seek(&self, position: f64) -> Result<()> {
+        if let Ok(mut watch) = self.disc_title_watch.lock() {
+            watch.reset_after_seek();
+        }
         // Retry a few times if the property isn't available yet (file still loading)
         for _ in 0..5 {
             match self.mpv.set_property_f64("time-pos", position.max(0.0)) {
@@ -454,12 +465,24 @@ impl Player {
             .or_else(|| file.clone());
         let label = source.as_ref().and_then(|s| s.label.clone());
 
-        let position = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
-        let duration = self.mpv.get_property_f64("duration").unwrap_or(0.0);
+        let mut position = self.mpv.get_property_f64("time-pos").unwrap_or(0.0);
+        let mut duration = self.mpv.get_property_f64("duration").unwrap_or(0.0);
         let volume = self.mpv.get_property_i64("volume").unwrap_or(100);
         let speed = self.mpv.get_property_f64("speed").unwrap_or(1.0);
-        let paused = self.mpv.get_property_bool("pause").unwrap_or(true);
+        let mut paused = self.mpv.get_property_bool("pause").unwrap_or(true);
         let idle = self.mpv.get_property_bool("idle-active").unwrap_or(true);
+
+        if let Ok(mut watch) = self.disc_title_watch.lock() {
+            if let Some(end) = watch.observe(position, duration, paused) {
+                let _ = self.mpv.set_property_bool("pause", true);
+                paused = true;
+                position = end;
+                duration = end;
+            } else if let Some(end) = watch.clamped_end() {
+                position = position.min(end);
+                duration = end;
+            }
+        }
 
         let state = if idle && file.is_none() {
             PlaybackState::Stopped

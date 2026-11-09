@@ -1,7 +1,7 @@
 //! The tools that read what the player can see and hear: transcript search,
 //! chapter synthesis, and frame capture.
 //!
-//! These exist because they can't be built outside the player — they work
+//! These exist because they can't be built outside the player 鈥?they work
 //! off the subtitle track it already has open and the frame it is showing.
 //! That also means they can only be tested this way, end to end.
 
@@ -10,7 +10,7 @@ mod common;
 use common::{fixtures, mcp_roundtrip, Daemon};
 use serde_json::json;
 
-// ─── Transcript ───────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Transcript 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 #[test]
 fn reads_the_transcript_of_the_playing_file() {
@@ -106,7 +106,7 @@ fn a_file_without_subtitles_says_what_to_do_about_it() {
         .expect_err_containing("subtitle");
 }
 
-// ─── Chapter synthesis ────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Chapter synthesis 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 #[test]
 fn generates_chapters_from_transcript_pauses() {
@@ -228,7 +228,7 @@ fn generated_chapters_do_not_survive_a_file_change() {
         .is_empty());
 }
 
-// ─── Frame capture ────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Frame capture 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 #[test]
 fn captures_a_frame_as_a_jpeg_file() {
@@ -274,7 +274,7 @@ fn frame_capture_reports_a_clear_error_with_nothing_playing() {
         .expect_err_containing("nothing is playing");
 }
 
-// ─── MCP surface ──────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ MCP surface 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 // --- Online subtitles (OpenSubtitles) -------------------------------------
 //
@@ -432,6 +432,8 @@ fn mcp_exposes_the_understanding_tools() {
         "subtitle_delay", "audio_delay", "chapter_list", "chapter_seek",
         "ab_loop", "frame_step", "playlist_repeat", "playlist_shuffle",
         "search_transcript", "seek_to_text", "transcript_get",
+        "transcript_summary", "library_transcript_search",
+        "script_list", "script_add", "script_toggle", "script_remove",
         "generate_chapters", "set_chapters", "clear_chapters", "describe_frame",
         "get_subtitles", "find_subtitles", "download_subtitle",
     ] {
@@ -446,7 +448,7 @@ fn mcp_exposes_the_understanding_tools() {
             "tool {} has no object inputSchema",
             tool["name"]
         );
-        // Not a length check — "Pause playback" is a fine description for a
+        // Not a length check 鈥?"Pause playback" is a fine description for a
         // tool that pauses playback. What matters is that every tool has
         // one, so nothing ships as an unexplained name in the listing.
         assert!(
@@ -513,3 +515,153 @@ fn mcp_search_transcript_reaches_the_same_player() {
         "MCP search did not reach the playing file's subtitles: {text}"
     );
 }
+
+// ─── v1.0: Transcript Summary, Cross-Library Transcript Search, Scripts & HTTP Bridge ──
+
+#[test]
+fn transcript_summary_groups_cues_and_extracts_keywords() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.with_subtitles);
+
+    let summary = d
+        .send("transcript_summary", json!({ "segments": 3 }))
+        .expect_ok()
+        .data();
+    assert_eq!(summary["cue_count"], 12);
+    assert!(summary["word_count"].as_u64().unwrap_or(0) >= 30);
+    assert_eq!(summary["segments"].as_array().unwrap().len(), 3);
+    let keywords: Vec<&str> = summary["keywords"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(
+        keywords.contains(&"refund"),
+        "expected 'refund' in keywords, got {keywords:?}"
+    );
+}
+
+#[test]
+fn library_transcript_search_finds_lines_across_scanned_entries() {
+    let f = fixtures();
+    let d = Daemon::start();
+
+    let scan_dir = f.with_subtitles.parent().unwrap().to_string_lossy().to_string();
+    d.send("library_scan", json!({ "dir": scan_dir })).expect_ok();
+
+    let res = d
+        .send("library_transcript_search", json!({ "query": "refund", "limit": 10 }))
+        .expect_ok()
+        .data();
+    let matches = res["matches"].as_array().expect("matches array");
+    assert_eq!(matches.len(), 3);
+    assert!(matches[0]["cue"]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_lowercase()
+        .contains("refund"));
+}
+
+#[test]
+fn user_scripts_can_be_installed_toggled_and_removed() {
+    let d = Daemon::start();
+
+    let script_src = d.data_dir().join("autocrop.lua");
+    std::fs::write(
+        &script_src,
+        "-- Automatically crop black bars\nmp.msg.info('autocrop loaded')\n",
+    )
+    .expect("write test lua script");
+
+    let added = d
+        .send("script_add", json!({ "path": script_src.to_string_lossy() }))
+        .expect_ok()
+        .data();
+    assert_eq!(added["name"], "autocrop.lua");
+    assert_eq!(added["enabled"], true);
+    assert_eq!(added["description"], "Automatically crop black bars");
+
+    let disabled = d
+        .send("script_disable", json!({ "name": "autocrop.lua" }))
+        .expect_ok()
+        .data();
+    assert_eq!(disabled["enabled"], false);
+
+    let enabled = d
+        .send("script_enable", json!({ "name": "autocrop.lua" }))
+        .expect_ok()
+        .data();
+    assert_eq!(enabled["enabled"], true);
+
+    let list = d.send("script_list", json!({})).expect_ok().data();
+    assert_eq!(list["scripts"].as_array().unwrap().len(), 1);
+
+    d.send("script_remove", json!({ "name": "autocrop.lua" }))
+        .expect_ok();
+    let after = d.send("script_list", json!({})).expect_ok().data();
+    assert!(after["scripts"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn control_socket_speaks_http_for_the_browser_extension() {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let f = fixtures();
+    let d = Daemon::start();
+
+    // 1. OPTIONS preflight returns CORS + Private Network Access headers.
+    {
+        let mut s = TcpStream::connect(d.addr()).expect("connect for OPTIONS");
+        write!(
+            s,
+            "OPTIONS /open HTTP/1.1\r\nHost: {}\r\nOrigin: chrome-extension://abc\r\n\r\n",
+            d.addr()
+        )
+        .unwrap();
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).unwrap();
+        assert!(raw.starts_with("HTTP/1.1 204"), "unexpected OPTIONS: {raw}");
+        assert!(raw.contains("Access-Control-Allow-Private-Network: true"));
+    }
+
+    // 2. POST /open with action="queue" appends to playlist.
+    {
+        let body = serde_json::to_string(&json!({
+            "url": f.plain.to_string_lossy(),
+            "action": "queue"
+        }))
+        .unwrap();
+        let mut s = TcpStream::connect(d.addr()).expect("connect for POST /open");
+        write!(
+            s,
+            "POST /open HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            d.addr(),
+            body.len(),
+            body
+        )
+        .unwrap();
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).unwrap();
+        assert!(raw.starts_with("HTTP/1.1 200"), "unexpected POST /open: {raw}");
+        let json_part = raw.split("\r\n\r\n").nth(1).unwrap_or("");
+        let parsed: serde_json::Value = serde_json::from_str(json_part).expect("valid JSON");
+        assert_eq!(parsed["success"], true);
+        assert_eq!(parsed["data"].as_array().unwrap().len(), 1);
+    }
+
+    // 3. GET /status returns player status over HTTP.
+    {
+        let mut s = TcpStream::connect(d.addr()).expect("connect for GET /status");
+        write!(s, "GET /status HTTP/1.1\r\nHost: {}\r\n\r\n", d.addr()).unwrap();
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).unwrap();
+        assert!(raw.starts_with("HTTP/1.1 200"), "unexpected GET /status: {raw}");
+        let json_part = raw.split("\r\n\r\n").nth(1).unwrap_or("");
+        let parsed: serde_json::Value = serde_json::from_str(json_part).expect("valid JSON");
+        assert_eq!(parsed["success"], true);
+    }
+}
+

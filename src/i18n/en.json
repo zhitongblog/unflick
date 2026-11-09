@@ -70,7 +70,12 @@
     "confirmHint": "Click again to confirm",
     "close": "Close (L)",
     "items": "{count} items",
-    "itemsOne": "{count} item"
+    "itemsOne": "{count} item",
+    "modeTitles": "Titles",
+    "modeTranscript": "Dialogue",
+    "searchTranscript": "Search subtitles across the library…",
+    "noTranscriptMatch": "No subtitle lines match “{query}”.",
+    "transcriptHint": "Type a phrase to search sidecar subtitles (.srt / .vtt / .ass) next to your library videos."
   },
   "playlist": {
     "title": "Playlist",
@@ -562,5 +567,12 @@
     "generating": "Generating subtitles… (whisper, this can take several minutes)",
     "generated": "Subtitles generated and loaded",
     "failed": "Subtitle generation failed: {error}"
+  },
+  "scripts": {
+    "section": "User Scripts",
+    "hint": "mpv .lua and .js scripts placed in your scripts folder load automatically when playback starts.",
+    "add": "Install script…",
+    "empty": "No user scripts installed.",
+    "remove": "Remove script"
   }
 }

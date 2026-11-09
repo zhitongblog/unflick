@@ -95,6 +95,7 @@ node -e "
   set('marketplace/mcp/npm-wrapper/package.json', j => { j.version = '$VERSION'; });
   set('marketplace/mcp/manifest.json',            j => { j.version = '$VERSION'; });
   set('marketplace/.claude-plugin/plugin.json',   j => { j.version = '$VERSION'; });
+  set('browser-extension/manifest.json',          j => { j.version = '$VERSION'; });
   set('marketplace/mcp/server.json',              j => {
     j.version = '$VERSION';
     for (const p of j.packages ?? []) p.version = '$VERSION';
@@ -123,7 +124,8 @@ fi
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
   .claude-plugin/marketplace.json marketplace/.claude-plugin/plugin.json \
   marketplace/mcp/manifest.json marketplace/mcp/server.json \
-  marketplace/mcp/npm-wrapper/package.json marketplace/README.md
+  marketplace/mcp/npm-wrapper/package.json marketplace/README.md \
+  browser-extension/manifest.json
 git commit -m "chore: bump version to $VERSION"
 git tag "v$VERSION"
 

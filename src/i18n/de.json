@@ -70,7 +70,12 @@
     "confirmHint": "Noch einmal klicken zum Bestätigen",
     "close": "Schließen (L)",
     "items": "{count} Einträge",
-    "itemsOne": "{count} Eintrag"
+    "itemsOne": "{count} Eintrag",
+    "modeTitles": "Titel",
+    "modeTranscript": "Dialoge",
+    "searchTranscript": "Untertitel in der Bibliothek durchsuchen…",
+    "noTranscriptMatch": "Keine Untertitelzeile passt zu „{query}“.",
+    "transcriptHint": "Geben Sie einen Satz ein, um Untertitel (.srt / .vtt / .ass) neben Ihren Videos zu durchsuchen."
   },
   "playlist": {
     "title": "Wiedergabeliste",
@@ -562,5 +567,12 @@
     "generating": "Untertitel werden erzeugt… (whisper, kann einige Minuten dauern)",
     "generated": "Untertitel erzeugt und geladen",
     "failed": "Untertitel-Erzeugung fehlgeschlagen: {error}"
+  },
+  "scripts": {
+    "section": "Benutzerskripte",
+    "hint": "mpv-Skripte (.lua und .js) im Ordner scripts werden beim Start automatisch geladen.",
+    "add": "Skript installieren…",
+    "empty": "Keine Benutzerskripte installiert.",
+    "remove": "Skript entfernen"
   }
 }

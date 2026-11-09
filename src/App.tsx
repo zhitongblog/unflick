@@ -1564,7 +1564,7 @@ useEffect(() => {
             />
 
             {/* Center content */}
-            <div className="relative z-10 flex flex-col items-center gap-6">
+            <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-6 px-6">
               <h1 className="idle-title idle-fade-in text-6xl font-extrabold">
                 unflick
               </h1>

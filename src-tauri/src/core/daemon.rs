@@ -443,17 +443,153 @@ fn spawn_autoplay_task(ctx: Arc<ControlContext>) {
     });
 }
 
+fn is_http_request_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    (trimmed.starts_with("GET ")
+        || trimmed.starts_with("POST ")
+        || trimmed.starts_with("OPTIONS "))
+        && trimmed.contains(" HTTP/1.")
+}
+
+fn write_http_response(
+    writer: &mut TcpStream,
+    status: &str,
+    body: &str,
+) {
+    let resp = format!(
+        "HTTP/1.1 {}\r\n\
+         Content-Type: application/json; charset=utf-8\r\n\
+         Content-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Access-Control-Allow-Private-Network: true\r\n\
+         Connection: close\r\n\
+         \r\n\
+         {}",
+        status,
+        body.len(),
+        body
+    );
+    let _ = writer.write_all(resp.as_bytes());
+    let _ = writer.flush();
+}
+
+fn handle_http_client(
+    request_line: &str,
+    reader: &mut BufReader<TcpStream>,
+    writer: &mut TcpStream,
+    ctx: &ControlContext,
+) {
+    use std::io::Read;
+
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("");
+    let path = parts.next().unwrap_or("/");
+
+    let mut content_length: usize = 0;
+    loop {
+        let mut header = String::new();
+        if reader.read_line(&mut header).unwrap_or(0) == 0 {
+            break;
+        }
+        let trimmed = header.trim();
+        if trimmed.is_empty() {
+            break;
+        }
+        if let Some((name, val)) = trimmed.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                content_length = val.trim().parse::<usize>().unwrap_or(0).min(1024 * 1024);
+            }
+        }
+    }
+
+    if method.eq_ignore_ascii_case("OPTIONS") {
+        let preflight = "HTTP/1.1 204 No Content\r\n\
+                         Access-Control-Allow-Origin: *\r\n\
+                         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+                         Access-Control-Allow-Headers: Content-Type\r\n\
+                         Access-Control-Allow-Private-Network: true\r\n\
+                         Content-Length: 0\r\n\
+                         Connection: close\r\n\r\n";
+        let _ = writer.write_all(preflight.as_bytes());
+        let _ = writer.flush();
+        return;
+    }
+
+    let mut body_bytes = vec![0u8; content_length];
+    if content_length > 0 {
+        let _ = reader.read_exact(&mut body_bytes);
+    }
+    let body_str = String::from_utf8_lossy(&body_bytes);
+
+    let clean_path = path.split('?').next().unwrap_or(path);
+    let (status_code, result) = match (method, clean_path) {
+        ("GET", "/status") | ("GET", "/") => (
+            "200 OK",
+            dispatch_command(ctx, "status", &json!({})),
+        ),
+        ("POST", "/open") => {
+            let parsed: Value = serde_json::from_str(&body_str).unwrap_or_else(|_| json!({}));
+            let url = parsed
+                .get("url")
+                .or_else(|| parsed.get("file"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if url.is_empty() {
+                ("400 Bad Request", CommandResult::err("url is required"))
+            } else {
+                let action = parsed
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("play");
+                let res = match action {
+                    "queue" | "playlist_add" | "add" => {
+                        dispatch_command(ctx, "playlist_add", &json!({ "file": url }))
+                    }
+                    _ => dispatch_command(ctx, "play", &json!({ "file": url })),
+                };
+                ("200 OK", res)
+            }
+        }
+        ("POST", "/rpc") | ("POST", "/") => match serde_json::from_str::<Value>(&body_str) {
+            Ok(req) => {
+                let cmd = req["command"].as_str().unwrap_or("");
+                let args = &req["args"];
+                ("200 OK", dispatch_command(ctx, cmd, args))
+            }
+            Err(e) => (
+                "400 Bad Request",
+                CommandResult::err(format!("parse error: {}", e)),
+            ),
+        },
+        _ => (
+            "404 Not Found",
+            CommandResult::err(format!("unknown HTTP endpoint: {} {}", method, clean_path)),
+        ),
+    };
+
+    let json = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+    write_http_response(writer, status_code, &json);
+}
+
 fn handle_client(stream: TcpStream, ctx: Arc<ControlContext>) {
-    let reader = BufReader::new(stream.try_clone().unwrap());
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut writer = stream;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
         if line.trim().is_empty() {
             continue;
+        }
+        if is_http_request_line(&line) {
+            handle_http_client(&line, &mut reader, &mut writer, &ctx);
+            break;
         }
 
         let request: Value = match serde_json::from_str(&line) {
@@ -492,7 +628,16 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
 
     match cmd {
         "play" => {
-            let file = args["file"].as_str().unwrap_or("");
+            let raw_file = args["file"].as_str().unwrap_or("");
+            if let Some((action, target)) = source::parse_unflick_uri(raw_file) {
+                if action == "queue" {
+                    return dispatch_command(ctx, "playlist_add", &json!({ "file": target }));
+                }
+                let mut next_args = args.clone();
+                next_args["file"] = json!(target);
+                return dispatch_command(ctx, "play", &next_args);
+            }
+            let file = raw_file;
             let seek = args.get("seek").and_then(|v| v.as_f64());
             let volume = args.get("volume").and_then(|v| v.as_i64());
             let speed = args.get("speed").and_then(|v| v.as_f64());
@@ -1070,7 +1215,9 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             }
         }
         "playlist_add" => {
-            let file = args["file"].as_str().unwrap_or("");
+            let raw_file = args["file"].as_str().unwrap_or("");
+            let unwrapped = source::parse_unflick_uri(raw_file).map(|(_, t)| t);
+            let file = unwrapped.as_deref().unwrap_or(raw_file);
             if file.is_empty() {
                 return CommandResult::err("file path required");
             }
@@ -1394,6 +1541,34 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             let id = args["id"].as_i64().unwrap_or(0);
             match db.remove(id) {
                 Ok(()) => CommandResult::ok("removed"),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "library_transcript_search" => {
+            let Some(query) = args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|q| !q.is_empty())
+            else {
+                return CommandResult::err("query is required");
+            };
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .clamp(1, 200) as usize;
+            match db.list_all() {
+                Ok(entries) => {
+                    let hits = crate::core::transcript::search_library(&entries, query, limit);
+                    CommandResult::ok_with_data(
+                        format!("{} match(es) across library for {:?}", hits.len(), query),
+                        json!({
+                            "query": query,
+                            "matches": hits,
+                        }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -1813,6 +1988,35 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
+        "transcript_summary" => {
+            let segments = args
+                .get("segments")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(5)
+                .clamp(1, 20) as usize;
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let transcript = match crate::core::transcript::load_or_current(player, file_arg) {
+                Ok(t) => t,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+            let duration = if file_arg.is_none()
+                || player.status().file.as_deref() == file_arg
+            {
+                player.status().duration
+            } else {
+                0.0
+            };
+            let summary = crate::core::transcript::summarize(&transcript, segments, duration);
+            CommandResult::ok_with_data(
+                format!(
+                    "{} cue(s), {} word(s), {} segment(s)",
+                    summary.cue_count,
+                    summary.word_count,
+                    summary.segments.len()
+                ),
+                json!(summary),
+            )
+        }
 
         // ─── Chapter generation ───────────────────────────────────────────
         "chapters_generate" => {
@@ -1944,6 +2148,83 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                         None => format!("{} binding(s) reset", count),
                     },
                     json!({ "reset": count }),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+
+        // ─── User scripts (v1.0) ──────────────────────────────────────────
+        "script_list" => match crate::core::scripts::list() {
+            Ok(list) => CommandResult::ok_with_data(
+                format!("{} script(s)", list.len()),
+                json!({
+                    "dir": crate::core::scripts::scripts_dir().to_string_lossy(),
+                    "scripts": list,
+                }),
+            ),
+            Err(e) => CommandResult::err(e.to_string()),
+        },
+        "script_add" => {
+            let Some(path) = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+            else {
+                return CommandResult::err("path is required");
+            };
+            match crate::core::scripts::add(path, Some(player)) {
+                Ok(entry) => CommandResult::ok_with_data(
+                    format!("installed {}", entry.name),
+                    json!(entry),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "script_enable" | "script_disable" | "script_toggle" => {
+            let Some(name) = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+            else {
+                return CommandResult::err("name is required");
+            };
+            let enabled = match cmd {
+                "script_enable" => true,
+                "script_disable" => false,
+                _ => match args.get("enabled").and_then(|v| v.as_bool()) {
+                    Some(b) => b,
+                    None => {
+                        return CommandResult::err("enabled (true/false) is required");
+                    }
+                },
+            };
+            match crate::core::scripts::set_enabled(name, enabled, Some(player)) {
+                Ok(entry) => CommandResult::ok_with_data(
+                    format!(
+                        "{} {}",
+                        entry.name,
+                        if entry.enabled { "enabled" } else { "disabled" }
+                    ),
+                    json!(entry),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "script_remove" => {
+            let Some(name) = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+            else {
+                return CommandResult::err("name is required");
+            };
+            match crate::core::scripts::remove(name) {
+                Ok(entry) => CommandResult::ok_with_data(
+                    format!("removed {}", entry.name),
+                    json!(entry),
                 ),
                 Err(e) => CommandResult::err(e.to_string()),
             }

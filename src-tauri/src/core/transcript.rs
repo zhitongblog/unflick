@@ -45,6 +45,42 @@ pub struct Transcript {
     pub cues: Vec<Cue>,
 }
 
+/// One matching subtitle cue from a library-wide transcript search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryTranscriptMatch {
+    pub media_id: i64,
+    pub path: String,
+    pub title: String,
+    pub source: String,
+    pub origin: String,
+    pub cue: Cue,
+}
+
+/// One structural segment of a transcript summary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptSegment {
+    pub index: usize,
+    pub start: f64,
+    pub end: f64,
+    pub title: String,
+    pub cue_count: usize,
+    pub preview: String,
+}
+
+/// Structured overview of a transcript: total cues, word count, speaking
+/// duration, top keywords, and timeline segments with representative lines.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptSummary {
+    pub source: String,
+    pub origin: String,
+    pub cue_count: usize,
+    pub word_count: usize,
+    pub duration: f64,
+    pub speaking_seconds: f64,
+    pub keywords: Vec<String>,
+    pub segments: Vec<TranscriptSegment>,
+}
+
 /// Subtitle containers we can read as text.
 const TEXT_SUB_EXTENSIONS: &[&str] = &["srt", "vtt"];
 
@@ -174,6 +210,44 @@ pub fn load_current(player: &Player) -> Result<Transcript> {
         "no readable subtitles for this file. Load a subtitle file, or run \
          `unflick subtitle generate` to transcribe it first."
     )
+}
+
+/// Load a transcript for an arbitrary file on disk (sidecar `.srt`/`.vtt`,
+/// cached extracted embedded subtitle, or a direct `.srt`/`.vtt` path)
+/// without needing the file to be currently open in mpv.
+pub fn load_for_file(video: &str) -> Result<Transcript> {
+    if is_text_sub(video) && Path::new(video).is_file() {
+        return read_transcript(video, "file");
+    }
+    if let Some(path) = sidecar_for(video) {
+        return read_transcript(&path.to_string_lossy(), "sidecar");
+    }
+    for idx in 0..4 {
+        let cached = cache_path_for(video, idx);
+        if cached.is_file() {
+            return read_transcript(&cached.to_string_lossy(), "embedded");
+        }
+    }
+    bail!(
+        "no readable subtitles found for {}. Place a .srt/.vtt sidecar next to it \
+         or run `unflick subtitle generate` first.",
+        video
+    )
+}
+
+/// Load the transcript for `file` if supplied (using the live player when
+/// `file` matches what is currently playing), or for whatever is playing.
+pub fn load_or_current(player: &Player, file: Option<&str>) -> Result<Transcript> {
+    match file.map(str::trim).filter(|f| !f.is_empty()) {
+        Some(f) => {
+            if player.status().file.as_deref() == Some(f) {
+                load_current(player)
+            } else {
+                load_for_file(f)
+            }
+        }
+        None => load_current(player),
+    }
 }
 
 fn read_transcript(path: &str, origin: &str) -> Result<Transcript> {
@@ -341,6 +415,169 @@ pub fn search<'a>(cues: &'a [Cue], query: &str, limit: usize) -> Vec<&'a Cue> {
         .collect()
 }
 
+/// Search across every media entry in the library that has a readable
+/// sidecar or cached subtitle file.
+pub fn search_library(
+    entries: &[crate::db::MediaEntry],
+    query: &str,
+    limit: usize,
+) -> Vec<LibraryTranscriptMatch> {
+    let needle = query.trim();
+    if needle.is_empty() || limit == 0 {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    for entry in entries {
+        if out.len() >= limit {
+            break;
+        }
+        let Ok(transcript) = load_for_file(&entry.path) else {
+            continue;
+        };
+        let remaining = limit - out.len();
+        for cue in search(&transcript.cues, needle, remaining) {
+            out.push(LibraryTranscriptMatch {
+                media_id: entry.id,
+                path: entry.path.clone(),
+                title: entry.title.clone(),
+                source: transcript.source.clone(),
+                origin: transcript.origin.clone(),
+                cue: cue.clone(),
+            });
+        }
+    }
+    out
+}
+
+// ─── Structured summary ───────────────────────────────────────────────────
+
+const STOPWORDS: &[&str] = &[
+    "the", "and", "that", "this", "with", "from", "have", "for", "not", "are",
+    "was", "were", "but", "you", "what", "they", "your", "will", "can", "all",
+    "there", "their", "been", "would", "could", "should", "about", "into",
+    "just", "like", "more", "when", "where", "who", "how", "why", "out", "one",
+    "our", "his", "her", "its", "has", "had", "don", "didn", "doesn", "isn",
+    "aren", "won", "can't", "don't", "it's", "that's", "we're", "you're",
+    "they're", "some", "very", "then", "than", "them", "these", "those",
+    "here", "only", "also", "back", "well", "even", "now", "way", "because",
+];
+
+fn count_words(text: &str) -> usize {
+    let ascii_words = text
+        .split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
+        .filter(|w| !w.is_empty() && w.chars().any(|ch| ch.is_ascii_alphanumeric()))
+        .count();
+    let cjk_chars = text
+        .chars()
+        .filter(|&c| {
+            matches!(
+                c as u32,
+                0x4E00..=0x9FFF | 0x3040..=0x30FF | 0xAC00..=0xD7AF
+            )
+        })
+        .count();
+    ascii_words + cjk_chars
+}
+
+fn extract_keywords(cues: &[Cue], max_keywords: usize) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for cue in cues {
+        for raw in cue.text.split(|c: char| !c.is_alphanumeric() && c != '\'') {
+            let word = raw.trim_matches('\'').to_lowercase();
+            let char_len = word.chars().count();
+            if char_len < 3 {
+                continue;
+            }
+            if word.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
+            if STOPWORDS.contains(&word.as_str()) {
+                continue;
+            }
+            *counts.entry(word).or_insert(0) += 1;
+        }
+    }
+    let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    pairs.into_iter().take(max_keywords).map(|(w, _)| w).collect()
+}
+
+/// Build a structured summary of a transcript with word counts, speaking
+/// duration, top keywords, and timeline segments.
+pub fn summarize(transcript: &Transcript, segment_count: usize, duration: f64) -> TranscriptSummary {
+    let cue_count = transcript.cues.len();
+    let word_count: usize = transcript.cues.iter().map(|c| count_words(&c.text)).sum();
+    let speaking_seconds: f64 = transcript
+        .cues
+        .iter()
+        .map(|c| (c.end - c.start).max(0.0))
+        .sum();
+    let total_duration = if duration > 0.0 {
+        duration
+    } else {
+        transcript.cues.last().map(|c| c.end).unwrap_or(0.0)
+    };
+    let keywords = extract_keywords(&transcript.cues, 8);
+
+    let target = segment_count.clamp(1, 20);
+    let mut raw_chapters = if target >= 2 {
+        derive_chapters(&transcript.cues, target, total_duration)
+    } else {
+        Vec::new()
+    };
+    if raw_chapters.is_empty() && !transcript.cues.is_empty() {
+        raw_chapters.push((0.0, title_from(&transcript.cues[0].text)));
+    }
+
+    let mut segments = Vec::with_capacity(raw_chapters.len());
+    for (idx, (start, title)) in raw_chapters.iter().enumerate() {
+        let end = raw_chapters
+            .get(idx + 1)
+            .map(|(next_start, _)| *next_start)
+            .unwrap_or(total_duration.max(*start));
+        let seg_cues: Vec<&Cue> = transcript
+            .cues
+            .iter()
+            .filter(|c| {
+                c.start >= *start
+                    && (idx + 1 == raw_chapters.len() || c.start < end)
+            })
+            .collect();
+        let preview_raw = seg_cues
+            .iter()
+            .take(3)
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let preview = if preview_raw.chars().count() > 160 {
+            preview_raw.chars().take(157).collect::<String>() + "…"
+        } else {
+            preview_raw
+        };
+        segments.push(TranscriptSegment {
+            index: idx,
+            start: *start,
+            end,
+            title: title.clone(),
+            cue_count: seg_cues.len(),
+            preview,
+        });
+    }
+
+    TranscriptSummary {
+        source: transcript.source.clone(),
+        origin: transcript.origin.clone(),
+        cue_count,
+        word_count,
+        duration: total_duration,
+        speaking_seconds,
+        keywords,
+        segments,
+    }
+}
+
 // ─── Chapter derivation ───────────────────────────────────────────────────
 
 /// Propose chapter breaks from the transcript's silences.
@@ -471,5 +708,97 @@ mod tests {
         for pair in chapters.windows(2) {
             assert!(pair[1].0 > pair[0].0, "chapters must be ordered");
         }
+    }
+
+    #[test]
+    fn summarize_extracts_keywords_stats_and_segments() {
+        let srt = "1\n00:00:01,000 --> 00:00:05,000\nWelcome to the quantum computing lecture\n\n\
+                   2\n00:00:06,000 --> 00:00:10,000\nQuantum bits superposition and quantum entanglement\n\n\
+                   3\n00:01:00,000 --> 00:01:04,000\nError correction in superconducting circuits\n";
+        let transcript = Transcript {
+            source: "lecture.srt".into(),
+            origin: "sidecar".into(),
+            cues: parse(srt),
+        };
+        let summary = summarize(&transcript, 2, 70.0);
+        assert_eq!(summary.cue_count, 3);
+        assert!(summary.word_count >= 16);
+        assert!((summary.speaking_seconds - 12.0).abs() < 1e-6);
+        assert_eq!(summary.duration, 70.0);
+        assert_eq!(summary.keywords.first().map(|s| s.as_str()), Some("quantum"));
+        assert!(!summary.segments.is_empty());
+        assert_eq!(summary.segments[0].start, 0.0);
+    }
+
+    #[test]
+    fn search_library_scans_sidecar_subtitles_across_entries() {
+        let dir = std::env::temp_dir().join(format!(
+            "unflick-lib-transcript-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let vid_a = dir.join("alpha.mp4");
+        let srt_a = dir.join("alpha.srt");
+        let vid_b = dir.join("beta.mp4");
+        let srt_b = dir.join("beta.en.srt");
+        std::fs::write(&vid_a, b"fake").unwrap();
+        std::fs::write(
+            &srt_a,
+            "1\n00:00:02,000 --> 00:00:04,000\nThe secret passphrase is avocado\n",
+        )
+        .unwrap();
+        std::fs::write(&vid_b, b"fake").unwrap();
+        std::fs::write(
+            &srt_b,
+            "1\n00:00:12,500 --> 00:00:15,000\nRemember the avocado toast recipe\n",
+        )
+        .unwrap();
+
+        let entries = vec![
+            crate::db::MediaEntry {
+                id: 1,
+                key: vid_a.to_string_lossy().into_owned(),
+                path: vid_a.to_string_lossy().into_owned(),
+                title: "Alpha".into(),
+                duration: Some(30.0),
+                width: None,
+                height: None,
+                video_codec: None,
+                audio_codec: None,
+                file_size: None,
+                added_at: String::new(),
+                last_played: None,
+                play_count: 0,
+            },
+            crate::db::MediaEntry {
+                id: 2,
+                key: vid_b.to_string_lossy().into_owned(),
+                path: vid_b.to_string_lossy().into_owned(),
+                title: "Beta".into(),
+                duration: Some(60.0),
+                width: None,
+                height: None,
+                video_codec: None,
+                audio_codec: None,
+                file_size: None,
+                added_at: String::new(),
+                last_played: None,
+                play_count: 0,
+            },
+        ];
+
+        let hits = search_library(&entries, "avocado", 10);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].title, "Alpha");
+        assert_eq!(hits[0].cue.start, 2.0);
+        assert_eq!(hits[1].title, "Beta");
+        assert_eq!(hits[1].cue.start, 12.5);
+
+        let limited = search_library(&entries, "avocado", 1);
+        assert_eq!(limited.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

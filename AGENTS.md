@@ -6,16 +6,16 @@
 
 A modern, beautiful, AI-ready video player for Windows and macOS.
 
-> `AGENTS.md` is generated from this file by `scripts/gen-agents.sh` — the two
+> `AGENTS.md` is generated from this file by `scripts/gen-agents.sh` 鈥?the two
 > say the same thing and differ only in which agent they name. Edit here, then
 > run the script; CI fails if they drift.
 
 ## Project Overview
 
 unflick is a cross-platform video player that provides three interfaces:
-- **GUI** — Modern UI for regular users (React + TypeScript + Tailwind)
-- **CLI** — Command-line control for power users and scripts
-- **MCP Server** — AI agent integration via Model Context Protocol
+- **GUI** 鈥?Modern UI for regular users (React + TypeScript + Tailwind)
+- **CLI** 鈥?Command-line control for power users and scripts
+- **MCP Server** 鈥?AI agent integration via Model Context Protocol
 
 All three interfaces share a unified Rust core.
 
@@ -29,7 +29,7 @@ This is non-negotiable. The development loop is:
 3. Self-test through CLI/MCP (the agent can verify its own work)
 4. Only then build the GUI layer on top
 
-A feature without CLI/MCP coverage does NOT ship. The first usable release (v0.1) must be 100% operable through CLI and MCP — GUI is a bonus, not a requirement for v0.1.
+A feature without CLI/MCP coverage does NOT ship. The first usable release (v0.1) must be 100% operable through CLI and MCP 鈥?GUI is a bonus, not a requirement for v0.1.
 
 ### Why
 - The agent can self-test every feature during development via CLI and MCP
@@ -41,8 +41,8 @@ A feature without CLI/MCP coverage does NOT ship. The first usable release (v0.1
 After implementing any feature, the agent MUST verify it by:
 1. Running the CLI command and checking stdout/exit code
 2. Calling the MCP tool and validating the JSON response
-3. If either fails, fix before moving on — do NOT defer to "test later"
-4. **Adding a case to `src-tauri/tests/`** — a verification that lives only
+3. If either fails, fix before moving on 鈥?do NOT defer to "test later"
+4. **Adding a case to `src-tauri/tests/`** 鈥?a verification that lives only
    in a chat transcript is gone the moment the session ends
 
 ### Test suite
@@ -60,37 +60,36 @@ Frontend tests cover the pure logic that has no business being verified by
 hand: chord derivation in `lib/keys.ts` (which must agree byte-for-byte
 with `core::keybind::normalize`, or a binding stores fine and never fires)
 and the gesture/wheel thresholds in `lib/gesture.ts`. They deliberately
-avoid a DOM environment — the functions read plain fields, so a test can
+avoid a DOM environment 鈥?the functions read plain fields, so a test can
 pass a plain object.
 
 `tests/playback.rs` and `tests/understanding.rs` drive the **real binary**
 against a **real libmpv**, because that's where the bugs live. The two
-regressions the suite was written for — a file loading paused at 0:00, and
-a finished file reopening on its last frame — both compiled cleanly and
+regressions the suite was written for 鈥?a file loading paused at 0:00, and
+a finished file reopening on its last frame 鈥?both compiled cleanly and
 both made the player look broken.
 
 Three environment variables keep a test run from colliding with a player
 the developer is using at the time, and from colliding with each other.
-**Use all three for manual GUI testing too** — driving the default port
+**Use all three for manual GUI testing too** 鈥?driving the default port
 means driving whatever the user is actually watching:
 
 | Variable | Effect |
 |---|---|
 | `UNFLICK_CONTROL_ADDR` | Control port. Tests bind 29542+ so the real 19542 is never touched |
 | `UNFLICK_DATA_DIR` | Library database location. Tests get a throwaway one, so no resume points land in a real watch history |
-| `UNFLICK_CONFIG_DIR` | settings.json location — keybindings, mouse bindings, subtitle styling |
-| `UNFLICK_LEGACY_DIR` | Where `cleanup` looks for a stale install. Tests point it at a fake one — the real rule (never delete the live caches that share that folder) cannot be exercised against a real machine |
+| `UNFLICK_CONFIG_DIR` | settings.json location 鈥?keybindings, mouse bindings, subtitle styling |
+| `UNFLICK_LEGACY_DIR` | Where `cleanup` looks for a stale install. Tests point it at a fake one 鈥?the real rule (never delete the live caches that share that folder) cannot be exercised against a real machine |
 | `UNFLICK_LOG` | Where the startup log is written and where `startup` reads it from. Tests hand it a log they wrote themselves rather than depending on whichever launch happened last |
-| `UNFLICK_MPV_LOG` | Point it at a path for libmpv's own verbose log. Off by default — it is what to reach for when a file will not play and our side can only say "could not open" |
+| `UNFLICK_MPV_LOG` | Point it at a path for libmpv's own verbose log. Off by default 鈥?it is what to reach for when a file will not play and our side can only say "could not open" |
 
 Fixture media is generated once with the bundled ffmpeg into
 `src-tauri/target/test-fixtures/` and reused. `cargo clean` disposes of it.
 
 Integration tests need libmpv and ffmpeg present: vendored on Windows,
 `apt install libmpv-dev ffmpeg` on Linux. On macOS the libmpv is the one
-the app ships — `./scripts/build-mac-libmpv.sh`, then copy
-`src-tauri/mpv-dev/libmpv.2.dylib` into `src-tauri/target/debug/mpv-dev/` —
-and ffmpeg comes from `brew install ffmpeg`. Delete the old copy first rather
+the app ships 鈥?`./scripts/build-mac-libmpv.sh`, then copy
+`src-tauri/mpv-dev/libmpv.2.dylib` into `src-tauri/target/debug/mpv-dev/` 鈥?and ffmpeg comes from `brew install ffmpeg`. Delete the old copy first rather
 than copying over it: macOS caches a dylib's signature by file, and a process
 that maps one overwritten in place is killed with SIGKILL at startup. A Homebrew libmpv still loads as
 a fallback, but it has no libdvdnav, so `tests/disc.rs` fails against it.
@@ -128,13 +127,13 @@ src-tauri/                  # Backend (Rust)
     mpv/                    # libmpv FFI bindings
     cli/                    # CLI entry point (clap)
       mod.rs
-      commands.rs           # CLI command handlers → call core/
+      commands.rs           # CLI command handlers 鈫?call core/
     mcp/                    # MCP server (JSON-RPC over stdio)
       mod.rs
-      tools.rs              # MCP tool handlers → call core/
-      resources.rs          # MCP resource providers → call core/
+      tools.rs              # MCP tool handlers 鈫?call core/
+      resources.rs          # MCP resource providers 鈫?call core/
     gui/                    # Tauri GUI commands
-      commands.rs           # #[tauri::command] handlers → call core/
+      commands.rs           # #[tauri::command] handlers 鈫?call core/
     db/                     # SQLite operations
   Cargo.toml
   tauri.conf.json
@@ -144,9 +143,9 @@ logo/                       # Brand assets
 ### Entry Point Logic (main.rs)
 
 ```
-unflick                     → launch GUI (Tauri window)
-unflick play <file>         → CLI mode (no window, exit after action)
-unflick --mcp               → MCP server mode (stdio JSON-RPC, long-running)
+unflick                     鈫?launch GUI (Tauri window)
+unflick play <file>         鈫?CLI mode (no window, exit after action)
+unflick --mcp               鈫?MCP server mode (stdio JSON-RPC, long-running)
 ```
 
 The binary detects the mode from arguments and routes accordingly. All three modes use the same `core/` module.
@@ -154,7 +153,7 @@ The binary detects the mode from arguments and routes accordingly. All three mod
 ## Architecture Principles
 
 - **CLI/MCP first**: every feature works headless before getting a GUI
-- GUI, CLI, and MCP share `core/` — no duplicated logic anywhere
+- GUI, CLI, and MCP share `core/` 鈥?no duplicated logic anywhere
 - libmpv handles all playback; we do NOT reimplement codec/rendering
 - Prefer smart defaults over excessive configuration
 - Keep the UI minimal and beautiful; avoid settings bloat
@@ -168,10 +167,10 @@ The binary detects the mode from arguments and routes accordingly. All three mod
 # Playback
 unflick play <file> [--seek <seconds>] [--volume <0-100>] [--speed <rate>]
 # <file> is a path, an http(s) URL, or a path on a mounted share
-# (\\server\share\film.mkv, /Volumes/…, /mnt/…). smb:// and nfs:// URLs are
+# (\\server\share\film.mkv, /Volumes/鈥? /mnt/鈥?. smb:// and nfs:// URLs are
 # refused with mount instructions when the loaded libmpv has no such protocol
 # (Windows, macOS). A distro libmpv that lists smb:// (Ubuntu's) is let try,
-# and a failure carries the same instructions — on Ubuntu it always fails:
+# and a failure carries the same instructions 鈥?on Ubuntu it always fails:
 # mpv lists the protocol, but its ffmpeg has no SMB underneath.
 # The reply carries `loaded`: false means still opening, not on screen yet.
 unflick pause
@@ -237,6 +236,14 @@ unflick chapter clear
 unflick transcript get
 unflick transcript search <query> [--limit <n>]
 unflick transcript seek <query> [--occurrence <n>]
+unflick transcript summary [--segments <n>] [--file <path>]
+
+# User scripts (.lua / .js in <config_dir>/scripts/)
+unflick script list
+unflick script add <path>
+unflick script enable <name>
+unflick script disable <name>
+unflick script remove <name>
 
 # Picture geometry
 unflick video get
@@ -252,14 +259,13 @@ unflick bookmark remove <id>
 unflick bookmark clear [--file <path>] [--key <id>] [--all]
 # A mounted disc is keyed by the disc, not by the drive it is in, so one
 # disc's bookmarks are never offered on the next. `--key` names an identity
-# outright (from `unflick disc`, `unflick status`, or any listed bookmark) —
-# it is how bookmarks left under a drive letter before v0.14 are reached.
+# outright (from `unflick disc`, `unflick status`, or any listed bookmark) 鈥?# it is how bookmarks left under a drive letter before v0.14 are reached.
 
 # Housekeeping
 unflick cleanup [--apply]               # files an older install left behind
 unflick startup                         # last launch's timeline, phase by phase
 
-# Discs — DVD / Blu-ray, from a drive, an image, or a folder
+# Discs 鈥?DVD / Blu-ray, from a drive, an image, or a folder
 unflick disc                            # drives, and what is in them
 unflick disc <path>                     # what unflick makes of a path
 unflick play <film.iso>                 # also D:\ or a folder with VIDEO_TS
@@ -271,7 +277,7 @@ unflick cast to [<renderer>] [--file <path>]
 unflick cast pause | resume | stop | status
 unflick cast seek <seconds>
 
-# Session — what was being watched, and getting back to it
+# Session 鈥?what was being watched, and getting back to it
 unflick session                         # report it (the default)
 unflick session restore                 # reopen it, where it got to
 unflick session clear                   # forget it
@@ -283,7 +289,7 @@ unflick nowplaying [--cover]            # title / artist / album / has_video
 # Driving and reading the interface itself (needs --allow-dev)
 # How a feature gets verified on the platform it runs on, rather than on
 # whichever one happened to have a window-capture API. Start the player
-# with `unflick --allow-dev` first — the flag arms exactly that process,
+# with `unflick --allow-dev` first 鈥?the flag arms exactly that process,
 # cannot be turned on afterwards, and (the control port being loopback but
 # unauthenticated) lets any process on the machine drive that window.
 unflick dev snapshot [--selector <sel>] [--depth <n>]   # a11y tree: role, name, state, selector
@@ -297,7 +303,7 @@ unflick --allow-dev <file>              # ...and open a film in the same launch
 unflick daemon --allow-dev              # arm it headless (answers "no window")
 #
 # Two things about a window that is not on screen, both of which look like
-# app bugs and are not. `dev capture` refuses — by name — when the screen is
+# app bugs and are not. `dev capture` refuses 鈥?by name 鈥?when the screen is
 # locked or the window is minimised, rather than returning a black PNG;
 # `dev snapshot`, `dev text`, `dev click` and `dev eval` all keep working
 # there, so an unattended check should reach for those. And a hidden webview
@@ -333,6 +339,7 @@ unflick frame prev
 # Media Library
 unflick library scan <dir>
 unflick library search <query>
+unflick library transcript <query> [--limit <n>]
 unflick library list [--type <movie|series|video>]
 
 # Utility
@@ -371,15 +378,15 @@ unflick --mcp                   # Start MCP server (stdio)
 | `library_search` | Search media library | `unflick library search` |
 | `file_info` | Get media file metadata | `unflick info` |
 | `subtitle_delay` | Get/set subtitle timing offset (moves both lines together) | `unflick subtitle delay` |
-| `subtitle_bilingual` | Two subtitle tracks at once — original plus translation | `unflick subtitle bilingual` |
+| `subtitle_bilingual` | Two subtitle tracks at once 鈥?original plus translation | `unflick subtitle bilingual` |
 | `audio_delay` | Get/set audio timing offset | `unflick audio delay` |
-| `chapter_list` / `chapter_seek` | Chapter navigation | `unflick chapter …` |
-| `ab_loop` | Repeat a section | `unflick loop …` |
+| `chapter_list` / `chapter_seek` | Chapter navigation | `unflick chapter 鈥 |
+| `ab_loop` | Repeat a section | `unflick loop 鈥 |
 | `frame_step` | Step one frame | `unflick frame next` |
-| `playlist_repeat` / `playlist_shuffle` | Playback order | `unflick playlist …` |
-| `bookmark_add` / `bookmark_list` | Save and read named positions | `unflick bookmark …` |
+| `playlist_repeat` / `playlist_shuffle` | Playback order | `unflick playlist 鈥 |
+| `bookmark_add` / `bookmark_list` | Save and read named positions | `unflick bookmark 鈥 |
 | `bookmark_goto` | Jump to one, loading its file if needed | `unflick bookmark goto` |
-| `bookmark_rename` / `bookmark_remove` / `bookmark_clear` | Manage them | `unflick bookmark …` |
+| `bookmark_rename` / `bookmark_remove` / `bookmark_clear` | Manage them | `unflick bookmark 鈥 |
 | `window_mode` | Normal / picture-in-picture / music window | `unflick window mode` |
 | `now_playing` | Title, artist, album, and whether there is picture | `unflick nowplaying` |
 | `cleanup` | Find (and optionally remove) files an older install stranded | `unflick cleanup` |
@@ -391,13 +398,12 @@ unflick --mcp                   # Start MCP server (stdio)
 | `dev_click` | Click an element, hit-tested rather than assumed | `unflick dev click` |
 | `dev_text` | Visible text of every match, with indices | `unflick dev text` |
 | `dev_wait` | Wait for an element to appear, or with `gone` to leave | `unflick dev wait` |
-| `dev_capture` | A picture of the interface layer (no `output` — see below) | `unflick dev capture` |
+| `dev_capture` | A picture of the interface layer (no `output` 鈥?see below) | `unflick dev capture` |
 | `dev_eval` | Run JavaScript in the window and get the value back | `unflick dev eval` |
 
 The six `dev_*` tools are listed whether or not the surface is armed, and
 refuse by naming `--allow-dev`: an agent that cannot see a tool cannot be
-told how to get it. `dev_capture` deliberately has no `output` property —
-writing files is the CLI's job, the same rule `describe_frame` follows.
+told how to get it. `dev_capture` deliberately has no `output` property 鈥?writing files is the CLI's job, the same rule `describe_frame` follows.
 `dev_capture` returns the **interface**; the decoded picture comes from
 `describe_frame`, which reads it from mpv at higher fidelity than any
 compositor grab.
@@ -412,6 +418,9 @@ driving unflick from outside:
 | `search_transcript` | Find a phrase in the open subtitle track, with timestamps | `unflick transcript search` |
 | `seek_to_text` | Jump to where a phrase is spoken | `unflick transcript seek` |
 | `transcript_get` | Full transcript as timed cues | `unflick transcript get` |
+| `transcript_summary` | Segmented timeline summary, speaking stats, and top keywords | `unflick transcript summary` |
+| `library_transcript_search` | Search sidecar subtitles across every library entry | `unflick library transcript` |
+| `script_list` / `script_add` / `script_toggle` / `script_remove` | Manage `.lua` and `.js` mpv user scripts | `unflick script …` |
 | `generate_chapters` | Derive chapters from transcript pauses | `unflick chapter generate` |
 | `set_chapters` | Supply a chapter list the model wrote itself | `unflick chapter set` |
 | `describe_frame` | Return the on-screen frame as an image block | `unflick frame capture` |
@@ -432,7 +441,7 @@ whenever the file changes.
 
 ### Rust (src-tauri/)
 - Use `thiserror` for error types, `anyhow` for application errors
-- All core logic lives in `core/` — CLI, MCP, and GUI are thin wrappers
+- All core logic lives in `core/` 鈥?CLI, MCP, and GUI are thin wrappers
 - Keep libmpv interaction isolated in `mpv/` module
 - CLI uses `clap` for argument parsing
 - MCP uses `serde_json` for JSON-RPC serialization
@@ -447,7 +456,7 @@ whenever the file changes.
 
 ### General
 - All code in English (comments, variable names, commit messages)
-- No unnecessary abstractions — simple and direct
+- No unnecessary abstractions 鈥?simple and direct
 - No feature flags or backward-compatibility shims
 - Test at system boundaries, trust internal code
 
@@ -467,7 +476,7 @@ cargo run -- status | jq .
 cargo run -- screenshot --output /tmp/test.png && ls -la /tmp/test.png
 
 # The one suite that opens a window. Its own binary, so a flake in it
-# cannot mask a playback regression, and it is NOT in CI — a GUI run has
+# cannot mask a playback regression, and it is NOT in CI 鈥?a GUI run has
 # never been verified on the Linux or Windows runners, and a red build
 # nobody trusts is worse than a gap someone knows about.
 pnpm build                                             # dist/ must exist
@@ -484,36 +493,36 @@ blank page.
 
 ## Milestone Plan
 
-### v0.1 — Headless Player (CLI + MCP only, no GUI required)
+### v0.1 鈥?Headless Player (CLI + MCP only, no GUI required)
 - Rust core: play, pause, resume, stop, seek, volume, speed, status
 - libmpv integration working
 - CLI fully functional for all playback commands
 - MCP server responding to all playback tools
 - Self-tested by the agent through CLI and MCP
 
-### v0.2 — GUI Shell
+### v0.2 鈥?GUI Shell
 - Tauri window with video rendering (mpv --wid)
 - Basic player controls (play/pause, progress bar, volume)
 - Hotkeys (space, arrows, etc.)
 - Drag-and-drop file opening
 
-### v0.3 — Playlist & Subtitles
+### v0.3 鈥?Playlist & Subtitles
 - Playlist management (CLI + MCP + GUI)
 - Subtitle loading and switching
 - Resume playback (remember position)
 
-### v0.4 — Media Library
+### v0.4 鈥?Media Library
 - Directory scanning and metadata extraction
 - SQLite storage
 - Library search (CLI + MCP + GUI)
 - Cover art scraping
 
-### v0.5 — Polish & Release
+### v0.5 鈥?Polish & Release
 - UI polish, animations, themes
 - PiP mode, screenshot, clip extraction
 - Installer packaging (Windows .msi, macOS .dmg)
 
-### v0.6 — CLI/MCP-complete + AI subtitles
+### v0.6 鈥?CLI/MCP-complete + AI subtitles
 - Audio track switching (CLI + MCP)
 - Playlist jump-by-index (MCP)
 - MCP resources: `unflick://now-playing`, `unflick://playlist`, `unflick://library`
@@ -521,9 +530,9 @@ blank page.
 - AI subtitle generation + translation (CLI + MCP, local whisper.cpp + OpenAI API)
 - Settings get/set/unset (CLI + MCP, partial-key updates)
 - Video filters: brightness/contrast/saturation/gamma/hue (CLI + MCP)
-- Every GUI feature now has CLI + MCP coverage — no more first-class/second-class divide
+- Every GUI feature now has CLI + MCP coverage 鈥?no more first-class/second-class divide
 
-### Future — Advanced AI
+### Future 鈥?Advanced AI
 - AI scene detection / chapter generation
 - Voice-controlled playback ("skip ahead 30 seconds")
 - Smart subtitle search ("find where they say 'X'")
@@ -533,5 +542,5 @@ blank page.
 
 - **Name**: unflick
 - **Tagline**: A video player for humans and AI
-- **Colors**: Purple `#7C3AED` → Pink `#DB2777` gradient
+- **Colors**: Purple `#7C3AED` 鈫?Pink `#DB2777` gradient
 - **Logo**: `logo/unflick-logo.svg`

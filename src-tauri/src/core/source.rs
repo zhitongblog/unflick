@@ -202,6 +202,84 @@ pub fn unsupported_message(input: &str, scheme: &str, supported: &[String]) -> S
     msg
 }
 
+/// Decode percent-encoded bytes (`%20`, `%3A`, `+` in query values) as UTF-8.
+fn percent_decode(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                out.push(((h << 4) | l) as u8);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            out.push(b' ');
+            i += 1;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Parse an `unflick://` deep-link URI into `(action, target)` where `action`
+/// is `"play"` or `"queue"` and `target` is the decoded media URL or file path.
+///
+/// Supported forms:
+/// - `unflick://play?url=https%3A%2F%2Fexample.com%2Fvideo.mp4`
+/// - `unflick://queue?url=https%3A%2F%2Fexample.com%2Fvideo.mp4`
+/// - `unflick://open?file=D%3A%5Cfilm.mkv`
+/// - `unflick://https://example.com/video.mp4`
+pub fn parse_unflick_uri(input: &str) -> Option<(String, String)> {
+    let trimmed = input.trim();
+    let rest = trimmed
+        .strip_prefix("unflick://")
+        .or_else(|| trimmed.strip_prefix("UNFLICK://"))?;
+    if rest.is_empty() {
+        return None;
+    }
+
+    // Direct URL form: `unflick://https://...` or `unflick://http://...`
+    if rest.starts_with("http://") || rest.starts_with("https://") {
+        return Some(("play".to_string(), rest.to_string()));
+    }
+
+    let (head, query) = match rest.split_once('?') {
+        Some((h, q)) => (h.trim_matches('/'), Some(q)),
+        None => (rest.trim_matches('/'), None),
+    };
+
+    let action = match head.to_ascii_lowercase().as_str() {
+        "queue" | "add" | "playlist" => "queue",
+        "play" | "open" | "" => "play",
+        _ if query.is_none() => {
+            let decoded = percent_decode(rest);
+            return (!decoded.trim().is_empty()).then(|| ("play".to_string(), decoded));
+        }
+        _ => "play",
+    };
+
+    if let Some(q) = query {
+        for pair in q.split('&') {
+            if let Some((k, v)) = pair.split_once('=') {
+                if matches!(k, "url" | "file" | "src" | "target") {
+                    let decoded = percent_decode(v).trim().to_string();
+                    if !decoded.is_empty() {
+                        return Some((action.to_string(), decoded));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +432,32 @@ mod tests {
         let msg = unsupported_message("gopher://h/f", "gopher", &supported);
         assert!(msg.contains("no gopher:// support"), "{}", msg);
         assert!(msg.contains("file, https"), "{}", msg);
+    }
+
+    #[test]
+    fn parses_unflick_deep_link_uris() {
+        assert_eq!(
+            parse_unflick_uri("unflick://play?url=https%3A%2F%2Fexample.com%2Fwatch%3Fv%3D1"),
+            Some((
+                "play".to_string(),
+                "https://example.com/watch?v=1".to_string()
+            ))
+        );
+        assert_eq!(
+            parse_unflick_uri("unflick://queue?url=https%3A%2F%2Fexample.com%2Fclip.mp4"),
+            Some((
+                "queue".to_string(),
+                "https://example.com/clip.mp4".to_string()
+            ))
+        );
+        assert_eq!(
+            parse_unflick_uri("unflick://https://example.com/direct.mp4"),
+            Some((
+                "play".to_string(),
+                "https://example.com/direct.mp4".to_string()
+            ))
+        );
+        assert_eq!(parse_unflick_uri("https://example.com/v.mp4"), None);
+        assert_eq!(parse_unflick_uri("unflick://"), None);
     }
 }

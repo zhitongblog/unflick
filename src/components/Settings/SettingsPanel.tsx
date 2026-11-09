@@ -12,6 +12,7 @@ import { SHOW_ONBOARDING_EVENT } from "../../lib/onboardingEvent";
 import Toggle, { ToggleTrack } from "../ui/Toggle";
 import KeybindSettings from "./KeybindSettings";
 import MouseSettings from "./MouseSettings";
+import ScriptSettings from "./ScriptSettings";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -424,6 +425,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             <KeybindSettings />
 
             <MouseSettings />
+
+            <ScriptSettings />
 
             {/* Subtitle style. Changes apply to mpv immediately so the
                 sliders can be judged against the video behind the panel. */}

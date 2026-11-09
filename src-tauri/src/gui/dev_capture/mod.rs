@@ -49,6 +49,7 @@ mod windows;
 mod linux;
 
 /// What to say when the pixels came back but there was nothing in them.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) const BLANK_MESSAGE: &str =
     "the capture came back a single flat colour, so nothing is being drawn into the \
      window — it is fully covered, on another desktop, or the page has not painted \

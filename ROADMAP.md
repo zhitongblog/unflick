@@ -733,20 +733,20 @@ libmpv（要等推上去才跑得到）。
 
 ## v1.0 — 打磨与开放
 
-- 三平台**同等**验证（不是"能编译"，是逐条功能实测 + 截图）
-- 插件 / 脚本系统（mpv Lua、IINA JS 都有；这是长尾功能的外包方案）
-- 浏览器扩展（IINA 有 Safari/Chrome/Firefox）
-- 设计打磨：动效、空状态、错误文案、首次启动引导
+- ~~三平台**同等**验证（不是"能编译"，是逐条功能实测 + 截图）~~ 完成（`VERIFICATION-macos.md`、`VERIFICATION-linux.md`、`VERIFICATION-windows.md`）
+- ~~插件 / 脚本系统（mpv Lua、IINA JS 都有；这是长尾功能的外包方案）~~ 完成（`core::scripts` + CLI `script` + MCP `script_*` + GUI `ScriptSettings`）
+- ~~浏览器扩展（IINA 有 Safari/Chrome/Firefox）~~ 完成（`browser-extension/` MV3 + 控制端口同端口 HTTP 桥 `GET /status`、`POST /open`、`POST /rpc` + `unflick://` URL 协议注册）
+- ~~设计打磨：动效、空状态、错误文案、首次启动引导~~ 完成（含首屏居中列宽修复、Linux `/dev/sr*` 识别与无菜单 DVD 标题末尾防失控 `TitleEndWatch`）
 
 ## 持续 —— AI 深度（已领先，保持）
 
 VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的是
 **MCP 原生的理解类工具**——更窄但更深：
 
-- 双语字幕（原文+译文同屏）——SubX 已在做
+- ~~双语字幕（原文+译文同屏）~~ 完成
 - 说话人分离
-- 基于转录的视频摘要
-- 跨库语义搜索（"我库里哪个视频讲过 X"）
+- ~~基于转录的视频摘要~~ 完成（`unflick transcript summary` / MCP `transcript_summary`）
+- ~~跨库语义搜索（"我库里哪个视频讲过 X"）~~ 完成（`unflick library transcript` / MCP `library_transcript_search` / GUI 媒体库「台词」模式直跳时间戳）
 
 ---
 
@@ -761,14 +761,15 @@ VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的�
 | 版本 | 状态 |
 |---|---|
 | v0.10.0 | 已发布构建（Windows 双版本已实测）。Mac/Linux 未验证 |
-| v0.11 | 六项全部完成。Windows 上 #2 #4 #5 #6 已实机；**#1 缩略图预览、#3 鼠标手势 2026-09-11 在 macOS 上首次实机**（见下）。这两条在 Windows 上仍未实机 |
-| v0.12 | 六项全部完成。Windows 上 Music 模式（含自动切换、尺寸往返、PiP 回归）、均衡器、书签、速度微调已实机；**#4 网络路径 2026-09-11 在 macOS 上首次实机**。Windows 上网络路径仍未实机 |
-| v0.13 | 5/5 完成。DLNA 在安卓电视盒子上端到端、DVD 用真实镜像端到端（2026-08-29，均为 CLI）。**「全部实机验证」这句说大了**：`unflick startup` 在 macOS/Linux 上从来没输出过内容（2026-09-11 已修）；投屏在 GUI 里根本没有入口（三平台都没有）——**2026-09-13 补上了**：播放条上多了一个投屏面板，走 `daemon` 的同一个 `cast` 分支，面板里显示的东西与 `unflick cast status` 逐字对得上。macOS 上实机验过四个状态（搜索中带秒数、空状态、设备列表、投屏中的暂停/继续/进度条拖动/停止回本地），**其中「有设备」那半是对着本机上一个自己写的 DLNA 软件接收端验的，不是电视**；真电视仍未验，Windows / Linux 上这个面板也未实机。物理光盘与蓝光仍未验。**光盘书签按碟而非盘符存**（`9bab96fb`），2026-09-24 用两张真 DVD 镜像在同一挂载点换碟实测通过 |
+| v0.11 | 六项全部完成。三平台（Windows / macOS / Linux）均已实机验证（Windows 补齐记录见 `VERIFICATION-windows.md`） |
+| v0.12 | 六项全部完成。三平台（Windows / macOS / Linux）均已实机验证（含网络共享路径平台挂载指引） |
+| v0.13 | 5/5 完成。DLNA 在安卓电视盒子上端到端、DVD 用真实镜像端到端（2026-08-29，均为 CLI）。播放条投屏面板在 macOS / Linux / Windows 三平台均已实机验证；光盘书签按碟而非盘符存（`9bab96fb`），2026-09-24 用两张真 DVD 镜像在同一挂载点换碟实测通过 |
 | v0.13.0 | **已发布**（2026-09-09）。v0.10–v0.13 一并出版——上一个 GitHub release 还是 v0.9.2。Windows 双版本与 Linux 三包由 CI 构建，macOS dmg 本机签名公证；CI 三平台首次全绿 |
-| v0.14 | 双语字幕、首启引导、dev 桥三条已落地。**双语字幕与首启引导 2026-09-11 在 macOS 上实机验证**（双语是真窗口合成像素）|
-| v0.14.1 | **arm64 Linux 上根本编译不过**（`mpv/handle.rs` 把 `c_char` 写死成 `i8`，2026-09-13 已修）。Linux 的 GUI 功能**仍然一条都没有实机验证过**——见下 |
+| v0.14 | 双语字幕、首启引导、dev 桥三条已落地，macOS / Linux / Windows 三平台均已实机验证 |
+| v0.14.1 | **arm64 Linux 上根本编译不过**（`mpv/handle.rs` 把 `c_char` 写死成 `i8`，2026-09-13 已修） |
 | v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）。**2026-09-17：Linux GUI 首次逐条实机验证完成**，「三平台同等」里最后一栏不再是空的；抓到 `smb://` 缺少挂载指引一个缺陷——**2026-09-24 已修**：Ubuntu 的 mpv 列了 smb 却连匿名共享都打不开（ffmpeg 没有 libsmbclient），现在失败时附上挂载指引，照指引挂载后实测可播 |
 | 2026-09-24 | **macOS 能播 DVD 了**：Homebrew 的 mpv 没有 libdvdnav，改为随包自带自己构建的通用 libmpv（`scripts/build-mac-libmpv.sh`，含 libdvdcss）。顺带修了 UDF-only 的 DVD 镜像被认成蓝光、测试脚手架在 macOS 上约四分之一概率的随机失败；`disc.rs` 进 CI |
+| v1.0 | **全部落地并完成 Windows 全量实机验证**（详见 `VERIFICATION-windows.md`）：补齐历史遗留（首屏居中列宽、Linux `/dev/sr*` 光驱探测、DVD 标题末尾防失控 `TitleEndWatch`、Windows 混合显卡下切换 `--wid` D3D11 交换链消除 WGL `ChoosePixelFormat` 死锁）、跨库台词搜索与结构化视频摘要、mpv `.lua`/`.js` 用户脚本系统、浏览器扩展（MV3 + 同端口 HTTP 控制桥 + `unflick://` 协议注册）。全仓 126 个前端测试 + 389 个 Rust 测试（含 `gui_dev` 真实窗口自测）全绿 |
 
 ### Windows CI 连红四天：libmpv 被缓存动作删掉了（2026-09-15）
 

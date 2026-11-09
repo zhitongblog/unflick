@@ -66,6 +66,17 @@ function LibraryEntry({ entry, onPlay }: { entry: MediaEntry; onPlay: (path: str
   );
 }
 
+interface TranscriptHit {
+  media_id: number;
+  title: string;
+  path: string;
+  cue: {
+    start: number;
+    end: number;
+    text: string;
+  };
+}
+
 export default function LibraryPanel() {
   const { entries, searchQuery, isLoading, error, clearError, setSearchQuery, toggleLibrary, fetchLibrary, search, scanDirectory, clearLibrary } =
     useLibraryStore();
@@ -74,6 +85,9 @@ export default function LibraryPanel() {
   const hasFetchedRef = useRef(false);
   const [isScanning, setIsScanning] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [searchMode, setSearchMode] = useState<"titles" | "transcript">("titles");
+  const [transcriptHits, setTranscriptHits] = useState<TranscriptHit[]>([]);
+  const [isSearchingTranscript, setIsSearchingTranscript] = useState(false);
   const t = useStrings();
 
   const handleScanFolder = useCallback(async () => {
@@ -102,17 +116,59 @@ export default function LibraryPanel() {
 
   useEffect(() => { searchInputRef.current?.focus(); }, []);
 
+  const runTranscriptSearch = useCallback(async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setTranscriptHits([]);
+      return;
+    }
+    setIsSearchingTranscript(true);
+    try {
+      const hits = await invoke<TranscriptHit[]>("library_transcript_search", {
+        query: trimmed,
+        limit: 40,
+      });
+      setTranscriptHits(hits);
+    } catch {
+      setTranscriptHits([]);
+    } finally {
+      setIsSearchingTranscript(false);
+    }
+  }, []);
+
   const handleSearch = useCallback(
     (value: string) => {
       setSearchQuery(value);
-      if (value.trim() === "") fetchLibrary();
-      else search(value);
+      if (searchMode === "transcript") {
+        void runTranscriptSearch(value);
+      } else if (value.trim() === "") {
+        fetchLibrary();
+      } else {
+        search(value);
+      }
     },
-    [setSearchQuery, fetchLibrary, search],
+    [setSearchQuery, searchMode, runTranscriptSearch, fetchLibrary, search],
+  );
+
+  const handleModeChange = useCallback(
+    (mode: "titles" | "transcript") => {
+      setSearchMode(mode);
+      if (mode === "transcript") {
+        void runTranscriptSearch(searchQuery);
+      } else if (searchQuery.trim() === "") {
+        fetchLibrary();
+      } else {
+        search(searchQuery);
+      }
+    },
+    [searchQuery, runTranscriptSearch, fetchLibrary, search],
   );
 
   const handlePlay = useCallback(
-    (path: string) => { play(path); toggleLibrary(); },
+    (path: string, seek?: number) => {
+      void play(path, null, seek ?? null);
+      toggleLibrary();
+    },
     [play, toggleLibrary],
   );
 
@@ -170,7 +226,7 @@ export default function LibraryPanel() {
         </div>
 
         {/* Search */}
-        <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="space-y-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <div className="flex items-center gap-2 rounded-lg bg-white/4 px-3 py-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/20 flex-shrink-0" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
             <input
@@ -178,24 +234,76 @@ export default function LibraryPanel() {
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
-              placeholder={t.library.search}
+              placeholder={searchMode === "transcript" ? t.library.searchTranscript : t.library.search}
               className="w-full bg-transparent text-[12px] text-white/70 placeholder-white/20 outline-none"
             />
+          </div>
+          <div className="flex gap-1">
+            {(["titles", "transcript"] as const).map((m) => {
+              const active = searchMode === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => handleModeChange(m)}
+                  className={`flex-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${
+                    active
+                      ? "bg-brand-purple/20 text-brand-purple"
+                      : "bg-white/4 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  {m === "titles" ? t.library.modeTitles : t.library.modeTranscript}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Entries */}
         <div className="flex-1 overflow-y-auto px-2 py-1.5">
-          {isLoading && (
+          {(isLoading || isSearchingTranscript) && (
             <div className="flex items-center justify-center py-12">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-purple border-t-transparent" />
             </div>
           )}
 
+          {searchMode === "transcript" && !isSearchingTranscript && (
+            <>
+              {searchQuery.trim() === "" && (
+                <p className="px-4 py-12 text-center text-[11px] leading-relaxed text-white/25">
+                  {t.library.transcriptHint}
+                </p>
+              )}
+              {searchQuery.trim() !== "" && transcriptHits.length === 0 && (
+                <p className="px-4 py-12 text-center text-[11px] leading-relaxed text-white/25">
+                  {t.library.noTranscriptMatch.replace("{query}", searchQuery.trim())}
+                </p>
+              )}
+              {transcriptHits.map((hit, idx) => (
+                <button
+                  key={`${hit.media_id}-${hit.cue.start}-${idx}`}
+                  onClick={() => handlePlay(hit.path, hit.cue.start)}
+                  className="group flex w-full flex-col gap-1 rounded-xl px-3 py-2 text-left transition-all duration-150 hover:bg-white/5 active:scale-[0.98]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[11px] font-medium text-white/60 group-hover:text-white/85">
+                      {hit.title}
+                    </span>
+                    <span className="flex-shrink-0 rounded bg-brand-purple/15 px-1.5 py-0.5 font-mono text-[10px] text-brand-purple">
+                      {formatDuration(hit.cue.start)}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 text-[11px] leading-snug text-white/40 group-hover:text-white/65">
+                    {hit.cue.text}
+                  </p>
+                </button>
+              ))}
+            </>
+          )}
+
           {/* A failed scan used to land on the empty state below, which
               claims we looked and found nothing. Say what happened instead,
               and keep the backend's own words for a bug report. */}
-          {error && (
+          {searchMode === "titles" && error && (
             <div className="mx-1 mb-2 rounded-lg border border-red-500/20 bg-red-500/6 px-3 py-2">
               <div className="flex items-start gap-2">
                 <p className="min-w-0 flex-1 text-[11px] font-medium text-red-200/90">
@@ -224,7 +332,7 @@ export default function LibraryPanel() {
               same as having an empty library. Until now both rendered "your
               library is empty — scan a folder", which told someone with 400
               films that they had none. */}
-          {!isLoading && !error && entries.length === 0 && searchQuery.trim() !== "" && (
+          {searchMode === "titles" && !isLoading && !error && entries.length === 0 && searchQuery.trim() !== "" && (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/10" strokeLinecap="round">
                 <circle cx="11" cy="11" r="8" />
@@ -249,7 +357,7 @@ export default function LibraryPanel() {
             </div>
           )}
 
-          {!isLoading && !error && entries.length === 0 && searchQuery.trim() === "" && (
+          {searchMode === "titles" && !isLoading && !error && entries.length === 0 && searchQuery.trim() === "" && (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/10" strokeLinecap="round">
                 <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
@@ -277,7 +385,7 @@ export default function LibraryPanel() {
             </div>
           )}
 
-          {!isLoading && entries.map((entry) => (
+          {searchMode === "titles" && !isLoading && entries.map((entry) => (
             <LibraryEntry key={entry.id} entry={entry} onPlay={handlePlay} />
           ))}
         </div>

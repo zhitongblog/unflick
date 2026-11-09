@@ -85,6 +85,27 @@ pub fn register_default_program() -> Result<()> {
     ra.set_value("unflick", &CAPABILITIES_PATH)
         .map_err(|e| anyhow!("RegisteredApplications.unflick: {e}"))?;
 
+    // 5) unflick:// URL protocol handler so browser extensions and web links
+    // can launch or hand URLs to unflick via `unflick://play?url=...`.
+    let _ = register_url_protocol(&hkcu, &exe_str);
+
+    Ok(())
+}
+
+fn register_url_protocol(hkcu: &RegKey, exe: &str) -> Result<()> {
+    let base = r"Software\Classes\unflick";
+    let (root, _) = hkcu
+        .create_subkey(base)
+        .map_err(|e| anyhow!("create protocol key: {e}"))?;
+    root.set_value("", &"URL:unflick Protocol")?;
+    root.set_value("URL Protocol", &"")?;
+    if let Ok((di, _)) = hkcu.create_subkey(format!(r"{base}\DefaultIcon")) {
+        let _ = di.set_value("", &format!("\"{exe}\",0"));
+    }
+    let (cmd, _) = hkcu
+        .create_subkey(format!(r"{base}\shell\open\command"))
+        .map_err(|e| anyhow!("create protocol command: {e}"))?;
+    cmd.set_value("", &format!("\"{exe}\" \"%1\""))?;
     Ok(())
 }
 

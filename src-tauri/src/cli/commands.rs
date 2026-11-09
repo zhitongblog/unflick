@@ -213,6 +213,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: MouseAction,
     },
+    /// Manage mpv user scripts (.lua and .js) in the config scripts folder
+    Script {
+        #[command(subcommand)]
+        action: ScriptAction,
+    },
     /// Send what is playing to a TV on the network (DLNA)
     Cast {
         #[command(subcommand)]
@@ -524,6 +529,32 @@ pub enum MouseAction {
 }
 
 #[derive(Subcommand)]
+pub enum ScriptAction {
+    /// List installed user scripts (.lua and .js) and whether each is enabled
+    List,
+    /// Install a .lua or .js script into the scripts directory and load it
+    Add {
+        /// Path to the .lua or .js file
+        path: String,
+    },
+    /// Enable an installed script and load it into the player
+    Enable {
+        /// Script filename (e.g. autocrop.lua) or stem (autocrop)
+        name: String,
+    },
+    /// Disable an installed script (takes effect on next player start)
+    Disable {
+        /// Script filename (e.g. autocrop.lua) or stem (autocrop)
+        name: String,
+    },
+    /// Delete an installed script from the scripts directory
+    Remove {
+        /// Script filename (e.g. autocrop.lua) or stem (autocrop)
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum TranscriptAction {
     /// Print every cue of the current file's transcript
     Get,
@@ -542,6 +573,15 @@ pub enum TranscriptAction {
         /// Which occurrence to jump to, 1-based
         #[arg(long, default_value_t = 1)]
         occurrence: u64,
+    },
+    /// Structured summary of the transcript: word count, keywords, and timeline segments
+    Summary {
+        /// Number of timeline segments to divide the transcript into (1-20)
+        #[arg(long, default_value_t = 5)]
+        segments: u64,
+        /// Video or subtitle file to summarize (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
     },
 }
 
@@ -932,6 +972,14 @@ pub enum LibraryAction {
         /// Search query
         query: String,
     },
+    /// Search subtitles and transcripts across all files in the library
+    Transcript {
+        /// Spoken phrase to search for (case-insensitive)
+        query: String,
+        /// Maximum matches to return across the library
+        #[arg(long, default_value_t = 20)]
+        limit: u64,
+    },
     /// List all media in the library
     List,
     /// Remove an entry by ID
@@ -1302,6 +1350,10 @@ pub fn run_cli(cli: Cli) -> i32 {
             match action {
                 LibraryAction::Scan { dir } => send("library_scan", json!({"dir": dir})),
                 LibraryAction::Search { query } => send("library_search", json!({"query": query})),
+                LibraryAction::Transcript { query, limit } => send(
+                    "library_transcript_search",
+                    json!({"query": query, "limit": limit}),
+                ),
                 LibraryAction::List => send("library_list", json!({})),
                 LibraryAction::Remove { id } => send("library_remove", json!({"id": id})),
             }
@@ -1556,6 +1608,16 @@ pub fn run_cli(cli: Cli) -> i32 {
                 }
             }
         }
+        Some(Commands::Script { action }) => {
+            ensure_daemon();
+            match action {
+                ScriptAction::List => send("script_list", json!({})),
+                ScriptAction::Add { path } => send("script_add", json!({"path": path})),
+                ScriptAction::Enable { name } => send("script_enable", json!({"name": name})),
+                ScriptAction::Disable { name } => send("script_disable", json!({"name": name})),
+                ScriptAction::Remove { name } => send("script_remove", json!({"name": name})),
+            }
+        }
         Some(Commands::Transcript { action }) => {
             ensure_daemon();
             match action {
@@ -1567,6 +1629,13 @@ pub fn run_cli(cli: Cli) -> i32 {
                     "transcript_seek",
                     json!({"query": query, "occurrence": occurrence}),
                 ),
+                TranscriptAction::Summary { segments, file } => {
+                    let mut args = json!({"segments": segments});
+                    if let Some(f) = file {
+                        args["file"] = json!(f);
+                    }
+                    send("transcript_summary", args)
+                }
             }
         }
         Some(Commands::Loop { action }) => {
