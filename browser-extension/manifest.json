@@ -3,8 +3,13 @@
   "name": "Send to unflick",
   "version": "1.0.0",
   "description": "Play or queue the current page, link, or media element in unflick.",
-  "permissions": ["activeTab", "contextMenus"],
-  "host_permissions": ["http://127.0.0.1:19542/*"],
+  "permissions": [
+    "activeTab",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:19542/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
