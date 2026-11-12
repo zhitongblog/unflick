@@ -1919,3 +1919,70 @@ onClick={(e) => { e.stopPropagation(); void gotoBookmark(b); }}
 
 留下的教训比这两个控件重要：**验证工具自己也要被验证**。这次是靠另一条 track
 （投屏面板）里"手工派发的点击落对了、`dev click` 没落对"的对照才暴露出来的。
+
+---
+
+## v1.0 新增项实机补验（macOS）
+
+针对 v1.0 新增的四条主线与跨平台协议细节，使用独立控制端口（`127.0.0.1:29892`）与隔离目录（`/tmp/uf-mac-v1-verify`）在 macOS 真窗下完成验证：
+
+### 1. Track 1：首屏空状态中间列宽修复
+
+**结论：通过。**
+
+补齐 `w-full max-w-md px-6` 后，在 macOS 真窗下实测首屏居中列尺寸为 `448×314`，消除了此前的窄列换行截断：
+
+```json
+{
+  "className": "relative z-10 flex w-full max-w-md flex-col items-center gap-6 px-6",
+  "height": 314,
+  "width": 448
+}
+```
+
+### 2. Track 2：字幕时间轴摘要与跨媒体库台词检索
+
+**结论：通过（CLI + MCP + GUI 三端对齐）。**
+
+- `unflick transcript summary --segments 3`：返回 `3 cue(s), 24 word(s), 3 segment(s)`、`speaking_seconds: 8.5`、高频词列表与每段起止时间。
+- `unflick library transcript "every subtitle"`：跨媒体库定位到 `/tmp/uf-mac-v1-verify/media/sample.mp4` 的 `5.0s–8.0s` 旁挂字幕。
+- **GUI 媒体库「台词」Tab**：按 `L` 打开媒体库并点击「台词」标签，输入 `"every subtitle"`，渲染匹配卡片 `sample 0:05 Searching across every subtitle in the library works.`；点击卡片后自动打开 `sample.mp4` 并跳转至 `5.0s` 播放（`status` 读回 `state: "playing", position: 5.8s`）。
+
+### 3. Track 3：用户脚本系统（`.lua` / `.js`）
+
+**结论：通过。**
+
+- `unflick script add demo.lua` 将脚本安装到 `<config_dir>/scripts/demo.lua`，提取首行注释 `"Demo user script for macOS verification"` 并热加载进当前 mpv 实例。
+- `unflick script list / disable / enable` 状态切换与 `settings.json` 的 `disabled_scripts` 同步。
+
+### 4. Track 4：浏览器扩展 HTTP 桥与 `unflick://` 深度链接全链路
+
+**结论：通过。**
+
+- **macOS / Linux 协议补齐**：
+  - 新增 `src-tauri/Info.plist` 声明 `CFBundleURLTypes`（`unflick` scheme），并在 `src-tauri/src/lib.rs` 的 `RunEvent::Opened`、`single-instance` 与 `open_launch_file` 及 `src/App.tsx` 的 `open-file` 监听中完整支持 `unflick://play?url=...` 与 `unflick://queue?url=...`。
+  - `src-tauri/src/core/linux_assoc.rs` 补充 `x-scheme-handler/unflick` 默认关联。
+- **同端口 HTTP 桥**：
+  - `OPTIONS /open` → `204 No Content`，含 `Access-Control-Allow-Origin: *` 与 `Access-Control-Allow-Private-Network: true`。
+  - `GET /status` → `200 OK`，返回实时播放 JSON。
+  - `POST /open`（`{"url": ".../sample.mp4", "action": "queue"}`）与 `unflick play "unflick://queue?url=..."` 均准确将条目追加进当前播放列表。
+- **Headless `ao=null` 修复**：
+  - 在 `src-tauri/src/mpv/handle.rs` 中当 `vo == "null"` 时同步设置 `ao=null`，消除 headless 守护进程在无声卡 CI 环境（`ubuntu-latest` PipeWire）下的初始化阻塞，macOS 本机 `playback` 114 条集成测试耗时从 ~138s 缩短至 **17.31s**。
+
+### v1.0 全量自动化测试汇总（macOS）
+
+| 套件 | 结果 |
+|---|---|
+| `pnpm test` | 9 files / **126 passed** |
+| `npx tsc --noEmit` & `pnpm build` | **0 errors** |
+| `cargo test --lib` | **193 passed**（0.21s） |
+| `cargo test --test playback -- --test-threads=2` | **114 passed**（17.31s） |
+| `cargo test --test understanding` | **30 passed**（0.86s） |
+| `cargo test --test dev` | **15 passed**（0.25s） |
+| `cargo test --test cast` | **15 passed**（4.36s） |
+| `cargo test --test disc -- --test-threads=2` | **9 passed**（3.72s） |
+| `cargo test --test session` | **6 passed**（5.24s） |
+| `cargo test --test cleanup` | **5 passed**（0.02s） |
+| `cargo test --test startup` | **3 passed**（0.01s） |
+| `cargo test --test gui_dev --features custom-protocol` | **1 passed**（29.11s） |
+

@@ -39,6 +39,9 @@ impl MpvHandle {
 
         // Set default options before initialize
         handle.set_option("vo", vo)?;
+        if vo == "null" {
+            handle.set_option("ao", "null")?;
+        }
         handle.set_option("terminal", "no")?;
         handle.set_option("msg-level", "all=no")?;
         handle.set_option("idle", "yes")?;

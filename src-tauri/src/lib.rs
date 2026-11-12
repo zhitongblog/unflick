@@ -44,8 +44,8 @@ pub fn run(allow_dev: bool) {
                         if a.starts_with('-') {
                             return None;
                         }
-                        if let Some((_, target)) = core::source::parse_unflick_uri(a) {
-                            return Some(target);
+                        if core::source::parse_unflick_uri(a).is_some() {
+                            return Some(a.clone());
                         }
                         std::path::Path::new(a).is_file().then(|| a.clone())
                     });
@@ -580,8 +580,14 @@ pub fn run(allow_dev: bool) {
                     let _ = window.set_focus();
                 }
                 for url in urls {
-                    if let Ok(path) = url.to_file_path() {
-                        let path_str = path.to_string_lossy().into_owned();
+                    let target_str = if let Ok(path) = url.to_file_path() {
+                        Some(path.to_string_lossy().into_owned())
+                    } else if core::source::parse_unflick_uri(url.as_str()).is_some() {
+                        Some(url.as_str().to_string())
+                    } else {
+                        None
+                    };
+                    if let Some(path_str) = target_str {
                         if ready {
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.emit("open-file", path_str);
@@ -717,16 +723,23 @@ fn open_launch_file(app: &tauri::AppHandle, ctx: &core::daemon::ControlContext) 
         }
     }
     core::boot::mark("open: starting the launch file");
+    let parsed_uri = core::source::parse_unflick_uri(&path);
+    let is_queue = matches!(parsed_uri.as_ref(), Some((action, _)) if action == "queue");
+    let effective_path = parsed_uri
+        .map(|(_, target)| target)
+        .unwrap_or_else(|| path.clone());
     let result = core::daemon::dispatch(ctx, "play", &serde_json::json!({ "file": path }));
     if result.success {
         core::boot::mark("open: launch file playing");
     } else {
         core::boot::mark(&format!("open: launch file failed — {}", result.message));
     }
-    pending.set_outcome(StartupOpen {
-        path,
-        error: (!result.success).then_some(result.message),
-    });
+    if !is_queue || !result.success {
+        pending.set_outcome(StartupOpen {
+            path: effective_path,
+            error: (!result.success).then_some(result.message),
+        });
+    }
 }
 
 /// Bring up the v0.8 video pipeline on the main window.

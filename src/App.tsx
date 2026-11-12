@@ -1012,13 +1012,44 @@ useEffect(() => {
     return () => window.removeEventListener("unflick:toast", handler);
   }, []);
 
-  // Single-instance plugin: a second launch (e.g. user double-clicks
-  // another file in Explorer while we're running) is short-circuited,
-  // and Rust forwards the new file path to *us* via this event so it
-  // plays in the existing window instead of opening a new one.
+  // Single-instance plugin / macOS Apple event: a second launch (e.g. user
+  // double-clicks another file in Explorer/Finder or clicks an unflick://
+  // deep link while we're running) is short-circuited, and Rust forwards the
+  // target via this event so it plays or queues in the existing window.
   useEffect(() => {
     const unlisten = listen<string>("open-file", (event) => {
-      if (event.payload) play(event.payload);
+      const raw = event.payload?.trim();
+      if (!raw) return;
+      if (/^unflick:\/\//i.test(raw)) {
+        try {
+          const rest = raw.replace(/^unflick:\/\//i, "");
+          const qIdx = rest.indexOf("?");
+          const actionPart = (qIdx >= 0 ? rest.slice(0, qIdx) : rest)
+            .replace(/\/+$/, "")
+            .toLowerCase();
+          const params = qIdx >= 0 ? new URLSearchParams(rest.slice(qIdx + 1)) : null;
+          const target = (
+            params?.get("url") ??
+            params?.get("file") ??
+            (qIdx < 0 && !["play", "open", "queue", "playlist_add", "add"].includes(actionPart)
+              ? rest
+              : "")
+          ).trim();
+          if (!target) return;
+          if (["queue", "playlist_add", "add"].includes(actionPart)) {
+            void usePlaylistStore.getState().add(target);
+            if (!usePlaylistStore.getState().showPlaylist) {
+              usePlaylistStore.getState().togglePlaylist();
+            }
+            return;
+          }
+          play(target);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      play(raw);
     });
     return () => {
       unlisten.then((fn) => fn());

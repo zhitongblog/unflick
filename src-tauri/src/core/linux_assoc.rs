@@ -37,6 +37,7 @@ const AUDIO_MIME_TYPES: &[&str] = &[
     "audio/mp4",
     "audio/aac",
     "audio/x-ms-wma",
+    "x-scheme-handler/unflick",
 ];
 
 /// Register unflick as the default app for video and audio MIME types.
