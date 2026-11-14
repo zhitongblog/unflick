@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Send to unflick",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Play or queue the current page, link, or media element in unflick — with seamless timestamp handoff.",
   "permissions": [
     "activeTab",

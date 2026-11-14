@@ -11,7 +11,7 @@ to the major marketplaces — and a reference any other app can copy to do the s
 - Website: https://unflick.app
 - Repository: https://github.com/zhitongblog/unflick
 - License: MIT
-- Version: 1.0.0
+- Version: 1.0.1
 
 ---
 
