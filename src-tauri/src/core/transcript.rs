@@ -32,11 +32,23 @@ pub struct Cue {
     pub start: f64,
     pub end: f64,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+}
+
+/// Aggregated speaking statistics for one identified speaker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerStat {
+    pub name: String,
+    pub cue_count: usize,
+    pub word_count: usize,
+    pub speaking_seconds: f64,
+    pub first_appearance: f64,
 }
 
 /// A loaded transcript plus where it came from, so callers can tell the
 /// user whether they're searching a whisper draft or the real subtitles.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transcript {
     /// Absolute path of the subtitle file backing this transcript.
     pub source: String,
@@ -68,7 +80,7 @@ pub struct TranscriptSegment {
 }
 
 /// Structured overview of a transcript: total cues, word count, speaking
-/// duration, top keywords, and timeline segments with representative lines.
+/// duration, top keywords, speaker breakdown, and timeline segments with representative lines.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptSummary {
     pub source: String,
@@ -78,26 +90,31 @@ pub struct TranscriptSummary {
     pub duration: f64,
     pub speaking_seconds: f64,
     pub keywords: Vec<String>,
+    pub speakers: Vec<SpeakerStat>,
     pub segments: Vec<TranscriptSegment>,
 }
 
 /// Subtitle containers we can read as text.
-const TEXT_SUB_EXTENSIONS: &[&str] = &["srt", "vtt"];
+const TEXT_SUB_EXTENSIONS: &[&str] = &["srt", "vtt", "ass", "ssa"];
 
 // ─── Parsing ──────────────────────────────────────────────────────────────
 
-/// Parse SRT or WebVTT. The two differ only in the decimal separator and a
-/// header line, so one parser covers both rather than shipping two that
-/// drift apart.
+/// Parse SRT, WebVTT, or ASS/SSA into timed cues (preserving speaker tags
+/// when present in ASS `Name`, WebVTT `<v Name>`, `whisper --tinydiarize`
+/// `[SPEAKER_TURN]`, or inline `[Speaker 1]:` / `ALICE:` prefixes).
 pub fn parse(content: &str) -> Vec<Cue> {
-    let mut cues = Vec::new();
-
-    // Strip a UTF-8 BOM and the WEBVTT header if present.
     let content = content.trim_start_matches('\u{feff}');
+
+    if is_ass_content(content) {
+        return parse_ass(content);
+    }
+
+    let mut cues = Vec::new();
+    let mut tdrz_speaker_idx: Option<usize> = None;
 
     for block in content.split("\n\n").flat_map(|b| b.split("\r\n\r\n")) {
         let block = block.trim();
-        if block.is_empty() || block.starts_with("WEBVTT") {
+        if block.is_empty() || block.starts_with("WEBVTT") || block.starts_with("NOTE") {
             continue;
         }
 
@@ -121,13 +138,145 @@ pub fn parse(content: &str) -> Vec<Cue> {
             continue;
         };
 
-        let text = lines
-            .map(|l| strip_tags(l.trim()))
+        let raw_lines: Vec<&str> = lines.map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        if raw_lines.is_empty() {
+            continue;
+        }
+
+        // Check for whisper.cpp `--tinydiarize` (`[SPEAKER_TURN]`) marker.
+        let joined_raw = raw_lines.join(" ");
+        if joined_raw.contains("[SPEAKER_TURN]") {
+            tdrz_speaker_idx = Some(match tdrz_speaker_idx {
+                None => 1,
+                Some(1) => 2,
+                Some(_) => 1,
+            });
+        }
+
+        // Check for WebVTT `<v Speaker Name>` voice span before stripping HTML tags.
+        let vtt_speaker = raw_lines.iter().find_map(|l| extract_vtt_voice(l));
+
+        let cleaned = raw_lines
+            .iter()
+            .map(|l| {
+                let without_tdrz = l.replace("[SPEAKER_TURN]", "");
+                strip_tags(without_tdrz.trim())
+            })
             .filter(|l| !l.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
 
+        if cleaned.is_empty() {
+            continue;
+        }
+
+        let (inline_speaker, text) = extract_inline_speaker(&cleaned);
         if text.is_empty() {
+            continue;
+        }
+
+        let speaker = vtt_speaker
+            .or(inline_speaker)
+            .or_else(|| tdrz_speaker_idx.map(|n| format!("Speaker {}", n)));
+
+        cues.push(Cue {
+            index: cues.len(),
+            start,
+            end,
+            text,
+            speaker,
+        });
+    }
+
+    cues
+}
+
+fn is_ass_content(content: &str) -> bool {
+    content.contains("[Events]")
+        || content.contains("[Script Info]")
+        || content
+            .lines()
+            .any(|l| l.trim_start().starts_with("Dialogue:"))
+}
+
+/// Parse SubStation Alpha (`.ass` / `.ssa`) `[Events]` `Dialogue:` lines.
+fn parse_ass(content: &str) -> Vec<Cue> {
+    let mut cues = Vec::new();
+    let mut start_col = 1usize;
+    let mut end_col = 2usize;
+    let mut name_col = Some(4usize);
+    let mut text_col = 9usize;
+    let mut field_count = 10usize;
+
+    for raw_line in content.lines() {
+        let line = raw_line.trim();
+        if let Some(rest) = line.strip_prefix("Format:") {
+            let cols: Vec<String> = rest
+                .split(',')
+                .map(|c| c.trim().to_ascii_lowercase())
+                .collect();
+            if cols.len() >= 3 {
+                field_count = cols.len();
+                if let Some(i) = cols.iter().position(|c| c == "start") {
+                    start_col = i;
+                }
+                if let Some(i) = cols.iter().position(|c| c == "end") {
+                    end_col = i;
+                }
+                name_col = cols.iter().position(|c| c == "name" || c == "actor");
+                if let Some(i) = cols.iter().position(|c| c == "text") {
+                    text_col = i;
+                } else {
+                    text_col = cols.len() - 1;
+                }
+            }
+            continue;
+        }
+
+        let Some(rest) = line.strip_prefix("Dialogue:") else {
+            continue;
+        };
+
+        let parts: Vec<&str> = rest.splitn(field_count, ',').collect();
+        if parts.len() <= text_col || parts.len() <= start_col.max(end_col) {
+            continue;
+        }
+
+        let Some(start) = parse_timestamp(parts[start_col].trim()) else {
+            continue;
+        };
+        let Some(end) = parse_timestamp(parts[end_col].trim()) else {
+            continue;
+        };
+
+        let raw_text = parts[text_col].trim();
+        // Skip vector drawing commands (`{\p1}...`).
+        if raw_text.contains(r"{\p1") || raw_text.contains(r"{\p2") {
+            continue;
+        }
+
+        let normalized_breaks = raw_text
+            .replace(r"\N", " ")
+            .replace(r"\n", " ")
+            .replace(r"\h", " ");
+        let cleaned = strip_tags(&normalized_breaks);
+        if cleaned.is_empty() {
+            continue;
+        }
+
+        let ass_name = name_col
+            .and_then(|idx| parts.get(idx))
+            .map(|s| s.trim())
+            .filter(|s| {
+                !s.is_empty()
+                    && !s.eq_ignore_ascii_case("default")
+                    && !s.eq_ignore_ascii_case("ntp")
+                    && !s.eq_ignore_ascii_case("comment")
+            })
+            .map(|s| s.to_string());
+
+        let (inline_speaker, final_text) = extract_inline_speaker(&cleaned);
+        if final_text.is_empty() {
             continue;
         }
 
@@ -135,11 +284,107 @@ pub fn parse(content: &str) -> Vec<Cue> {
             index: cues.len(),
             start,
             end,
-            text,
+            text: final_text,
+            speaker: ass_name.or(inline_speaker),
         });
     }
 
     cues
+}
+
+/// Extract speaker name from a WebVTT `<v ...>` tag, e.g. `<v Alice>Hi` or
+/// `<v.loud Bob Smith>Hello`.
+fn extract_vtt_voice(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("<v")?;
+    let close = rest.find('>')?;
+    let inside = &rest[..close];
+    // `<v.class1.class2 Speaker Name>` — classes are attached to `<v` before
+    // the first space.
+    let space_idx = inside.find(char::is_whitespace)?;
+    let speaker = inside[space_idx..].trim();
+    (!speaker.is_empty()).then(|| speaker.to_string())
+}
+
+const NON_SPEAKER_LABELS: &[&str] = &[
+    "http", "https", "note", "warning", "error", "tip", "time", "date",
+    "location", "chapter", "part", "scene", "step", "version", "rule",
+    "example", "source", "status", "result", "title", "todo", "music",
+    "sfx", "sound", "audio", "video",
+];
+
+/// Extract an inline speaker prefix such as `[Speaker 1]: Hello`,
+/// `(ALICE) Hello`, `SPEAKER_00: Hello`, or `Alice: Hello`.
+fn extract_inline_speaker(line: &str) -> (Option<String>, String) {
+    let trimmed = line.trim();
+    let without_dash = trimmed
+        .strip_prefix('-')
+        .map(|s| s.trim_start())
+        .unwrap_or(trimmed);
+
+    // 1. Bracketed speaker: `[Speaker 1]: Hello` or `[Alice] Hello`
+    if let Some(rest) = without_dash.strip_prefix('[') {
+        if let Some((inside, after)) = rest.split_once(']') {
+            let label = inside.trim();
+            let after_trimmed = after
+                .trim_start()
+                .strip_prefix(':')
+                .or_else(|| after.trim_start().strip_prefix('：'))
+                .map(|s| s.trim_start());
+            if let Some(body) = after_trimmed {
+                if is_plausible_speaker_label(label) && !body.is_empty() {
+                    return (Some(label.to_string()), body.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Colon-separated prefix: `Speaker 1: Hello`, `ALICE: Hello`, `说话人1：你好`
+    if let Some((prefix, after)) = without_dash
+        .split_once(':')
+        .or_else(|| without_dash.split_once('：'))
+    {
+        let label = prefix.trim();
+        let body = after.trim();
+        if !body.is_empty() && is_plausible_speaker_label(label) {
+            return (Some(label.to_string()), body.to_string());
+        }
+    }
+
+    (None, trimmed.to_string())
+}
+
+fn is_plausible_speaker_label(label: &str) -> bool {
+    let char_count = label.chars().count();
+    if char_count == 0 || char_count > 24 {
+        return false;
+    }
+    if label.split_whitespace().count() > 3 {
+        return false;
+    }
+    let lower = label.to_lowercase();
+    if NON_SPEAKER_LABELS.contains(&lower.as_str()) {
+        return false;
+    }
+    if lower.starts_with("speaker")
+        || lower.starts_with("说话人")
+        || lower.starts_with("角色")
+        || lower.starts_with("host")
+        || lower.starts_with("guest")
+        || lower.starts_with("narrator")
+    {
+        return true;
+    }
+    // Avoid mistaking numeric timestamps (`12:30`) or ratios for speakers.
+    if label.chars().all(|c| c.is_ascii_digit() || c.is_whitespace()) {
+        return false;
+    }
+    let first = label.chars().next().unwrap();
+    let valid_start = first.is_ascii_uppercase() || !first.is_ascii();
+    let valid_chars = label
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '_' | '-' | '.'));
+    valid_start && valid_chars
 }
 
 /// `00:01:02,500 --> 00:01:05,000` (SRT) or `00:01:02.500 --> 00:01:05.000`
@@ -252,15 +497,76 @@ pub fn load_or_current(player: &Player, file: Option<&str>) -> Result<Transcript
 
 fn read_transcript(path: &str, origin: &str) -> Result<Transcript> {
     let raw = read_text_lossy(Path::new(path))?;
-    let cues = parse(&raw);
+    let mut cues = parse(&raw);
     if cues.is_empty() {
         bail!("subtitle file has no readable cues: {}", path);
     }
+    apply_speaker_overrides(path, &mut cues);
     Ok(Transcript {
         source: path.to_string(),
         origin: origin.to_string(),
         cues,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SpeakerOverrides {
+    #[serde(default)]
+    cue_speakers: std::collections::HashMap<usize, String>,
+    #[serde(default)]
+    renames: std::collections::HashMap<String, String>,
+}
+
+fn speaker_override_path_for(source_path: &str) -> PathBuf {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in source_path.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    let base = std::env::var_os("UNFLICK_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(dirs_next::cache_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("unflick")
+        .join("transcripts");
+    base.join(format!("{:016x}-speakers.json", hash))
+}
+
+fn load_speaker_overrides(source_path: &str) -> SpeakerOverrides {
+    let p = speaker_override_path_for(source_path);
+    std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_speaker_overrides(source_path: &str, overrides: &SpeakerOverrides) -> Result<()> {
+    let p = speaker_override_path_for(source_path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(overrides)?;
+    std::fs::write(&p, json)?;
+    Ok(())
+}
+
+fn apply_speaker_overrides(source_path: &str, cues: &mut [Cue]) {
+    let overrides = load_speaker_overrides(source_path);
+    if overrides.cue_speakers.is_empty() && overrides.renames.is_empty() {
+        return;
+    }
+    for cue in cues.iter_mut() {
+        if cue.speaker.is_none() {
+            if let Some(assigned) = overrides.cue_speakers.get(&cue.index) {
+                cue.speaker = Some(assigned.clone());
+            }
+        }
+        if let Some(ref cur) = cue.speaker {
+            if let Some(renamed) = overrides.renames.get(cur) {
+                cue.speaker = Some(renamed.clone());
+            }
+        }
+    }
 }
 
 /// Subtitle files are frequently not UTF-8 (legacy CJK encodings especially).
@@ -405,13 +711,451 @@ fn cache_path_for(video: &str, stream_index: i64) -> PathBuf {
 /// Deliberately not regex: this is aimed at "find where they say X", and a
 /// stray `(` in a natural-language query shouldn't turn into a syntax error.
 pub fn search<'a>(cues: &'a [Cue], query: &str, limit: usize) -> Vec<&'a Cue> {
+    search_filtered(cues, query, None, limit)
+}
+
+/// Search over cue text with an optional case-insensitive speaker filter.
+pub fn search_filtered<'a>(
+    cues: &'a [Cue],
+    query: &str,
+    speaker: Option<&str>,
+    limit: usize,
+) -> Vec<&'a Cue> {
     let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
+    let spk_filter = speaker.map(str::trim).filter(|s| !s.is_empty()).map(|s| s.to_lowercase());
+    if needle.is_empty() && spk_filter.is_none() {
         return Vec::new();
     }
     cues.iter()
-        .filter(|c| c.text.to_lowercase().contains(&needle))
+        .filter(|c| {
+            if let Some(ref wanted) = spk_filter {
+                let matches_spk = c
+                    .speaker
+                    .as_ref()
+                    .map(|s| s.to_lowercase().contains(wanted))
+                    .unwrap_or(false);
+                if !matches_spk {
+                    return false;
+                }
+            }
+            needle.is_empty() || c.text.to_lowercase().contains(&needle)
+        })
         .take(limit)
+        .collect()
+}
+
+/// Filter cues by an optional speaker name (case-insensitive substring match).
+pub fn filter_by_speaker(cues: &[Cue], speaker: Option<&str>) -> Vec<Cue> {
+    let Some(wanted) = speaker.map(str::trim).filter(|s| !s.is_empty()) else {
+        return cues.to_vec();
+    };
+    let wanted_lower = wanted.to_lowercase();
+    cues.iter()
+        .filter(|c| {
+            c.speaker
+                .as_ref()
+                .map(|s| s.to_lowercase().contains(&wanted_lower))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Compute per-speaker statistics ordered by first appearance.
+pub fn speaker_stats(cues: &[Cue]) -> Vec<SpeakerStat> {
+    let mut order: Vec<String> = Vec::new();
+    let mut map: std::collections::HashMap<String, SpeakerStat> = std::collections::HashMap::new();
+    for cue in cues {
+        let Some(ref name) = cue.speaker else {
+            continue;
+        };
+        let entry = map.entry(name.clone()).or_insert_with(|| {
+            order.push(name.clone());
+            SpeakerStat {
+                name: name.clone(),
+                cue_count: 0,
+                word_count: 0,
+                speaking_seconds: 0.0,
+                first_appearance: cue.start,
+            }
+        });
+        entry.cue_count += 1;
+        entry.word_count += count_words(&cue.text);
+        entry.speaking_seconds += (cue.end - cue.start).max(0.0);
+    }
+    order
+        .into_iter()
+        .filter_map(|name| map.remove(&name))
+        .collect()
+}
+
+/// Lightweight speaker diarization combining acoustic voice features (F0 pitch
+/// & zero-crossing rate from 8kHz mono PCM when `media_path` is available)
+/// with conversational turn heuristics (dialogue dashes, question-response
+/// boundaries, and inter-cue pauses).
+pub fn diarize(
+    transcript: &mut Transcript,
+    media_path: Option<&str>,
+    target_speakers: Option<usize>,
+) -> Result<Vec<SpeakerStat>> {
+    if transcript.cues.is_empty() {
+        return Ok(Vec::new());
+    }
+    let k = target_speakers.unwrap_or(2).clamp(2, 6);
+
+    // Try extracting 8kHz mono PCM acoustic features if a media file is available.
+    let acoustic = media_path
+        .filter(|p| !is_text_sub(p) && Path::new(p).is_file())
+        .and_then(|p| extract_cue_acoustic_features(p, &transcript.cues));
+
+    let labels = if let Some(features) = acoustic.filter(|f| has_acoustic_variance(f)) {
+        cluster_acoustic_turns(&transcript.cues, &features, k)
+    } else {
+        assign_heuristic_turns(&transcript.cues, k)
+    };
+
+    let mut overrides = load_speaker_overrides(&transcript.source);
+    overrides.cue_speakers.clear();
+    for (cue, spk_idx) in transcript.cues.iter_mut().zip(labels.into_iter()) {
+        let base_name = format!("Speaker {}", spk_idx + 1);
+        let final_name = overrides
+            .renames
+            .get(&base_name)
+            .cloned()
+            .unwrap_or(base_name.clone());
+        overrides.cue_speakers.insert(cue.index, final_name.clone());
+        cue.speaker = Some(final_name);
+    }
+    let _ = save_speaker_overrides(&transcript.source, &overrides);
+    Ok(speaker_stats(&transcript.cues))
+}
+
+/// Rename a speaker across the transcript and persist the mapping.
+pub fn rename_speaker(transcript: &mut Transcript, from: &str, to: &str) -> Result<usize> {
+    let from_trimmed = from.trim();
+    let to_trimmed = to.trim();
+    if from_trimmed.is_empty() || to_trimmed.is_empty() {
+        bail!("both `from` and `to` speaker names are required");
+    }
+    let from_lower = from_trimmed.to_lowercase();
+    let mut updated = 0usize;
+    let mut matched_exact = from_trimmed.to_string();
+
+    for cue in transcript.cues.iter_mut() {
+        if let Some(ref cur) = cue.speaker {
+            if cur.to_lowercase() == from_lower {
+                matched_exact = cur.clone();
+                cue.speaker = Some(to_trimmed.to_string());
+                updated += 1;
+            }
+        }
+    }
+
+    if updated == 0 {
+        bail!(
+            "speaker {:?} not found in transcript (run `unflick transcript speakers --detect` first)",
+            from_trimmed
+        );
+    }
+
+    let mut overrides = load_speaker_overrides(&transcript.source);
+    for val in overrides.cue_speakers.values_mut() {
+        if val.to_lowercase() == from_lower {
+            *val = to_trimmed.to_string();
+        }
+    }
+    for val in overrides.renames.values_mut() {
+        if val.to_lowercase() == from_lower {
+            *val = to_trimmed.to_string();
+        }
+    }
+    overrides.renames.insert(matched_exact, to_trimmed.to_string());
+    let _ = save_speaker_overrides(&transcript.source, &overrides);
+    Ok(updated)
+}
+
+/// Format a transcript (optionally filtered by speaker) as `txt`, `srt`, `vtt`, or `json`.
+pub fn export(
+    transcript: &Transcript,
+    format: &str,
+    speaker: Option<&str>,
+) -> Result<String> {
+    let cues = filter_by_speaker(&transcript.cues, speaker);
+    match format.trim().to_ascii_lowercase().as_str() {
+        "txt" | "text" => {
+            let mut out = String::new();
+            for c in &cues {
+                let ts = format_hms(c.start);
+                if let Some(ref spk) = c.speaker {
+                    out.push_str(&format!("[{}] {}: {}\n", ts, spk, c.text));
+                } else {
+                    out.push_str(&format!("[{}] {}\n", ts, c.text));
+                }
+            }
+            Ok(out)
+        }
+        "srt" => {
+            let mut out = String::new();
+            for (i, c) in cues.iter().enumerate() {
+                let start = format_srt_ts(c.start);
+                let end = format_srt_ts(c.end);
+                if let Some(ref spk) = c.speaker {
+                    out.push_str(&format!("{}\n{} --> {}\n[{}]: {}\n\n", i + 1, start, end, spk, c.text));
+                } else {
+                    out.push_str(&format!("{}\n{} --> {}\n{}\n\n", i + 1, start, end, c.text));
+                }
+            }
+            Ok(out)
+        }
+        "vtt" | "webvtt" => {
+            let mut out = String::from("WEBVTT\n\n");
+            for c in &cues {
+                let start = format_srt_ts(c.start).replace(',', ".");
+                let end = format_srt_ts(c.end).replace(',', ".");
+                if let Some(ref spk) = c.speaker {
+                    out.push_str(&format!("{} --> {}\n<v {}>{}\n\n", start, end, spk, c.text));
+                } else {
+                    out.push_str(&format!("{} --> {}\n{}\n\n", start, end, c.text));
+                }
+            }
+            Ok(out)
+        }
+        "json" => {
+            let exported = serde_json::json!({
+                "source": transcript.source,
+                "origin": transcript.origin,
+                "speakers": speaker_stats(&cues),
+                "cues": cues,
+            });
+            Ok(serde_json::to_string_pretty(&exported)?)
+        }
+        other => bail!(
+            "unsupported export format {:?} (expected txt | srt | vtt | json)",
+            other
+        ),
+    }
+}
+
+fn format_hms(seconds: f64) -> String {
+    let total = seconds.max(0.0).round() as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("{:02}:{:02}:{:02}", h, m, s)
+    } else {
+        format!("{:02}:{:02}", m, s)
+    }
+}
+
+fn format_srt_ts(seconds: f64) -> String {
+    let total_ms = (seconds.max(0.0) * 1000.0).round() as u64;
+    let h = total_ms / 3_600_000;
+    let m = (total_ms % 3_600_000) / 60_000;
+    let s = (total_ms % 60_000) / 1000;
+    let ms = total_ms % 1000;
+    format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
+}
+
+#[derive(Clone, Copy)]
+struct CueAcoustic {
+    zcr: f64,
+    tilt: f64,
+}
+
+fn extract_cue_acoustic_features(media_path: &str, cues: &[Cue]) -> Option<Vec<CueAcoustic>> {
+    let ffmpeg = super::player::find_ffmpeg()?;
+    let max_end = cues.last()?.end.min(1800.0);
+    if max_end <= 0.0 {
+        return None;
+    }
+
+    let mut cmd = std::process::Command::new(&ffmpeg);
+    cmd.args([
+        "-loglevel",
+        "error",
+        "-t",
+        &format!("{:.1}", max_end + 1.0),
+        "-i",
+        media_path,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "8000",
+        "-f",
+        "s16le",
+        "-",
+    ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().ok()?;
+    if !output.status.success() || output.stdout.len() < 1600 {
+        return None;
+    }
+    let samples: Vec<i16> = output
+        .stdout
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .collect();
+
+    let mut out = Vec::with_capacity(cues.len());
+    for c in cues {
+        let s_idx = ((c.start * 8000.0) as usize).min(samples.len());
+        let e_idx = ((c.end * 8000.0) as usize).min(samples.len());
+        if e_idx <= s_idx + 80 {
+            out.push(CueAcoustic { zcr: 0.0, tilt: 0.0 });
+            continue;
+        }
+        let slice = &samples[s_idx..e_idx];
+        let mut crossings = 0usize;
+        let mut energy = 0.0f64;
+        let mut diff_energy = 0.0f64;
+        for w in slice.windows(2) {
+            let a = w[0] as f64;
+            let b = w[1] as f64;
+            if (a >= 0.0 && b < 0.0) || (a < 0.0 && b >= 0.0) {
+                crossings += 1;
+            }
+            energy += a * a;
+            let d = b - a;
+            diff_energy += d * d;
+        }
+        let zcr = crossings as f64 / slice.len() as f64;
+        let tilt = if energy > 1.0 {
+            (diff_energy / energy).sqrt()
+        } else {
+            0.0
+        };
+        out.push(CueAcoustic { zcr, tilt });
+    }
+    Some(out)
+}
+
+fn has_acoustic_variance(features: &[CueAcoustic]) -> bool {
+    if features.len() < 2 {
+        return false;
+    }
+    let mean_zcr = features.iter().map(|f| f.zcr).sum::<f64>() / features.len() as f64;
+    let var_zcr = features
+        .iter()
+        .map(|f| (f.zcr - mean_zcr).powi(2))
+        .sum::<f64>()
+        / features.len() as f64;
+    var_zcr.sqrt() > 0.015
+}
+
+fn cluster_acoustic_turns(cues: &[Cue], features: &[CueAcoustic], k: usize) -> Vec<usize> {
+    let n = cues.len();
+    let k = k.min(n).max(1);
+    let mut sorted_idx: Vec<usize> = (0..n).collect();
+    sorted_idx.sort_by(|&a, &b| {
+        features[a]
+            .zcr
+            .partial_cmp(&features[b].zcr)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut centroids: Vec<(f64, f64)> = (0..k)
+        .map(|i| {
+            let pick = sorted_idx[(i * n + n / (2 * k)).min(n - 1)];
+            (features[pick].zcr, features[pick].tilt)
+        })
+        .collect();
+
+    let mut assignments = vec![0usize; n];
+    for _ in 0..10 {
+        for i in 0..n {
+            let mut best = 0;
+            let mut best_dist = f64::MAX;
+            for (c_idx, &(cz, ct)) in centroids.iter().enumerate() {
+                let dz = features[i].zcr - cz;
+                let dt = (features[i].tilt - ct) * 0.25;
+                let dist = dz * dz + dt * dt;
+                if dist < best_dist {
+                    best_dist = dist;
+                    best = c_idx;
+                }
+            }
+            assignments[i] = best;
+        }
+        for (c_idx, centroid) in centroids.iter_mut().enumerate() {
+            let mut sum_z = 0.0;
+            let mut sum_t = 0.0;
+            let mut cnt = 0usize;
+            for i in 0..n {
+                if assignments[i] == c_idx {
+                    sum_z += features[i].zcr;
+                    sum_t += features[i].tilt;
+                    cnt += 1;
+                }
+            }
+            if cnt > 0 {
+                *centroid = (sum_z / cnt as f64, sum_t / cnt as f64);
+            }
+        }
+    }
+
+    normalize_speaker_order(&assignments, k)
+}
+
+fn assign_heuristic_turns(cues: &[Cue], k: usize) -> Vec<usize> {
+    let n = cues.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let k = k.min(n).max(1);
+    if k == 1 || n == 1 {
+        return vec![0; n];
+    }
+
+    let mut gaps: Vec<f64> = cues
+        .windows(2)
+        .map(|w| (w[1].start - w[0].end).max(0.0))
+        .collect();
+    gaps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_gap = gaps.get(gaps.len() / 2).copied().unwrap_or(0.5);
+    let pause_threshold = (median_gap * 1.25).max(0.6);
+
+    let mut assignments = Vec::with_capacity(n);
+    let mut current = 0usize;
+    assignments.push(current);
+
+    for i in 1..n {
+        let gap = (cues[i].start - cues[i - 1].end).max(0.0);
+        let prev_question = cues[i - 1].text.trim_end().ends_with('?')
+            || cues[i - 1].text.trim_end().ends_with('？');
+        let starts_with_dash = cues[i].text.trim_start().starts_with('-');
+        if starts_with_dash || prev_question || gap >= pause_threshold {
+            current = (current + 1) % k;
+        }
+        assignments.push(current);
+    }
+
+    // Ensure at least two speakers appear if pauses were completely uniform.
+    if assignments.iter().all(|&a| a == 0) && n >= 2 {
+        for (i, a) in assignments.iter_mut().enumerate() {
+            *a = i % k;
+        }
+    }
+
+    normalize_speaker_order(&assignments, k)
+}
+
+fn normalize_speaker_order(raw: &[usize], k: usize) -> Vec<usize> {
+    let mut map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut next_id = 0usize;
+    raw.iter()
+        .map(|&r| {
+            *map.entry(r).or_insert_with(|| {
+                let id = next_id.min(k.saturating_sub(1));
+                next_id += 1;
+                id
+            })
+        })
         .collect()
 }
 
@@ -574,6 +1318,7 @@ pub fn summarize(transcript: &Transcript, segment_count: usize, duration: f64) -
         duration: total_duration,
         speaking_seconds,
         keywords,
+        speakers: speaker_stats(&transcript.cues),
         segments,
     }
 }
@@ -800,5 +1545,74 @@ mod tests {
         assert_eq!(limited.len(), 1);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_ass_dialogue_with_actors_and_strips_overrides() {
+        let ass = "[Script Info]\nTitle: Demo\n\n[Events]\n\
+                   Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n\
+                   Dialogue: 0,0:00:01.00,0:00:03.50,Default,Alice,0,0,0,,{\\an8\\pos(100,200)}Hello, world!\\NHow are you?\n\
+                   Dialogue: 0,0:00:04.00,0:00:06.00,Default,Bob,0,0,0,,I am doing great.\n\
+                   Dialogue: 0,0:00:07.00,0:00:08.00,Default,,0,0,0,,{\\p1}m 0 0 l 100 100{\\p0}\n";
+        let cues = parse(ass);
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].speaker.as_deref(), Some("Alice"));
+        assert_eq!(cues[0].text, "Hello, world! How are you?");
+        assert_eq!(cues[0].start, 1.0);
+        assert_eq!(cues[0].end, 3.5);
+        assert_eq!(cues[1].speaker.as_deref(), Some("Bob"));
+        assert_eq!(cues[1].text, "I am doing great.");
+    }
+
+    #[test]
+    fn parses_vtt_voice_tags_and_inline_speakers_and_tinydiarize() {
+        let vtt = "WEBVTT\n\n\
+                   00:01.000 --> 00:03.000\n<v.loud Host>Welcome back everyone</v>\n\n\
+                   00:04.000 --> 00:06.000\n[Guest 1]: Thanks for having me\n\n\
+                   00:07.000 --> 00:09.000\n[SPEAKER_TURN] Let us dive in\n";
+        let cues = parse(vtt);
+        assert_eq!(cues.len(), 3);
+        assert_eq!(cues[0].speaker.as_deref(), Some("Host"));
+        assert_eq!(cues[0].text, "Welcome back everyone");
+        assert_eq!(cues[1].speaker.as_deref(), Some("Guest 1"));
+        assert_eq!(cues[1].text, "Thanks for having me");
+        assert_eq!(cues[2].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(cues[2].text, "Let us dive in");
+    }
+
+    #[test]
+    fn diarize_rename_filter_and_export_roundtrip() {
+        let srt = "1\n00:00:01,000 --> 00:00:03,000\nWhat is the refund policy?\n\n\
+                   2\n00:00:05,000 --> 00:00:08,000\n- You can return any item within thirty days.\n\n\
+                   3\n00:00:12,000 --> 00:00:15,000\nDoes that include digital downloads?\n\n\
+                   4\n00:00:17,000 --> 00:00:20,000\n- Yes, if it was not downloaded yet.\n";
+        let mut transcript = Transcript {
+            source: format!(
+                "{}/unflick-diarize-test-{}.srt",
+                std::env::temp_dir().to_string_lossy(),
+                std::process::id()
+            ),
+            origin: "sidecar".into(),
+            cues: parse(srt),
+        };
+        let stats = diarize(&mut transcript, None, Some(2)).unwrap();
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats[0].name, "Speaker 1");
+        assert_eq!(stats[1].name, "Speaker 2");
+
+        let count = rename_speaker(&mut transcript, "Speaker 1", "Customer").unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(transcript.cues[0].speaker.as_deref(), Some("Customer"));
+
+        let hits = search_filtered(&transcript.cues, "refund", Some("Customer"), 10);
+        assert_eq!(hits.len(), 1);
+        let miss = search_filtered(&transcript.cues, "refund", Some("Speaker 2"), 10);
+        assert!(miss.is_empty());
+
+        let exported_txt = export(&transcript, "txt", Some("Customer")).unwrap();
+        assert!(exported_txt.contains("Customer: What is the refund policy?"));
+        assert!(!exported_txt.contains("thirty days"));
+
+        let _ = std::fs::remove_file(speaker_override_path_for(&transcript.source));
     }
 }

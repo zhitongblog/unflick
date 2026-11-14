@@ -74,6 +74,31 @@ export function schemeOf(input: string): string | null {
   return scheme.toLowerCase();
 }
 
+/**
+ * Recognise a Windows-style share path (`\\server\share\file` or
+ * `//server/share/file`) so `classifyOpenError` can treat a Windows share
+ * typed on macOS/Linux (or vice versa when it mentions `is a Windows share
+ * path`) with the SMB mount hint rather than generic `unreadable`.
+ */
+export function isWindowsSharePath(input: string): boolean {
+  const rest = input.startsWith("\\\\")
+    ? input.slice(2)
+    : input.startsWith("//")
+      ? input.slice(2)
+      : null;
+  if (!rest) return false;
+  const sep = rest.search(/[\\/]/);
+  if (sep <= 0) return false;
+  const host = rest.slice(0, sep);
+  const tail = rest.slice(sep + 1);
+  if (!host || !tail || host.includes(" ")) return false;
+  // On macOS `//Volumes/...` is a root-relative local path, not a share host.
+  if (host === "Volumes" || host === "mnt" || host === "tmp" || host === "Users") {
+    return false;
+  }
+  return true;
+}
+
 /** A printable version of whatever the rejection carried. */
 function toDetail(raw: unknown): string {
   if (typeof raw === "string" && raw.trim() !== "") return raw;
@@ -127,6 +152,12 @@ export function classifyOpenError(
   }
   if (scheme && !PLAYABLE_SCHEMES.has(scheme)) {
     return { kind: "unsupported_scheme", scheme, detail };
+  }
+  if (
+    lower.includes("is a windows share path") ||
+    (target && !scheme && isWindowsSharePath(target) && lower.includes("not mounted"))
+  ) {
+    return { kind: "unsupported_scheme", scheme: "smb", detail };
   }
   if (scheme === "http" || scheme === "https") {
     return { kind: "network", scheme, detail };

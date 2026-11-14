@@ -665,3 +665,220 @@ fn control_socket_speaks_http_for_the_browser_extension() {
     }
 }
 
+// ─── v1.0.1: Speaker Diarization, ASS/Export, Contact Sheet, Scene Detect, Playlist I/O & Handoff ─
+
+#[test]
+fn ass_transcript_speaker_diarization_rename_and_export() {
+    let f = fixtures();
+    let d = Daemon::start();
+
+    let ass_path = d.data_dir().join("interview.ass");
+    std::fs::write(
+        &ass_path,
+        "\
+[Script Info]
+Title: Interview
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.50,Default,Alice,0,0,0,,{\\i1}Welcome to the architecture review.{\\i0}
+Dialogue: 0,0:00:04.00,0:00:07.00,Default,Bob,0,0,0,,Thanks Alice! Let's check the refund policy first.
+Dialogue: 0,0:00:08.00,0:00:10.50,Default,Alice,0,0,0,,Agreed, the refund policy is critical.
+",
+    )
+    .expect("write ass file");
+
+    let ass_str = ass_path.to_string_lossy().to_string();
+
+    // 1. Read ASS transcript with speaker labels
+    let got = d
+        .send("transcript_get", json!({ "file": ass_str }))
+        .expect_ok()
+        .data();
+    let cues = got["cues"].as_array().unwrap();
+    assert_eq!(cues.len(), 3);
+    assert_eq!(cues[0]["speaker"], "Alice");
+    assert_eq!(cues[0]["text"], "Welcome to the architecture review.");
+    assert_eq!(cues[1]["speaker"], "Bob");
+
+    // 2. Rename speaker Alice -> Host (persisted in cache)
+    let renamed = d
+        .send(
+            "transcript_rename_speaker",
+            json!({ "file": ass_str, "from": "Alice", "to": "Host" }),
+        )
+        .expect_ok()
+        .data();
+    assert_eq!(renamed["updated"], 2);
+
+    // 3. Filter transcript search by speaker
+    let search_host = d
+        .send(
+            "transcript_search",
+            json!({ "file": ass_str, "query": "refund", "speaker": "Host" }),
+        )
+        .expect_ok()
+        .data();
+    let matches = search_host["matches"].as_array().unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0]["speaker"], "Host");
+
+    // 4. Export transcript as SRT and TXT
+    let srt_out = d.data_dir().join("exported.srt");
+    d.send(
+        "transcript_export",
+        json!({
+            "file": ass_str,
+            "output": srt_out.to_string_lossy(),
+            "format": "srt",
+        }),
+    )
+    .expect_ok();
+    let srt_body = std::fs::read_to_string(&srt_out).expect("read exported srt");
+    assert!(srt_body.contains("[Host]: Welcome to the architecture review."));
+    assert!(srt_body.contains("[Bob]: Thanks Alice!"));
+
+    // 5. Run lightweight speaker diarization on the playing file's plain SRT
+    d.play(&f.with_subtitles);
+    let diarized = d
+        .send("transcript_speakers", json!({ "detect": true, "count": 2 }))
+        .expect_ok()
+        .data();
+    let speakers = diarized["speakers"].as_array().unwrap();
+    assert!(
+        !speakers.is_empty(),
+        "expected diarized speakers, got {diarized}"
+    );
+}
+
+#[test]
+fn frame_contact_sheet_and_scene_detection_work_via_daemon_and_mcp() {
+    let f = fixtures();
+    let d = Daemon::start();
+    d.play(&f.plain);
+
+    // 1. Contact sheet to disk via daemon
+    let sheet_path = d.data_dir().join("sheet.jpg");
+    let sheet = d
+        .send(
+            "frame_contact_sheet",
+            json!({
+                "cols": 2,
+                "rows": 2,
+                "start": 0.5,
+                "end": 8.5,
+                "max_edge": 640,
+                "output": sheet_path.to_string_lossy(),
+            }),
+        )
+        .expect_ok()
+        .data();
+    assert_eq!(sheet["cols"], 2);
+    assert_eq!(sheet["rows"], 2);
+    assert_eq!(sheet["timestamps"].as_array().unwrap().len(), 4);
+    let bytes = std::fs::read(&sheet_path).expect("contact sheet written");
+    assert!(bytes.len() > 200 && bytes[0] == 0xFF && bytes[1] == 0xD8);
+
+    // 2. Contact sheet via MCP returns an image content block
+    let replies = mcp_roundtrip(
+        &[json!({
+            "jsonrpc": "2.0", "id": 41, "method": "tools/call",
+            "params": {
+                "name": "frame_contact_sheet",
+                "arguments": { "cols": 2, "rows": 1, "max_edge": 512 }
+            }
+        })],
+        &d,
+    );
+    let content = replies[&41]["result"]["content"]
+        .as_array()
+        .expect("MCP content blocks");
+    assert_eq!(content.len(), 2);
+    assert_eq!(content[0]["type"], "text");
+    assert_eq!(content[1]["type"], "image");
+    assert_eq!(content[1]["mimeType"], "image/jpeg");
+
+    // 3. Visual scene detection with --to-chapters
+    let scenes = d
+        .send(
+            "scene_detect",
+            json!({ "threshold": 0.05, "to_chapters": true }),
+        )
+        .expect_ok()
+        .data();
+    assert_eq!(scenes["applied_as_chapters"], true);
+    assert!(!scenes["scenes"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn playlist_m3u_and_pls_save_load_and_timestamp_handoff() {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let f = fixtures();
+    let d = Daemon::start();
+
+    d.send("playlist_add", json!({ "file": f.plain.to_string_lossy() }))
+        .expect_ok();
+    d.send(
+        "playlist_add",
+        json!({ "file": f.with_subtitles.to_string_lossy() }),
+    )
+    .expect_ok();
+
+    let m3u_path = d.data_dir().join("queue.m3u");
+    let saved = d
+        .send("playlist_save", json!({ "path": m3u_path.to_string_lossy() }))
+        .expect_ok()
+        .data();
+    assert_eq!(saved["count"], 2);
+
+    d.send("playlist_clear", json!({})).expect_ok();
+    assert_eq!(
+        d.send("playlist_list", json!({}))
+            .expect_ok()
+            .data()
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+
+    let loaded = d
+        .send(
+            "playlist_load",
+            json!({ "path": m3u_path.to_string_lossy(), "append": false }),
+        )
+        .expect_ok()
+        .data();
+    assert_eq!(loaded["added"], 2);
+
+    // Timestamp handoff via unflick://play?url=...&t=5
+    let deep_link = format!("unflick://play?url={}&t=5", f.plain.to_string_lossy());
+    d.send("play", json!({ "file": deep_link })).expect_ok();
+    d.wait_for(
+        |d| d.status()["position"].as_f64().unwrap_or(0.0) >= 4.0,
+        "deep link with &t=5 to seek near 5s",
+    );
+
+    // Timestamp handoff via HTTP POST /open with seek: 2.0
+    let body = serde_json::to_string(&json!({
+        "url": f.with_subtitles.to_string_lossy(),
+        "action": "play",
+        "seek": 2.0
+    }))
+    .unwrap();
+    let mut s = TcpStream::connect(d.addr()).expect("connect for POST /open with seek");
+    write!(
+        s,
+        "POST /open HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        d.addr(),
+        body.len(),
+        body
+    )
+    .unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200"), "unexpected POST /open: {raw}");
+}
+

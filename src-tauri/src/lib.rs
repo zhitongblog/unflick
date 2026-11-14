@@ -482,6 +482,19 @@ pub fn run(allow_dev: bool) {
             commands::script_toggle,
             commands::script_remove,
             commands::open_script_dialog,
+            // v1.1 — Interactive transcript, speaker diarization, scenes, playlist I/O
+            commands::transcript_get,
+            commands::transcript_speakers,
+            commands::transcript_rename_speaker,
+            commands::transcript_export,
+            commands::chapters_generate,
+            commands::chapters_clear,
+            commands::scene_detect,
+            commands::playlist_save,
+            commands::playlist_load,
+            commands::open_playlist_dialog,
+            commands::save_playlist_dialog,
+            commands::save_transcript_dialog,
         ])
         .on_window_event(|window, event| {
             // The video popup is a top-level WS_POPUP owned by this window.
@@ -723,10 +736,10 @@ fn open_launch_file(app: &tauri::AppHandle, ctx: &core::daemon::ControlContext) 
         }
     }
     core::boot::mark("open: starting the launch file");
-    let parsed_uri = core::source::parse_unflick_uri(&path);
-    let is_queue = matches!(parsed_uri.as_ref(), Some((action, _)) if action == "queue");
+    let parsed_uri = core::source::parse_unflick_uri_with_seek(&path);
+    let is_queue = matches!(parsed_uri.as_ref(), Some((action, _, _)) if action == "queue");
     let effective_path = parsed_uri
-        .map(|(_, target)| target)
+        .map(|(_, target, _)| target)
         .unwrap_or_else(|| path.clone());
     let result = core::daemon::dispatch(ctx, "play", &serde_json::json!({ "file": path }));
     if result.success {

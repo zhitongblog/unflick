@@ -81,6 +81,7 @@ pub const ACTIONS: &[Action] = &[
     Action { id: "music_mode",        default: "Mod+m",       label: "Music mode",              group: "window" },
     Action { id: "toggle_library",    default: "l",           label: "Library",                 group: "window" },
     Action { id: "toggle_playlist",   default: "n",           label: "Playlist",                group: "window" },
+    Action { id: "toggle_transcript", default: "t",           label: "Transcript",              group: "window" },
     // ── Capture ──
     Action { id: "screenshot",        default: "s",           label: "Screenshot",              group: "capture" },
     Action { id: "clip",              default: "c",           label: "Clip",                    group: "capture" },

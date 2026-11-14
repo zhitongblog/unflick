@@ -131,7 +131,7 @@ impl MacosVideoSurface {
         // Create the child NSView at the parent's full size. set_geometry
         // will reposition immediately when the frontend's ResizeObserver
         // first fires.
-        let child: Retained<NSView> = unsafe {
+        let child: Retained<NSView> = {
             let frame = NSRect::new(
                 NSPoint::new(0.0, 0.0),
                 NSSize::new(w.max(1) as f64, h.max(1) as f64),
@@ -321,7 +321,7 @@ impl VideoSurface for MacosVideoSurface {
         // The frontend gives us coords in the WebView's client space (y
         // measured from the top, like CSS). Cocoa's default coord system
         // is flipped — y from the bottom — so we have to translate.
-        unsafe {
+        {
             let parent_bounds = self.parent.bounds();
             let parent_h = parent_bounds.size.height;
             let cocoa_y = parent_h - (y as f64) - (h.max(1) as f64);
@@ -355,15 +355,11 @@ impl VideoSurface for MacosVideoSurface {
     fn set_visible(&self, visible: bool) {
         // setHidden:YES removes from rendering but keeps the view in the
         // hierarchy, so we don't have to re-add on show.
-        unsafe {
-            self.child.setHidden(!visible);
-        }
+        self.child.setHidden(!visible);
     }
 
     fn set_alpha(&self, alpha: u8) {
-        unsafe {
-            self.child.setAlphaValue((alpha as f64) / 255.0);
-        }
+        self.child.setAlphaValue((alpha as f64) / 255.0);
     }
 
     fn set_always_on_top(&self, _enabled: bool) {
@@ -402,8 +398,6 @@ impl VideoSurface for MacosVideoSurface {
 
 impl Drop for MacosVideoSurface {
     fn drop(&mut self) {
-        unsafe {
-            self.child.removeFromSuperview();
-        }
+        self.child.removeFromSuperview();
     }
 }

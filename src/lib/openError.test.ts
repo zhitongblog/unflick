@@ -32,6 +32,13 @@ describe("classifyOpenError", () => {
     const nfs = classifyOpenError("nfs://nas/export/film.mkv", "loading failed");
     expect(nfs.kind).toBe("unsupported_scheme");
     expect(nfs.scheme).toBe("nfs");
+
+    const uncOnMac = classifyOpenError(
+      "//server/share/film.mkv",
+      "//server/share/film.mkv is a Windows share path, and server is not mounted here.",
+    );
+    expect(uncOnMac.kind).toBe("unsupported_scheme");
+    expect(uncOnMac.scheme).toBe("smb");
   });
 
   it("calls an http failure a network failure", () => {

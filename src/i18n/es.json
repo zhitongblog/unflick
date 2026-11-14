@@ -99,7 +99,13 @@
     "removeFailed": "No se pudo quitar esa entrada",
     "nextFailed": "No se pudo pasar al siguiente elemento",
     "prevFailed": "No se pudo volver al elemento anterior",
-    "playFailed": "No se pudo reproducir esa entrada"
+    "playFailed": "No se pudo reproducir esa entrada",
+    "importList": "Importar lista…",
+    "exportList": "Exportar lista…",
+    "imported": "Se cargaron {count} elementos",
+    "exported": "Lista guardada",
+    "importFailed": "No se pudo cargar la lista",
+    "exportFailed": "No se pudo guardar la lista"
   },
   "player": {
     "play": "Reproducir",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "Capítulos",
-    "none": "Este archivo no tiene capítulos."
+    "none": "Este archivo no tiene capítulos.",
+    "fromTranscript": "Generar desde subtítulos",
+    "detectScenes": "Detectar escenas visuales",
+    "detecting": "Detectando escenas…",
+    "clearGenerated": "Borrar capítulos generados",
+    "generated": "Se generaron {count} capítulos",
+    "generateFailed": "No se pudieron generar capítulos"
   },
   "keybinds": {
     "section": "Atajos de teclado",
@@ -440,7 +452,8 @@
     "open_file": "Abrir archivo",
     "open_url": "Abrir URL",
     "settings": "Ajustes",
-    "incognito": "Modo incógnito"
+    "incognito": "Modo incógnito",
+    "toggle_transcript": "Transcripción"
   },
   "mouse": {
     "section": "Ratón",
@@ -574,5 +587,22 @@
     "add": "Instalar script…",
     "empty": "No hay scripts de usuario instalados.",
     "remove": "Eliminar script"
+  },
+  "transcript": {
+    "title": "Transcripción",
+    "close": "Cerrar (T)",
+    "searchPlaceholder": "Buscar diálogo…",
+    "allSpeakers": "Todos los hablantes",
+    "detectSpeakers": "Detectar hablantes",
+    "detectingSpeakers": "Detectando…",
+    "renameSpeaker": "Renombrar hablante",
+    "renamePlaceholder": "Nombre del hablante",
+    "export": "Exportar…",
+    "exported": "Transcripción exportada",
+    "exportFailed": "No se pudo exportar la transcripción",
+    "empty": "No hay subtítulos cargados para este archivo.",
+    "noMatch": "Ninguna línea coincide con el filtro.",
+    "autoScroll": "Seguir reproducción",
+    "cues": "{count} líneas"
   }
 }

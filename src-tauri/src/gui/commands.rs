@@ -728,7 +728,36 @@ pub fn player_play(
 ) -> Result<Value, String> {
     eprintln!("[unflick] player_play file={file:?} seek={seek:?}");
     let player = gui_player.mpv().map_err(|e| e.to_string())?;
-    player.play(&file, seek, volume, speed).map_err(|e| e.to_string())?;
+
+    if let Some(scheme) = crate::core::source::scheme_of(&file) {
+        let supported = player.supported_protocols();
+        if !supported.iter().any(|p| p == &scheme) {
+            return Err(crate::core::source::unsupported_message(
+                &file,
+                &scheme,
+                &supported,
+            ));
+        }
+    }
+
+    if !std::path::Path::new(&file).exists() {
+        if let Some(host) = crate::core::source::windows_share_host(&file) {
+            if let Some(how) = crate::core::source::mount_how("smb") {
+                return Err(format!(
+                    "{} is a Windows share path, and {} is not mounted here. {}.",
+                    file, host, how
+                ));
+            }
+        }
+    }
+
+    let outcome = player.play(&file, seek, volume, speed).map_err(|e| {
+        let msg = e.to_string();
+        crate::core::source::scheme_of(&file)
+            .and_then(|scheme| crate::core::source::share_open_failed_message(&scheme, &msg))
+            .unwrap_or(msg)
+    })?;
+    let loaded = outcome == crate::core::player::LoadOutcome::Loaded;
     crate::core::boot::mark("play: mpv reports the file loaded");
     // Local files only — a URL played from the window arrives here as the
     // *resolved* stream, and its hooks are armed separately with the page
@@ -740,7 +769,10 @@ pub fn player_play(
         // this file have turned up. Returns immediately.
         crate::core::bilingual::after_play_hooks(player_arc.clone());
     }
-    Ok(json!({"message": format!("playing {}", file)}))
+    Ok(json!({
+        "message": if loaded { format!("playing {}", file) } else { format!("opening {} (still loading)", file) },
+        "loaded": loaded,
+    }))
 }
 
 #[command]
@@ -1035,12 +1067,12 @@ pub fn open_default_apps_settings() -> Result<(), String> {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the cmd flash
         }
         cmd.spawn().map_err(|e| format!("failed to open settings: {}", e))?;
+        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
-        return Err("Setting default app from inside the app is Windows-only for now".to_string());
+        Err("Setting default app from inside the app is Windows-only for now".to_string())
     }
-    Ok(())
 }
 
 // ─── Library commands ────────────────────────────────────────────────────────
@@ -2487,6 +2519,264 @@ pub async fn open_script_dialog() -> Result<Value, String> {
         rfd::FileDialog::new()
             .add_filter("mpv Scripts", &["lua", "js"])
             .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(path) => Ok(json!({ "path": path.to_string_lossy().to_string() })),
+        None => Ok(json!({ "path": null })),
+    }
+}
+
+// ─── v1.1 — Interactive transcript, speaker diarization, scenes, playlist I/O ─
+
+#[command]
+pub fn transcript_get(
+    speaker: Option<String>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let mut transcript = crate::core::transcript::load_or_current(&player, file.as_deref())
+        .map_err(|e| e.to_string())?;
+    let speakers = crate::core::transcript::speaker_stats(&transcript.cues);
+    transcript.cues =
+        crate::core::transcript::filter_by_speaker(&transcript.cues, speaker.as_deref());
+    Ok(json!({
+        "source": transcript.source,
+        "origin": transcript.origin,
+        "cues": transcript.cues,
+        "speakers": speakers,
+    }))
+}
+
+#[command]
+pub async fn transcript_speakers(
+    detect: Option<bool>,
+    count: Option<usize>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let mut transcript = crate::core::transcript::load_or_current(&player, file.as_deref())
+        .map_err(|e| e.to_string())?;
+    let media_path = file.clone().or_else(|| player.status().file);
+    let run_detect = detect.unwrap_or(false);
+
+    let (transcript, stats) = tokio::task::spawn_blocking(move || {
+        let stats = if run_detect {
+            crate::core::transcript::diarize(&mut transcript, media_path.as_deref(), count)
+                .map_err(|e| e.to_string())?
+        } else {
+            crate::core::transcript::speaker_stats(&transcript.cues)
+        };
+        Ok::<_, String>((transcript, stats))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(json!({
+        "source": transcript.source,
+        "origin": transcript.origin,
+        "cues": transcript.cues,
+        "speakers": stats,
+    }))
+}
+
+#[command]
+pub fn transcript_rename_speaker(
+    from: String,
+    to: String,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let mut transcript = crate::core::transcript::load_or_current(&player, file.as_deref())
+        .map_err(|e| e.to_string())?;
+    let updated = crate::core::transcript::rename_speaker(&mut transcript, &from, &to)
+        .map_err(|e| e.to_string())?;
+    let stats = crate::core::transcript::speaker_stats(&transcript.cues);
+    Ok(json!({
+        "from": from,
+        "to": to,
+        "updated": updated,
+        "cues": transcript.cues,
+        "speakers": stats,
+    }))
+}
+
+#[command]
+pub fn transcript_export(
+    output: String,
+    format: Option<String>,
+    speaker: Option<String>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let transcript = crate::core::transcript::load_or_current(&player, file.as_deref())
+        .map_err(|e| e.to_string())?;
+    let fmt = format.as_deref().unwrap_or("txt");
+    let content = crate::core::transcript::export(&transcript, fmt, speaker.as_deref())
+        .map_err(|e| e.to_string())?;
+    if let Some(parent) = std::path::Path::new(&output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+    std::fs::write(&output, &content).map_err(|e| format!("failed to write {}: {}", output, e))?;
+    Ok(json!({
+        "path": output,
+        "format": fmt,
+        "bytes": content.len(),
+    }))
+}
+
+#[command]
+pub fn chapters_generate(
+    count: Option<usize>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    let transcript =
+        crate::core::transcript::load_current(&player).map_err(|e| e.to_string())?;
+    let duration = player.status().duration;
+    let derived = crate::core::transcript::derive_chapters(
+        &transcript.cues,
+        count.unwrap_or(8).clamp(2, 50),
+        duration,
+    );
+    if derived.is_empty() {
+        return Err(
+            "could not derive chapters: the transcript is too short or has no pauses".to_string(),
+        );
+    }
+    player
+        .set_virtual_chapters(derived)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(player.chapter_list()).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn chapters_clear(gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let player = gui_player.mpv().map_err(|e| e.to_string())?;
+    player.clear_virtual_chapters();
+    serde_json::to_value(player.chapter_list()).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn scene_detect(
+    threshold: Option<f64>,
+    max_scenes: Option<usize>,
+    to_chapters: Option<bool>,
+    file: Option<String>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let player = gui_player
+        .render_player
+        .get()
+        .cloned()
+        .ok_or_else(|| "player not initialized".to_string())?;
+    let apply_chapters = to_chapters.unwrap_or(false);
+
+    let (scenes, applied) = tokio::task::spawn_blocking(move || {
+        let scenes = crate::core::vision::detect_scenes(
+            &player,
+            file.as_deref(),
+            threshold,
+            max_scenes,
+        )
+        .map_err(|e| e.to_string())?;
+        let mut applied = false;
+        if apply_chapters && !scenes.is_empty() {
+            let entries: Vec<(f64, String)> =
+                scenes.iter().map(|s| (s.time, s.title.clone())).collect();
+            if player.set_virtual_chapters(entries).is_ok() {
+                applied = true;
+            }
+        }
+        Ok::<_, String>((scenes, applied))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(json!({
+        "scenes": scenes,
+        "applied_as_chapters": applied,
+    }))
+}
+
+#[command]
+pub fn playlist_save(path: String, gui_player: State<'_, GuiPlayer>) -> Result<Value, String> {
+    let count = gui_player
+        .playlist
+        .save_to_file(&path)
+        .map_err(|e| e.to_string())?;
+    Ok(json!({ "path": path, "count": count }))
+}
+
+#[command]
+pub fn playlist_load(
+    path: String,
+    append: Option<bool>,
+    gui_player: State<'_, GuiPlayer>,
+) -> Result<Value, String> {
+    let append = append.unwrap_or(false);
+    let added = gui_player
+        .playlist
+        .load_from_file(&path, append)
+        .map_err(|e| e.to_string())?;
+    Ok(json!({
+        "path": path,
+        "added": added,
+        "items": gui_player.playlist.list(),
+    }))
+}
+
+#[command]
+pub async fn open_playlist_dialog() -> Result<Value, String> {
+    let result = tokio::task::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .add_filter("Playlists", &["m3u", "m3u8", "pls"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(path) => Ok(json!({ "path": path.to_string_lossy().to_string() })),
+        None => Ok(json!({ "path": null })),
+    }
+}
+
+#[command]
+pub async fn save_playlist_dialog(default_name: Option<String>) -> Result<Value, String> {
+    let name = default_name.unwrap_or_else(|| "playlist.m3u".to_string());
+    let result = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_file_name(&name)
+            .add_filter("M3U Playlist", &["m3u", "m3u8"])
+            .add_filter("PLS Playlist", &["pls"])
+            .save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Some(path) => Ok(json!({ "path": path.to_string_lossy().to_string() })),
+        None => Ok(json!({ "path": null })),
+    }
+}
+
+#[command]
+pub async fn save_transcript_dialog(default_name: Option<String>) -> Result<Value, String> {
+    let name = default_name.unwrap_or_else(|| "transcript.txt".to_string());
+    let result = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_file_name(&name)
+            .add_filter("Transcript", &["txt", "srt", "vtt", "json"])
+            .save_file()
     })
     .await
     .map_err(|e| e.to_string())?;

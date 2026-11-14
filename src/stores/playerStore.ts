@@ -237,6 +237,12 @@ const LOCAL_CHANGE_GRACE_MS = 700;
 /** When the UI last set volume or speed itself. */
 let lastLocalChange = 0;
 
+/**
+ * File that returned `loaded: false` (still opening on a slow share) and is
+ * waiting for its first decoded frame before being added to play history.
+ */
+let pendingHistoryFile: string | null = null;
+
 interface MpvSubTrack {
   id: number;
   title: string | null;
@@ -339,6 +345,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       ...(typeof s.sub_delay === "number" ? { subDelay: s.sub_delay } : {}),
       ...(typeof s.audio_delay === "number" ? { audioDelay: s.audio_delay } : {}),
     });
+
+    if (
+      pendingHistoryFile &&
+      s.file === pendingHistoryFile &&
+      (s.duration > 0 || s.position > 0)
+    ) {
+      const toRecord = pendingHistoryFile;
+      pendingHistoryFile = null;
+      if (!useIncognitoStore.getState().enabled) {
+        invoke("record_play", { path: toRecord })
+          .then(() => {
+            window.dispatchEvent(new CustomEvent("unflick:recent-changed"));
+          })
+          .catch(() => {});
+      }
+    }
 
     // Chapters can appear or vanish without a file change — an AI agent
     // calling generate_chapters, or clear_chapters. Refetch only when the
@@ -529,13 +551,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     }
 
+    let loadedImmediately = true;
     try {
-      await invoke("player_play", {
+      const res = await invoke<{ loaded?: boolean }>("player_play", {
         file: mediaTarget,
         seek: resumeAt,
         volume: null,
         speed: null,
       });
+      loadedImmediately = res?.loaded !== false;
       set({ state: "playing", file, position: resumeAt ?? 0 });
     } catch (e) {
       // Until the backend learned to wait for mpv's verdict, this never
@@ -546,6 +570,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const message =
         typeof e === "string" ? e : e instanceof Error ? e.message : "Could not open this file";
       console.error("player_play failed:", e);
+      pendingHistoryFile = null;
       set({ openError: message, openErrorTarget: file, state: "stopped" });
       window.dispatchEvent(
         new CustomEvent("unflick:toast", { detail: { kind: "error", message } }),
@@ -562,9 +587,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       invoke("arm_post_play_hooks", { url: file }).catch(() => {});
     }
 
-    // History — skip in incognito mode.
+    // History — skip in incognito mode, and defer if the source is still
+    // opening (`loaded: false`) so a dead share or stalled pipe never
+    // pollutes "Recently played".
     if (!useIncognitoStore.getState().enabled) {
-      invoke("record_play", { path: file }).catch(() => {});
+      if (loadedImmediately) {
+        pendingHistoryFile = null;
+        invoke("record_play", { path: file })
+          .then(() => {
+            window.dispatchEvent(new CustomEvent("unflick:recent-changed"));
+          })
+          .catch(() => {});
+      } else {
+        pendingHistoryFile = file;
+      }
     }
 
     // Sidecar subtitle auto-load (movie.srt, movie.en.srt next to local video).

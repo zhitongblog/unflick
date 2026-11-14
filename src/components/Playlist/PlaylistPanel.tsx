@@ -129,6 +129,62 @@ export default function PlaylistPanel() {
     if (item) play(item.path);
   };
 
+  const handleImportPlaylist = async () => {
+    try {
+      const dialog = await invoke<{ path: string | null }>("open_playlist_dialog");
+      if (!dialog.path) return;
+      const res = await invoke<{ added: number }>("playlist_load", {
+        path: dialog.path,
+        append: items.length > 0,
+      });
+      await fetchPlaylist();
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "success",
+            message: t.playlist.imported.replace("{count}", String(res.added)),
+          },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "error",
+            message: typeof e === "string" ? e : t.playlist.importFailed,
+          },
+        }),
+      );
+    }
+  };
+
+  const handleExportPlaylist = async () => {
+    try {
+      const dialog = await invoke<{ path: string | null }>("save_playlist_dialog", {
+        defaultName: "playlist.m3u",
+      });
+      if (!dialog.path) return;
+      await invoke("playlist_save", { path: dialog.path });
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "success",
+            message: t.playlist.exported,
+          },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "error",
+            message: typeof e === "string" ? e : t.playlist.exportFailed,
+          },
+        }),
+      );
+    }
+  };
+
   return (
     <>
       {/* Panel — slides in from the right and shares space with the
@@ -151,14 +207,40 @@ export default function PlaylistPanel() {
           </h2>
           <div className="flex items-center gap-1">
             {items.length > 0 && (
-              <button
-                className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
-                onClick={clear}
-                title={t.playlist.clear}
-              >
-                {t.common.clear}
-              </button>
+              <>
+                <button
+                  className="rounded-lg px-2 py-1 text-[10px] font-medium text-white/25 transition-colors hover:bg-white/6 hover:text-white/50"
+                  onClick={clear}
+                  title={t.playlist.clear}
+                >
+                  {t.common.clear}
+                </button>
+                <button
+                  className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/6 hover:text-white/60"
+                  onClick={handleExportPlaylist}
+                  title={t.playlist.exportList}
+                  aria-label={t.playlist.exportList}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+              </>
             )}
+            <button
+              className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/6 hover:text-white/60"
+              onClick={handleImportPlaylist}
+              title={t.playlist.importList}
+              aria-label={t.playlist.importList}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </button>
             <button
               className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/6 hover:text-white/60"
               onClick={handleAddFile}

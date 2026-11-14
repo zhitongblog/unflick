@@ -544,11 +544,22 @@ fn handle_http_client(
                     .get("action")
                     .and_then(|v| v.as_str())
                     .unwrap_or("play");
+                let seek = parsed
+                    .get("seek")
+                    .or_else(|| parsed.get("t"))
+                    .and_then(|v| v.as_f64())
+                    .filter(|s| s.is_finite() && *s >= 0.0);
                 let res = match action {
                     "queue" | "playlist_add" | "add" => {
                         dispatch_command(ctx, "playlist_add", &json!({ "file": url }))
                     }
-                    _ => dispatch_command(ctx, "play", &json!({ "file": url })),
+                    _ => {
+                        let mut play_args = json!({ "file": url });
+                        if let Some(s) = seek {
+                            play_args["seek"] = json!(s);
+                        }
+                        dispatch_command(ctx, "play", &play_args)
+                    }
                 };
                 ("200 OK", res)
             }
@@ -629,12 +640,19 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
     match cmd {
         "play" => {
             let raw_file = args["file"].as_str().unwrap_or("");
-            if let Some((action, target)) = source::parse_unflick_uri(raw_file) {
+            if let Some((action, target, uri_seek)) =
+                source::parse_unflick_uri_with_seek(raw_file)
+            {
                 if action == "queue" {
                     return dispatch_command(ctx, "playlist_add", &json!({ "file": target }));
                 }
                 let mut next_args = args.clone();
                 next_args["file"] = json!(target);
+                if next_args.get("seek").is_none() {
+                    if let Some(s) = uri_seek {
+                        next_args["seek"] = json!(s);
+                    }
+                }
                 return dispatch_command(ctx, "play", &next_args);
             }
             let file = raw_file;
@@ -806,6 +824,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                         // anyone wants to see in their history.
                         if loaded {
                             let _ = db.record_play(&src);
+                            ctx.notify(super::events::topic::RECENT);
                         } else {
                             // Still opening is not a play yet. Writing it
                             // here is what put a dead path in "continue
@@ -819,6 +838,7 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                                 Arc::clone(&ctx.player),
                                 Arc::clone(&ctx.db),
                                 src.clone(),
+                                ctx.events.clone(),
                             );
                         }
                     }
@@ -1659,10 +1679,18 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
             }
             let value = args.get("value").cloned().unwrap_or(Value::Null);
             match crate::core::settings::set(key, value.clone()) {
-                Ok(()) => CommandResult::ok_with_data(
-                    format!("set {}", key),
-                    json!({"key": key, "value": value}),
-                ),
+                Ok(()) => {
+                    ctx.notify(super::events::topic::SETTINGS);
+                    if key == "keybindings" {
+                        ctx.notify(super::events::topic::KEYBINDS);
+                    } else if key == "mouse_bindings" {
+                        ctx.notify(super::events::topic::MOUSEBINDS);
+                    }
+                    CommandResult::ok_with_data(
+                        format!("set {}", key),
+                        json!({"key": key, "value": value}),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -1672,7 +1700,15 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 return CommandResult::err("key is required");
             }
             match crate::core::settings::unset(key) {
-                Ok(true) => CommandResult::ok(format!("removed {}", key)),
+                Ok(true) => {
+                    ctx.notify(super::events::topic::SETTINGS);
+                    if key == "keybindings" {
+                        ctx.notify(super::events::topic::KEYBINDS);
+                    } else if key == "mouse_bindings" {
+                        ctx.notify(super::events::topic::MOUSEBINDS);
+                    }
+                    CommandResult::ok(format!("removed {}", key))
+                }
                 Ok(false) => CommandResult::err(format!("key not found: {}", key)),
                 Err(e) => CommandResult::err(e.to_string()),
             }
@@ -1916,17 +1952,73 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 json!({ "enabled": enabled }),
             )
         }
+        "playlist_save" => {
+            let Some(path) = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+            else {
+                return CommandResult::err("path is required");
+            };
+            match playlist.save_to_file(path) {
+                Ok(count) => CommandResult::ok_with_data(
+                    format!("saved {} item(s) to {}", count, path),
+                    json!({ "path": path, "count": count }),
+                ),
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "playlist_load" => {
+            let Some(path) = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+            else {
+                return CommandResult::err("path is required");
+            };
+            let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
+            match playlist.load_from_file(path, append) {
+                Ok(added_items) => {
+                    let count = added_items.len();
+                    ctx.notify(topic::PLAYLIST);
+                    CommandResult::ok_with_data(
+                        format!(
+                            "loaded {} item(s) from {}{}",
+                            count,
+                            path,
+                            if append { " (appended)" } else { "" }
+                        ),
+                        json!({
+                            "path": path,
+                            "added": count,
+                            "append": append,
+                            "items": playlist.list(),
+                        }),
+                    )
+                }
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
 
-        // ─── Transcript (v0.10 Phase 2) ───────────────────────────────────
+        // ─── Transcript (v0.10 Phase 2 + v1.1 Diarization & Export) ───────
         // These are the tools an external wrapper can't offer: they read the
-        // subtitle track the player already has open.
-        "transcript_get" => match crate::core::transcript::load_current(player) {
-            Ok(t) => CommandResult::ok_with_data(
-                format!("{} cue(s) from {}", t.cues.len(), t.origin),
-                json!(t),
-            ),
-            Err(e) => CommandResult::err(e.to_string()),
-        },
+        // subtitle track the player already has open (or an explicit file).
+        "transcript_get" => {
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let speaker = args.get("speaker").and_then(|v| v.as_str());
+            match crate::core::transcript::load_or_current(player, file_arg) {
+                Ok(mut t) => {
+                    t.cues = crate::core::transcript::filter_by_speaker(&t.cues, speaker);
+                    CommandResult::ok_with_data(
+                        format!("{} cue(s) from {}", t.cues.len(), t.origin),
+                        json!(t),
+                    )
+                }
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
         "transcript_search" => {
             let Some(query) = args.get("query").and_then(|v| v.as_str()) else {
                 return CommandResult::err("query is required");
@@ -1936,16 +2028,20 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .and_then(|v| v.as_u64())
                 .unwrap_or(20)
                 .clamp(1, 200) as usize;
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let speaker = args.get("speaker").and_then(|v| v.as_str());
 
-            let transcript = match crate::core::transcript::load_current(player) {
+            let transcript = match crate::core::transcript::load_or_current(player, file_arg) {
                 Ok(t) => t,
                 Err(e) => return CommandResult::err(e.to_string()),
             };
-            let hits = crate::core::transcript::search(&transcript.cues, query, limit);
+            let hits =
+                crate::core::transcript::search_filtered(&transcript.cues, query, speaker, limit);
             CommandResult::ok_with_data(
                 format!("{} match(es) for {:?}", hits.len(), query),
                 json!({
                     "query": query,
+                    "speaker": speaker,
                     "source": transcript.source,
                     "origin": transcript.origin,
                     "matches": hits,
@@ -1962,12 +2058,19 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 .and_then(|v| v.as_u64())
                 .unwrap_or(1)
                 .max(1) as usize;
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let speaker = args.get("speaker").and_then(|v| v.as_str());
 
-            let transcript = match crate::core::transcript::load_current(player) {
+            let transcript = match crate::core::transcript::load_or_current(player, file_arg) {
                 Ok(t) => t,
                 Err(e) => return CommandResult::err(e.to_string()),
             };
-            let hits = crate::core::transcript::search(&transcript.cues, query, occurrence);
+            let hits = crate::core::transcript::search_filtered(
+                &transcript.cues,
+                query,
+                speaker,
+                occurrence,
+            );
             let Some(cue) = hits.get(occurrence - 1) else {
                 return CommandResult::err(format!(
                     "no match #{} for {:?} ({} found)",
@@ -1987,6 +2090,129 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 ),
                 Err(e) => CommandResult::err(e.to_string()),
             }
+        }
+        "transcript_speakers" => {
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let detect = args.get("detect").and_then(|v| v.as_bool()).unwrap_or(false);
+            let count = args
+                .get("count")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let mut transcript = match crate::core::transcript::load_or_current(player, file_arg) {
+                Ok(t) => t,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+            let stats = if detect {
+                let media_path = file_arg
+                    .map(String::from)
+                    .or_else(|| player.status().file);
+                match crate::core::transcript::diarize(
+                    &mut transcript,
+                    media_path.as_deref(),
+                    count,
+                ) {
+                    Ok(s) => s,
+                    Err(e) => return CommandResult::err(e.to_string()),
+                }
+            } else {
+                crate::core::transcript::speaker_stats(&transcript.cues)
+            };
+            CommandResult::ok_with_data(
+                format!("{} speaker(s) in {}", stats.len(), transcript.origin),
+                json!({
+                    "source": transcript.source,
+                    "origin": transcript.origin,
+                    "speakers": stats,
+                }),
+            )
+        }
+        "transcript_rename_speaker" => {
+            let Some(from) = args
+                .get("from")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            else {
+                return CommandResult::err("from is required");
+            };
+            let Some(to) = args
+                .get("to")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            else {
+                return CommandResult::err("to is required");
+            };
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let mut transcript = match crate::core::transcript::load_or_current(player, file_arg) {
+                Ok(t) => t,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+            match crate::core::transcript::rename_speaker(&mut transcript, from, to) {
+                Ok(updated) => {
+                    let stats = crate::core::transcript::speaker_stats(&transcript.cues);
+                    CommandResult::ok_with_data(
+                        format!("renamed {:?} → {:?} ({} cue(s))", from, to, updated),
+                        json!({
+                            "from": from,
+                            "to": to,
+                            "updated": updated,
+                            "speakers": stats,
+                        }),
+                    )
+                }
+                Err(e) => CommandResult::err(e.to_string()),
+            }
+        }
+        "transcript_export" => {
+            let format = args
+                .get("format")
+                .and_then(|v| v.as_str())
+                .unwrap_or("txt");
+            let speaker = args.get("speaker").and_then(|v| v.as_str());
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let output = args
+                .get("output")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+
+            let transcript = match crate::core::transcript::load_or_current(player, file_arg) {
+                Ok(t) => t,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+            let content = match crate::core::transcript::export(&transcript, format, speaker) {
+                Ok(c) => c,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+
+            if let Some(path) = output {
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    if !parent.as_os_str().is_empty() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                }
+                if let Err(e) = std::fs::write(path, &content) {
+                    return CommandResult::err(format!("failed to write {}: {}", path, e));
+                }
+                return CommandResult::ok_with_data(
+                    format!("exported transcript ({}) → {}", format, path),
+                    json!({
+                        "path": path,
+                        "format": format,
+                        "bytes": content.len(),
+                    }),
+                );
+            }
+
+            CommandResult::ok_with_data(
+                format!("exported transcript ({}, {} bytes)", format, content.len()),
+                json!({
+                    "format": format,
+                    "bytes": content.len(),
+                    "content": content,
+                }),
+            )
         }
         "transcript_summary" => {
             let segments = args
@@ -2113,6 +2339,117 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 }),
             )
         }
+        "frame_contact_sheet" => {
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let cols = args.get("cols").and_then(|v| v.as_u64()).map(|v| v as u32);
+            let rows = args.get("rows").and_then(|v| v.as_u64()).map(|v| v as u32);
+            let start = args.get("start").and_then(|v| v.as_f64());
+            let end = args.get("end").and_then(|v| v.as_f64());
+            let max_edge = args
+                .get("max_edge")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32);
+            let sheet = match crate::core::vision::capture_contact_sheet(
+                player, file_arg, cols, rows, start, end, max_edge,
+            ) {
+                Ok(s) => s,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+
+            if let Some(path) = args
+                .get("output")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+            {
+                if let Err(e) = sheet.write_to(path) {
+                    return CommandResult::err(e.to_string());
+                }
+                return CommandResult::ok_with_data(
+                    format!(
+                        "{}×{} contact sheet ({:.1}s–{:.1}s) → {}",
+                        sheet.cols, sheet.rows, sheet.start, sheet.end, path
+                    ),
+                    json!({
+                        "cols": sheet.cols,
+                        "rows": sheet.rows,
+                        "start": sheet.start,
+                        "end": sheet.end,
+                        "timestamps": sheet.timestamps,
+                        "mime_type": sheet.mime_type,
+                        "bytes": sheet.bytes.len(),
+                        "path": path,
+                    }),
+                );
+            }
+
+            CommandResult::ok_with_data(
+                format!(
+                    "{}×{} contact sheet ({:.1}s–{:.1}s, {} bytes)",
+                    sheet.cols,
+                    sheet.rows,
+                    sheet.start,
+                    sheet.end,
+                    sheet.bytes.len()
+                ),
+                json!({
+                    "cols": sheet.cols,
+                    "rows": sheet.rows,
+                    "start": sheet.start,
+                    "end": sheet.end,
+                    "timestamps": sheet.timestamps,
+                    "mime_type": sheet.mime_type,
+                    "bytes": sheet.bytes.len(),
+                    "base64": sheet.to_base64(),
+                }),
+            )
+        }
+        "scene_detect" => {
+            let file_arg = args.get("file").and_then(|v| v.as_str());
+            let threshold = args.get("threshold").and_then(|v| v.as_f64());
+            let max_scenes = args
+                .get("max_scenes")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            let to_chapters = args
+                .get("to_chapters")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            let scenes = match crate::core::vision::detect_scenes(
+                player, file_arg, threshold, max_scenes,
+            ) {
+                Ok(s) => s,
+                Err(e) => return CommandResult::err(e.to_string()),
+            };
+
+            let mut applied = false;
+            if to_chapters && !scenes.is_empty() {
+                let entries: Vec<(f64, String)> = scenes
+                    .iter()
+                    .map(|s| (s.time, s.title.clone()))
+                    .collect();
+                if player.set_virtual_chapters(entries).is_ok() {
+                    applied = true;
+                }
+            }
+
+            CommandResult::ok_with_data(
+                format!(
+                    "detected {} scene(s){}",
+                    scenes.len(),
+                    if applied {
+                        " (applied as chapters)"
+                    } else {
+                        ""
+                    }
+                ),
+                json!({
+                    "scenes": scenes,
+                    "applied_as_chapters": applied,
+                }),
+            )
+        }
 
         // ─── Keyboard bindings ────────────────────────────────────────────
         // Settings-file operations, so they work with or without a player.
@@ -2131,24 +2468,32 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 return CommandResult::err("key is required");
             };
             match crate::core::keybind::set(action, key) {
-                Ok(normalized) => CommandResult::ok_with_data(
-                    format!("{} → {}", action, normalized),
-                    json!({ "action": action, "key": normalized }),
-                ),
+                Ok(normalized) => {
+                    ctx.notify(super::events::topic::KEYBINDS);
+                    CommandResult::ok_with_data(
+                        format!("{} → {}", action, normalized),
+                        json!({ "action": action, "key": normalized }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
         "keybind_reset" => {
             let action = args.get("action").and_then(|v| v.as_str());
             match crate::core::keybind::reset(action) {
-                Ok(count) => CommandResult::ok_with_data(
-                    match action {
-                        Some(a) if count > 0 => format!("{} reset to its default", a),
-                        Some(a) => format!("{} was already at its default", a),
-                        None => format!("{} binding(s) reset", count),
-                    },
-                    json!({ "reset": count }),
-                ),
+                Ok(count) => {
+                    if count > 0 {
+                        ctx.notify(super::events::topic::KEYBINDS);
+                    }
+                    CommandResult::ok_with_data(
+                        match action {
+                            Some(a) if count > 0 => format!("{} reset to its default", a),
+                            Some(a) => format!("{} was already at its default", a),
+                            None => format!("{} binding(s) reset", count),
+                        },
+                        json!({ "reset": count }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -2319,10 +2664,13 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
         },
 
         "recent_clear" => match db.clear_recent() {
-            Ok(n) => CommandResult::ok_with_data(
-                format!("cleared {} history entr(ies)", n),
-                json!({ "cleared": n }),
-            ),
+            Ok(n) => {
+                ctx.notify(super::events::topic::RECENT);
+                CommandResult::ok_with_data(
+                    format!("cleared {} history entr(ies)", n),
+                    json!({ "cleared": n }),
+                )
+            }
             Err(e) => CommandResult::err(e.to_string()),
         },
 
@@ -2503,24 +2851,32 @@ fn dispatch_command(ctx: &ControlContext, cmd: &str, args: &Value) -> CommandRes
                 return CommandResult::err("action is required");
             };
             match crate::core::mousebind::set(trigger, action) {
-                Ok(a) => CommandResult::ok_with_data(
-                    format!("{} → {}", trigger, a),
-                    json!({ "trigger": trigger, "action": a }),
-                ),
+                Ok(a) => {
+                    ctx.notify(super::events::topic::MOUSEBINDS);
+                    CommandResult::ok_with_data(
+                        format!("{} → {}", trigger, a),
+                        json!({ "trigger": trigger, "action": a }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
         "mouse_reset" => {
             let trigger = args.get("trigger").and_then(|v| v.as_str());
             match crate::core::mousebind::reset(trigger) {
-                Ok(count) => CommandResult::ok_with_data(
-                    match trigger {
-                        Some(t) if count > 0 => format!("{} reset to its default", t),
-                        Some(t) => format!("{} was already at its default", t),
-                        None => format!("{} binding(s) reset", count),
-                    },
-                    json!({ "reset": count }),
-                ),
+                Ok(count) => {
+                    if count > 0 {
+                        ctx.notify(super::events::topic::MOUSEBINDS);
+                    }
+                    CommandResult::ok_with_data(
+                        match trigger {
+                            Some(t) if count > 0 => format!("{} reset to its default", t),
+                            Some(t) => format!("{} was already at its default", t),
+                            None => format!("{} binding(s) reset", count),
+                        },
+                        json!({ "reset": count }),
+                    )
+                }
                 Err(e) => CommandResult::err(e.to_string()),
             }
         }
@@ -2725,6 +3081,7 @@ fn record_play_when_it_opens(
     player: Arc<Player>,
     db: Arc<Database>,
     src: crate::db::SourceKey,
+    events: Option<Arc<dyn super::events::EventSink>>,
 ) {
     std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + Duration::from_secs(60);
@@ -2742,6 +3099,9 @@ fn record_play_when_it_opens(
             let status = player.status();
             if status.duration > 0.0 || status.position > 0.0 {
                 let _ = db.record_play(&src);
+                if let Some(sink) = &events {
+                    sink.notify(super::events::topic::RECENT);
+                }
                 return;
             }
         }

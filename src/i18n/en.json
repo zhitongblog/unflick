@@ -99,7 +99,13 @@
     "removeFailed": "Could not remove that entry",
     "nextFailed": "Could not skip to the next item",
     "prevFailed": "Could not skip to the previous item",
-    "playFailed": "Could not play that entry"
+    "playFailed": "Could not play that entry",
+    "importList": "Import playlist…",
+    "exportList": "Export playlist…",
+    "imported": "Loaded {count} items",
+    "exported": "Saved playlist",
+    "importFailed": "Could not load playlist",
+    "exportFailed": "Could not save playlist"
   },
   "player": {
     "play": "Play",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "Chapters",
-    "none": "This file has no chapters."
+    "none": "This file has no chapters.",
+    "fromTranscript": "Generate from transcript",
+    "detectScenes": "Detect visual scenes",
+    "detecting": "Detecting scenes…",
+    "clearGenerated": "Clear generated chapters",
+    "generated": "Generated {count} chapters",
+    "generateFailed": "Could not generate chapters"
   },
   "keybinds": {
     "section": "Keyboard shortcuts",
@@ -440,7 +452,8 @@
     "open_file": "Open file",
     "open_url": "Open URL",
     "settings": "Settings",
-    "incognito": "Incognito mode"
+    "incognito": "Incognito mode",
+    "toggle_transcript": "Transcript"
   },
   "mouse": {
     "section": "Mouse",
@@ -574,5 +587,22 @@
     "add": "Install script…",
     "empty": "No user scripts installed.",
     "remove": "Remove script"
+  },
+  "transcript": {
+    "title": "Transcript",
+    "close": "Close (T)",
+    "searchPlaceholder": "Search dialogue…",
+    "allSpeakers": "All speakers",
+    "detectSpeakers": "Detect speakers",
+    "detectingSpeakers": "Detecting…",
+    "renameSpeaker": "Rename speaker",
+    "renamePlaceholder": "Speaker name",
+    "export": "Export…",
+    "exported": "Transcript exported",
+    "exportFailed": "Could not export transcript",
+    "empty": "No subtitles loaded for this file.",
+    "noMatch": "No lines match your filter.",
+    "autoScroll": "Follow playback",
+    "cues": "{count} lines"
   }
 }

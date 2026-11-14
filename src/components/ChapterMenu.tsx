@@ -1,17 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useStrings } from "../i18n/utils";
 import { formatTime } from "../lib/format";
 
 /**
- * Chapter list popover. Only reachable when the current file actually has
- * chapters — the button that opens it is hidden otherwise, so the empty
- * state here is a fallback for a file that drops its chapter list mid-play.
+ * Chapter list popover with quick actions to generate chapters from the
+ * transcript or from visual scene detection.
  */
 export default function ChapterMenu({ onClose }: { onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { chapters, seekChapter } = usePlayerStore();
+  const { chapters, seekChapter, refreshChapters } = usePlayerStore();
+  const [detecting, setDetecting] = useState(false);
   const t = useStrings();
 
   useEffect(() => {
@@ -34,6 +35,70 @@ export default function ChapterMenu({ onClose }: { onClose: () => void }) {
   const handleSelect = (index: number) => {
     void seekChapter(index);
     onClose();
+  };
+
+  const handleGenerateFromTranscript = async () => {
+    try {
+      const list = await invoke<unknown[]>("chapters_generate", { count: 8 });
+      await refreshChapters();
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "success",
+            message: t.chapters.generated.replace("{count}", String(list.length)),
+          },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "error",
+            message: typeof e === "string" ? e : t.chapters.generateFailed,
+          },
+        }),
+      );
+    }
+  };
+
+  const handleDetectScenes = async () => {
+    if (detecting) return;
+    setDetecting(true);
+    try {
+      const res = await invoke<{ scenes: unknown[]; applied_as_chapters: boolean }>(
+        "scene_detect",
+        { toChapters: true },
+      );
+      await refreshChapters();
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "success",
+            message: t.chapters.generated.replace("{count}", String(res.scenes.length)),
+          },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("unflick:toast", {
+          detail: {
+            kind: "error",
+            message: typeof e === "string" ? e : t.chapters.generateFailed,
+          },
+        }),
+      );
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleClearGenerated = async () => {
+    try {
+      await invoke("chapters_clear");
+      await refreshChapters();
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -76,6 +141,38 @@ export default function ChapterMenu({ onClose }: { onClose: () => void }) {
           </span>
         </button>
       ))}
+
+      <div
+        className="mt-1 pt-1"
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
+      >
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/60 transition-colors hover:bg-white/6 hover:text-white/85"
+          onClick={handleGenerateFromTranscript}
+        >
+          <span className="truncate">{t.chapters.fromTranscript}</span>
+        </button>
+        <button
+          type="button"
+          disabled={detecting}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/60 transition-colors hover:bg-white/6 hover:text-white/85 disabled:opacity-40"
+          onClick={handleDetectScenes}
+        >
+          <span className="truncate">
+            {detecting ? t.chapters.detecting : t.chapters.detectScenes}
+          </span>
+        </button>
+        {chapters.length > 0 && (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-white/40 transition-colors hover:bg-white/6 hover:text-white/70"
+            onClick={handleClearGenerated}
+          >
+            <span className="truncate">{t.chapters.clearGenerated}</span>
+          </button>
+        )}
+      </div>
     </motion.div>
   );
 }

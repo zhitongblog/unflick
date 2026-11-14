@@ -99,7 +99,13 @@
     "removeFailed": "Dieser Eintrag ließ sich nicht entfernen",
     "nextFailed": "Zum nächsten Eintrag ließ sich nicht springen",
     "prevFailed": "Zum vorherigen Eintrag ließ sich nicht springen",
-    "playFailed": "Dieser Eintrag ließ sich nicht abspielen"
+    "playFailed": "Dieser Eintrag ließ sich nicht abspielen",
+    "importList": "Wiedergabeliste importieren…",
+    "exportList": "Wiedergabeliste exportieren…",
+    "imported": "{count} Einträge geladen",
+    "exported": "Wiedergabeliste gespeichert",
+    "importFailed": "Wiedergabeliste konnte nicht geladen werden",
+    "exportFailed": "Wiedergabeliste konnte nicht gespeichert werden"
   },
   "player": {
     "play": "Abspielen",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "Kapitel",
-    "none": "Diese Datei hat keine Kapitel."
+    "none": "Diese Datei hat keine Kapitel.",
+    "fromTranscript": "Aus Untertiteln erzeugen",
+    "detectScenes": "Visuelle Szenen erkennen",
+    "detecting": "Szenen werden erkannt…",
+    "clearGenerated": "Erzeugte Kapitel löschen",
+    "generated": "{count} Kapitel erzeugt",
+    "generateFailed": "Kapitel konnten nicht erzeugt werden"
   },
   "keybinds": {
     "section": "Tastenkürzel",
@@ -440,7 +452,8 @@
     "open_file": "Datei öffnen",
     "open_url": "URL öffnen",
     "settings": "Einstellungen",
-    "incognito": "Inkognitomodus"
+    "incognito": "Inkognitomodus",
+    "toggle_transcript": "Transkript"
   },
   "mouse": {
     "section": "Maus",
@@ -574,5 +587,22 @@
     "add": "Skript installieren…",
     "empty": "Keine Benutzerskripte installiert.",
     "remove": "Skript entfernen"
+  },
+  "transcript": {
+    "title": "Transkript",
+    "close": "Schließen (T)",
+    "searchPlaceholder": "Dialog durchsuchen…",
+    "allSpeakers": "Alle Sprecher",
+    "detectSpeakers": "Sprecher erkennen",
+    "detectingSpeakers": "Erkennung…",
+    "renameSpeaker": "Sprecher umbenennen",
+    "renamePlaceholder": "Sprechername",
+    "export": "Exportieren…",
+    "exported": "Transkript exportiert",
+    "exportFailed": "Transkript konnte nicht exportiert werden",
+    "empty": "Für diese Datei sind keine Untertitel geladen.",
+    "noMatch": "Keine Zeilen entsprechen dem Filter.",
+    "autoScroll": "Wiedergabe folgen",
+    "cues": "{count} Zeilen"
   }
 }

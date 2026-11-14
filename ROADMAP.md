@@ -738,13 +738,26 @@ libmpv（要等推上去才跑得到）。
 - ~~浏览器扩展（IINA 有 Safari/Chrome/Firefox）~~ 完成（`browser-extension/` MV3 + 控制端口同端口 HTTP 桥 `GET /status`、`POST /open`、`POST /rpc` + `unflick://` URL 协议注册）
 - ~~设计打磨：动效、空状态、错误文案、首次启动引导~~ 完成（含首屏居中列宽修复、Linux `/dev/sr*` 识别与无菜单 DVD 标题末尾防失控 `TitleEndWatch`）
 
+## v1.0.1 — 深度理解与体验闭环（详见 `PLAN-v1.0.1.md`）
+
+目标：把「说话人分离」与多模态视觉理解补齐，清零实机验证挂账缺陷，打磨字幕交互与扩展生态。
+
+| Track | 模块 | 核心交付 | 状态 |
+|---|---|---|---|
+| 1 | **实机挂账缺陷清零** | 慢加载 `loaded: false` 不误记最近播放（加载完成触发 `RECENT` 事件补记）、URL 错误弹窗去重双语同屏、快捷键/鼠标绑定热生效、冲突提示国际化 | 完成 |
+| 2 | **轻量级说话人分离** | 字幕内建说话人提取 + 基于声学特征（能量/过零率）/停顿启发式聚类与 `whisper --tinydiarize`、按角色检索/过滤/重命名 | 完成 |
+| 3 | **视觉 / 多模态 AI 增强** | 多帧网格接触表（`frame sheet` / MCP `frame_contact_sheet`）、镜头切换检测（`scene detect` / MCP `detect_scenes`）转虚拟章节 | 完成 |
+| 4 | **字幕体验进阶** | ASS/SSA 字幕完整解析（含 `Name` 角色映射）、交互式逐句字幕侧边栏（跟随高亮、点击即跳、角色过滤、导出） | 完成 |
+| 5 | **流媒体接力与列表生态** | 浏览器扩展带当前时间戳无缝接力（`&t=` + 自动暂停原网页视频 + 快捷键）、播放列表 `.m3u` / `.pls` 导入导出 | 完成 |
+
 ## 持续 —— AI 深度（已领先，保持）
 
 VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的是
 **MCP 原生的理解类工具**——更窄但更深：
 
 - ~~双语字幕（原文+译文同屏）~~ 完成
-- 说话人分离
+- ~~说话人分离~~ 完成（`unflick transcript speakers` / `rename-speaker` / MCP `transcript_speakers` / `transcript_rename_speaker`）
+- ~~关键帧接触表与镜头切换检测~~ 完成（`unflick frame sheet` / `scene detect` / MCP `frame_contact_sheet` / `detect_scenes`）
 - ~~基于转录的视频摘要~~ 完成（`unflick transcript summary` / MCP `transcript_summary`）
 - ~~跨库语义搜索（"我库里哪个视频讲过 X"）~~ 完成（`unflick library transcript` / MCP `library_transcript_search` / GUI 媒体库「台词」模式直跳时间戳）
 
@@ -770,6 +783,7 @@ VLC 4.0 会用 whisper.cpp 抹掉"本地 AI 字幕"这个卖点。能守住的�
 | v0.14.2 | **Windows CI 连红四天（09-10 → 09-15），已修**——见下。arm64 Linux 的发布包也补上了（`release.yml` 的 linux job 变成双架构矩阵）。**2026-09-17：Linux GUI 首次逐条实机验证完成**，「三平台同等」里最后一栏不再是空的；抓到 `smb://` 缺少挂载指引一个缺陷——**2026-09-24 已修**：Ubuntu 的 mpv 列了 smb 却连匿名共享都打不开（ffmpeg 没有 libsmbclient），现在失败时附上挂载指引，照指引挂载后实测可播 |
 | 2026-09-24 | **macOS 能播 DVD 了**：Homebrew 的 mpv 没有 libdvdnav，改为随包自带自己构建的通用 libmpv（`scripts/build-mac-libmpv.sh`，含 libdvdcss）。顺带修了 UDF-only 的 DVD 镜像被认成蓝光、测试脚手架在 macOS 上约四分之一概率的随机失败；`disc.rs` 进 CI |
 | v1.0 | **全部落地并完成 Windows 全量实机验证**（详见 `VERIFICATION-windows.md`）：补齐历史遗留（首屏居中列宽、Linux `/dev/sr*` 光驱探测、DVD 标题末尾防失控 `TitleEndWatch`、Windows 混合显卡下切换 `--wid` D3D11 交换链消除 WGL `ChoosePixelFormat` 死锁）、跨库台词搜索与结构化视频摘要、mpv `.lua`/`.js` 用户脚本系统、浏览器扩展（MV3 + 同端口 HTTP 控制桥 + `unflick://` 协议注册）。全仓 126 个前端测试 + 389 个 Rust 测试（含 `gui_dev` 真实窗口自测）全绿 |
+| v1.0.1 | **全部落地**（详见 `PLAN-v1.0.1.md`）：实机挂账缺陷清零（慢加载不误记历史、URL 弹窗错误分类去重、快捷键/鼠标绑定热生效）、轻量级说话人分离与角色重命名、多帧接触表（`frame sheet`）与视觉场景切换检测（`scene detect`）、ASS/SSA 字幕完整解析与交互式逐句字幕侧边栏（`TranscriptPanel`）、M3U/PLS 播放列表导入导出、以及浏览器扩展时间戳无缝接力（`&t=` / `/open` `seek` + 自动暂停网页视频）。134 个 CLI 命令 / 114 个 MCP 工具 |
 
 ### Windows CI 连红四天：libmpv 被缓存动作删掉了（2026-09-15）
 

@@ -99,7 +99,13 @@
     "removeFailed": "その項目を削除できませんでした",
     "nextFailed": "次の項目に進めませんでした",
     "prevFailed": "前の項目に戻れませんでした",
-    "playFailed": "その項目を再生できませんでした"
+    "playFailed": "その項目を再生できませんでした",
+    "importList": "プレイリストを読み込む…",
+    "exportList": "プレイリストを書き出す…",
+    "imported": "{count} 件を読み込みました",
+    "exported": "プレイリストを保存しました",
+    "importFailed": "プレイリストを読み込めませんでした",
+    "exportFailed": "プレイリストを保存できませんでした"
   },
   "player": {
     "play": "再生",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "チャプター",
-    "none": "このファイルにチャプターはありません。"
+    "none": "このファイルにチャプターはありません。",
+    "fromTranscript": "字幕からチャプターを生成",
+    "detectScenes": "映像シーンを自動検出",
+    "detecting": "シーンを検出中…",
+    "clearGenerated": "生成したチャプターを消去",
+    "generated": "{count} 個のチャプターを生成しました",
+    "generateFailed": "チャプターを生成できませんでした"
   },
   "keybinds": {
     "section": "キーボードショートカット",
@@ -440,7 +452,8 @@
     "open_file": "ファイルを開く",
     "open_url": "URL を開く",
     "settings": "設定",
-    "incognito": "シークレットモード"
+    "incognito": "シークレットモード",
+    "toggle_transcript": "文字起こし"
   },
   "mouse": {
     "section": "マウス",
@@ -574,5 +587,22 @@
     "add": "スクリプトを追加…",
     "empty": "ユーザースクリプトはまだありません。",
     "remove": "スクリプトを削除"
+  },
+  "transcript": {
+    "title": "文字起こし",
+    "close": "閉じる (T)",
+    "searchPlaceholder": "セリフを検索…",
+    "allSpeakers": "すべての話者",
+    "detectSpeakers": "話者を検出",
+    "detectingSpeakers": "検出中…",
+    "renameSpeaker": "話者名を変更",
+    "renamePlaceholder": "話者名",
+    "export": "書き出し…",
+    "exported": "文字起こしを書き出しました",
+    "exportFailed": "文字起こしを書き出せませんでした",
+    "empty": "このファイルには字幕が読み込まれていません。",
+    "noMatch": "一致する行がありません。",
+    "autoScroll": "再生に追従",
+    "cues": "{count} 行"
   }
 }

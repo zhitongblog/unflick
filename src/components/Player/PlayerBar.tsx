@@ -180,6 +180,17 @@ function MusicIcon() {
   );
 }
 
+function TranscriptIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="13" y2="17" />
+    </svg>
+  );
+}
+
 export default function PlayerBar() {
   const { file, state } = usePlayerStore();
   const toggleLibrary = useLibraryStore((s) => s.toggleLibrary);
@@ -340,6 +351,27 @@ export default function PlayerBar() {
       }
     }
 
+    items.push({ label: "", separator: true, disabled: false });
+    actions.push(null);
+    items.push({ label: t.chapters.fromTranscript, separator: false, disabled: false });
+    actions.push(async () => {
+      try {
+        await invoke("chapters_generate", { count: 8 });
+        await usePlayerStore.getState().refreshChapters();
+      } catch {
+        /* ignore */
+      }
+    });
+    items.push({ label: t.chapters.detectScenes, separator: false, disabled: false });
+    actions.push(async () => {
+      try {
+        await invoke("scene_detect", { toChapters: true });
+        await usePlayerStore.getState().refreshChapters();
+      } catch {
+        /* ignore */
+      }
+    });
+
     await showNativeMenuAt(btn, items, actions);
   };
 
@@ -481,17 +513,19 @@ export default function PlayerBar() {
             )}
           </div>
 
-          {/* Chapters — only shown for files that have any, so the bar
-              doesn't carry a permanently-dead button. */}
-          {chapters.length > 0 && (
+          {/* Chapters — shown whenever a file is playing so chapters can also
+              be generated from the transcript or visual scene detection. */}
+          {state !== "stopped" && (
             <div className="relative">
               <button
                 className={barBtnClass(showChapterMenu)}
                 onClick={handleChapterButton}
                 title={`${t.chapters.title} (PgUp / PgDn)`}
-                disabled={state === "stopped"}
               >
                 <ChapterIcon />
+                {chapters.length > 0 && (
+                  <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand-purple" />
+                )}
               </button>
               {!IS_WINDOWS && (
                 <AnimatePresence>
@@ -555,6 +589,17 @@ export default function PlayerBar() {
               {showCastMenu && <CastMenu onClose={() => setShowCastMenu(false)} />}
             </AnimatePresence>
           </div>
+
+          {/* Transcript */}
+          <button
+            data-transcript-button
+            className={barBtnClass()}
+            onClick={() => window.dispatchEvent(new CustomEvent("unflick:toggle-transcript"))}
+            title={`${t.transcript.title} (T)`}
+            disabled={state === "stopped"}
+          >
+            <TranscriptIcon />
+          </button>
 
           {/* Playlist */}
           <button

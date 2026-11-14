@@ -11,6 +11,9 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
     if name == "describe_frame" {
         return handle_describe_frame(args);
     }
+    if name == "frame_contact_sheet" {
+        return handle_frame_contact_sheet(args);
+    }
 
     // `cleanup` reads and deletes files; it has no business starting a
     // player to do it, and it has to work on the machine where the app is
@@ -126,10 +129,16 @@ pub fn handle_tool_via_daemon(name: &str, args: &Value) -> Value {
         "frame_back_step" => ("frame_back_step", json!({})),
         "playlist_repeat" => ("playlist_repeat", args.clone()),
         "playlist_shuffle" => ("playlist_shuffle", args.clone()),
-        "transcript_get" => ("transcript_get", json!({})),
+        "playlist_save" => ("playlist_save", args.clone()),
+        "playlist_load" => ("playlist_load", args.clone()),
+        "transcript_get" => ("transcript_get", args.clone()),
         "search_transcript" => ("transcript_search", args.clone()),
         "seek_to_text" => ("transcript_seek", args.clone()),
         "transcript_summary" => ("transcript_summary", args.clone()),
+        "transcript_speakers" => ("transcript_speakers", args.clone()),
+        "transcript_rename_speaker" => ("transcript_rename_speaker", args.clone()),
+        "transcript_export" => ("transcript_export", args.clone()),
+        "detect_scenes" => ("scene_detect", args.clone()),
         "library_transcript_search" => ("library_transcript_search", args.clone()),
         "generate_chapters" => ("chapters_generate", args.clone()),
         "set_chapters" => ("chapters_set", args.clone()),
@@ -301,6 +310,64 @@ fn handle_describe_frame(args: &Value) -> Value {
     )
 }
 
+fn handle_frame_contact_sheet(args: &Value) -> Value {
+    let mut forwarded = json!({});
+    for key in ["cols", "rows", "start", "end", "max_edge", "file"] {
+        if let Some(v) = args.get(key) {
+            forwarded[key] = v.clone();
+        }
+    }
+
+    let result = match daemon::send_to_daemon("frame_contact_sheet", forwarded) {
+        Ok(r) => r,
+        Err(e) => return tool_result(true, json!([{"type": "text", "text": e}])),
+    };
+    if !result.success {
+        return tool_result(true, json!([{"type": "text", "text": result.message}]));
+    }
+
+    let data = result.data.unwrap_or(Value::Null);
+    let Some(base64) = data.get("base64").and_then(|v| v.as_str()) else {
+        return tool_result(
+            true,
+            json!([{"type": "text", "text": "contact sheet returned no image data"}]),
+        );
+    };
+    let cols = data.get("cols").and_then(|v| v.as_u64()).unwrap_or(4);
+    let rows = data.get("rows").and_then(|v| v.as_u64()).unwrap_or(3);
+    let start = data.get("start").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let end = data.get("end").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let timestamps = data
+        .get("timestamps")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|t| t.as_f64())
+                .map(|t| format!("{:.1}s", t))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let mime = data
+        .get("mime_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("image/jpeg");
+
+    tool_result(
+        false,
+        json!([
+            {
+                "type": "text",
+                "text": format!(
+                    "Contact sheet ({}×{} grid, {:.1}s–{:.1}s). Cell timestamps (left-to-right, top-to-bottom): [{}].",
+                    cols, rows, start, end, timestamps
+                )
+            },
+            {"type": "image", "data": base64, "mimeType": mime},
+        ]),
+    )
+}
+
 // ─── Track A — GUI self-test bridge ───────────────────────────────────
 /// Capture the interface layer and return it as an MCP image block.
 fn handle_dev_capture(args: &Value) -> Value {
@@ -360,6 +427,7 @@ pub fn tool_definitions() -> Value {
         tools_core(),
         tools_v010(),
         tools_understanding(),
+        tools_v11(),
         tools_audio(),
         tools_window(),
         // Track A — GUI self-test bridge
@@ -1213,32 +1281,42 @@ fn tools_understanding() -> Value {
         },
         {
             "name": "search_transcript",
-            "description": "Search the currently playing file's subtitles for a phrase and return every match with its timestamp. Works with loaded subtitle files, sidecar .srt/.vtt files, embedded text tracks, and subtitles you generated with generate_subtitles. Use this to answer questions about what is said in a video, or to find the moment to jump to. Case-insensitive substring match, not regex.",
+            "description": "Search the currently playing file's subtitles for a phrase and return every match with its timestamp and speaker (if known). Works with loaded subtitle files, sidecar .srt/.vtt/.ass/.ssa files, embedded text tracks, and subtitles you generated with generate_subtitles. Use this to answer questions about what is said in a video, or to find the moment to jump to. Case-insensitive substring match, not regex.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": { "type": "string", "description": "Phrase to look for" },
-                    "limit": { "type": "integer", "description": "Maximum matches to return (default 20, max 200)" }
+                    "limit": { "type": "integer", "description": "Maximum matches to return (default 20, max 200)" },
+                    "speaker": { "type": "string", "description": "Optional speaker filter (case-insensitive substring match)" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
                 },
                 "required": ["query"]
             }
         },
         {
             "name": "seek_to_text",
-            "description": "Jump playback to where a phrase is spoken. Finds the phrase in the subtitles and seeks just before that line, so the sentence is heard from its start. This is the 'skip to the part where they talk about X' tool.",
+            "description": "Jump playback to where a phrase is spoken. Finds the phrase in the subtitles (optionally filtered by speaker) and seeks just before that line, so the sentence is heard from its start. This is the 'skip to the part where they talk about X' tool.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": { "type": "string", "description": "Phrase to jump to" },
-                    "occurrence": { "type": "integer", "description": "Which occurrence, 1-based (default 1)" }
+                    "occurrence": { "type": "integer", "description": "Which occurrence, 1-based (default 1)" },
+                    "speaker": { "type": "string", "description": "Optional speaker filter" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
                 },
                 "required": ["query"]
             }
         },
         {
             "name": "transcript_get",
-            "description": "Return the full transcript of the currently playing file as timed cues, plus where it came from. Use it to read or summarise a video, or as input for writing your own chapter list with set_chapters. Long videos produce a lot of text — prefer search_transcript when you only need one passage.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "description": "Return the full transcript of the currently playing file as timed cues (including speaker labels when present), plus where it came from. Use it to read or summarise a video, or as input for writing your own chapter list with set_chapters. Long videos produce a lot of text — prefer search_transcript or transcript_summary when you only need a passage or overview.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "speaker": { "type": "string", "description": "Optional speaker filter (case-insensitive)" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
+                }
+            }
         },
         {
             "name": "transcript_summary",
@@ -1509,6 +1587,102 @@ fn tools_understanding() -> Value {
                     "position": { "type": "number", "description": "Seek here (seconds) before capturing" },
                     "max_edge": { "type": "integer", "description": "Longest edge in pixels (64-2048, default 768)" }
                 }
+            }
+        }
+    ])
+}
+
+/// Tools added in v1.1: speaker diarization, transcript export, multi-frame
+/// contact sheets, visual scene detection, and M3U/PLS playlist import/export.
+fn tools_v11() -> Value {
+    json!([
+        {
+            "name": "transcript_speakers",
+            "description": "List all speakers in the transcript with cue count, word count, speaking duration, and first/last timestamp. Pass `detect: true` to run lightweight acoustic + conversational turn diarization when subtitles do not already carry speaker labels.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "detect": { "type": "boolean", "description": "Run automatic speaker diarization if true (default false)" },
+                    "count": { "type": "integer", "description": "Target number of speakers when detect=true (2-8)" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
+                }
+            }
+        },
+        {
+            "name": "transcript_rename_speaker",
+            "description": "Rename a speaker label across the transcript (e.g. from \"Speaker 1\" to \"Host\" or \"Alice\"). The rename is persisted in cache so subsequent transcript_get, search_transcript, and transcript_summary calls reflect it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "from": { "type": "string", "description": "Existing speaker name to replace" },
+                    "to": { "type": "string", "description": "New speaker name" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
+                },
+                "required": ["from", "to"]
+            }
+        },
+        {
+            "name": "transcript_export",
+            "description": "Export the transcript to a formatted string or file in `txt`, `srt`, `vtt`, or `json` format, optionally filtered to a single speaker.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "output": { "type": "string", "description": "Optional output file path. Omit to receive the formatted text in the response." },
+                    "format": { "type": "string", "enum": ["txt", "srt", "vtt", "json"], "description": "Output format (default txt)" },
+                    "speaker": { "type": "string", "description": "Optional speaker filter" },
+                    "file": { "type": "string", "description": "Optional path to a video or subtitle file; defaults to the playing file" }
+                }
+            }
+        },
+        {
+            "name": "frame_contact_sheet",
+            "description": "Sample a grid of frames (cols × rows) evenly across a time range of the video and return a single tiled JPEG image plus the exact timestamp of every cell. Ideal for surveying what visually happens across a video or section in one multimodal tool call instead of calling describe_frame a dozen times.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "cols": { "type": "integer", "description": "Grid columns (1-6, default 4)" },
+                    "rows": { "type": "integer", "description": "Grid rows (1-6, default 3)" },
+                    "start": { "type": "number", "description": "Start time in seconds (default 0)" },
+                    "end": { "type": "number", "description": "End time in seconds (default: file duration)" },
+                    "max_edge": { "type": "integer", "description": "Target sheet width in pixels (256-2048, default 1280)" },
+                    "file": { "type": "string", "description": "Optional video file path; defaults to the playing file" }
+                }
+            }
+        },
+        {
+            "name": "detect_scenes",
+            "description": "Detect visual scene cuts / shot boundaries in the video using ffmpeg's scene-change filter. Useful for videos without dialogue or transcripts (screen recordings, silent footage, music videos). Set `to_chapters: true` to immediately install the detected scenes as navigable chapters on the playing file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "threshold": { "type": "number", "description": "Scene change sensitivity threshold between 0.05 and 0.95 (default 0.3; lower detects more subtle cuts)" },
+                    "max_scenes": { "type": "integer", "description": "Maximum number of scenes to return (1-100, default 20)" },
+                    "to_chapters": { "type": "boolean", "description": "Apply detected scenes as virtual chapters on the playing file" },
+                    "file": { "type": "string", "description": "Optional video file path; defaults to the playing file" }
+                }
+            }
+        },
+        {
+            "name": "playlist_save",
+            "description": "Save the current playlist to an `.m3u`, `.m3u8`, or `.pls` file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Destination file path (.m3u, .m3u8, or .pls)" }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "playlist_load",
+            "description": "Load an `.m3u`, `.m3u8`, or `.pls` playlist file into the player's queue. Relative paths inside the playlist are resolved against the playlist file's directory.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the .m3u, .m3u8, or .pls playlist file" },
+                    "append": { "type": "boolean", "description": "Append to the existing playlist instead of replacing it (default false)" }
+                },
+                "required": ["path"]
             }
         }
     ])

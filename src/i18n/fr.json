@@ -99,7 +99,13 @@
     "removeFailed": "Impossible de retirer cet élément",
     "nextFailed": "Impossible de passer à l'élément suivant",
     "prevFailed": "Impossible de revenir à l'élément précédent",
-    "playFailed": "Impossible de lire cet élément"
+    "playFailed": "Impossible de lire cet élément",
+    "importList": "Importer une liste…",
+    "exportList": "Exporter la liste…",
+    "imported": "{count} éléments chargés",
+    "exported": "Liste enregistrée",
+    "importFailed": "Impossible de charger la liste",
+    "exportFailed": "Impossible d’enregistrer la liste"
   },
   "player": {
     "play": "Lecture",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "Chapitres",
-    "none": "Ce fichier n'a pas de chapitres."
+    "none": "Ce fichier n'a pas de chapitres.",
+    "fromTranscript": "Générer depuis les sous-titres",
+    "detectScenes": "Détecter les scènes visuelles",
+    "detecting": "Détection des scènes…",
+    "clearGenerated": "Effacer les chapitres générés",
+    "generated": "{count} chapitres générés",
+    "generateFailed": "Impossible de générer des chapitres"
   },
   "keybinds": {
     "section": "Raccourcis clavier",
@@ -440,7 +452,8 @@
     "open_file": "Ouvrir un fichier",
     "open_url": "Ouvrir une URL",
     "settings": "Réglages",
-    "incognito": "Mode privé"
+    "incognito": "Mode privé",
+    "toggle_transcript": "Transcription"
   },
   "mouse": {
     "section": "Souris",
@@ -574,5 +587,22 @@
     "add": "Installer un script…",
     "empty": "Aucun script utilisateur installé.",
     "remove": "Supprimer le script"
+  },
+  "transcript": {
+    "title": "Transcription",
+    "close": "Fermer (T)",
+    "searchPlaceholder": "Rechercher dans les dialogues…",
+    "allSpeakers": "Tous les locuteurs",
+    "detectSpeakers": "Détecter les locuteurs",
+    "detectingSpeakers": "Détection…",
+    "renameSpeaker": "Renommer le locuteur",
+    "renamePlaceholder": "Nom du locuteur",
+    "export": "Exporter…",
+    "exported": "Transcription exportée",
+    "exportFailed": "Impossible d’exporter la transcription",
+    "empty": "Aucun sous-titre chargé pour ce fichier.",
+    "noMatch": "Aucune ligne ne correspond au filtre.",
+    "autoScroll": "Suivre la lecture",
+    "cues": "{count} lignes"
   }
 }

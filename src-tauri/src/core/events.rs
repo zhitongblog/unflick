@@ -22,6 +22,10 @@
 pub mod topic {
     pub const BOOKMARKS: &str = "bookmarks";
     pub const PLAYLIST: &str = "playlist";
+    pub const KEYBINDS: &str = "keybinds";
+    pub const MOUSEBINDS: &str = "mousebinds";
+    pub const SETTINGS: &str = "settings";
+    pub const RECENT: &str = "recent";
 }
 
 pub trait EventSink: Send + Sync {

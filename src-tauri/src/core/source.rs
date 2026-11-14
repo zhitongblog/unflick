@@ -236,6 +236,14 @@ fn percent_decode(raw: &str) -> String {
 /// - `unflick://open?file=D%3A%5Cfilm.mkv`
 /// - `unflick://https://example.com/video.mp4`
 pub fn parse_unflick_uri(input: &str) -> Option<(String, String)> {
+    parse_unflick_uri_with_seek(input).map(|(action, target, _)| (action, target))
+}
+
+/// Parse an `unflick://` deep-link URI into `(action, target, seek_seconds)`
+/// where `action` is `"play"` or `"queue"`, `target` is the decoded media URL
+/// or file path, and `seek_seconds` is an optional timestamp (`?t=125` or
+/// `?seek=125`) for timestamp-accurate browser handoff.
+pub fn parse_unflick_uri_with_seek(input: &str) -> Option<(String, String, Option<f64>)> {
     let trimmed = input.trim();
     let rest = trimmed
         .strip_prefix("unflick://")
@@ -246,7 +254,7 @@ pub fn parse_unflick_uri(input: &str) -> Option<(String, String)> {
 
     // Direct URL form: `unflick://https://...` or `unflick://http://...`
     if rest.starts_with("http://") || rest.starts_with("https://") {
-        return Some(("play".to_string(), rest.to_string()));
+        return Some(("play".to_string(), rest.to_string(), None));
     }
 
     let (head, query) = match rest.split_once('?') {
@@ -259,21 +267,33 @@ pub fn parse_unflick_uri(input: &str) -> Option<(String, String)> {
         "play" | "open" | "" => "play",
         _ if query.is_none() => {
             let decoded = percent_decode(rest);
-            return (!decoded.trim().is_empty()).then(|| ("play".to_string(), decoded));
+            return (!decoded.trim().is_empty()).then(|| ("play".to_string(), decoded, None));
         }
         _ => "play",
     };
 
     if let Some(q) = query {
+        let mut target: Option<String> = None;
+        let mut seek: Option<f64> = None;
         for pair in q.split('&') {
             if let Some((k, v)) = pair.split_once('=') {
                 if matches!(k, "url" | "file" | "src" | "target") {
                     let decoded = percent_decode(v).trim().to_string();
                     if !decoded.is_empty() {
-                        return Some((action.to_string(), decoded));
+                        target = Some(decoded);
+                    }
+                } else if matches!(k, "t" | "seek" | "start" | "pos") {
+                    let clean = v.trim().trim_end_matches('s');
+                    if let Ok(sec) = clean.parse::<f64>() {
+                        if sec.is_finite() && sec > 0.0 {
+                            seek = Some(sec);
+                        }
                     }
                 }
             }
+        }
+        if let Some(t) = target {
+            return Some((action.to_string(), t, seek));
         }
     }
 

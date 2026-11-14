@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "Send to unflick",
   "version": "1.0.0",
-  "description": "Play or queue the current page, link, or media element in unflick.",
+  "description": "Play or queue the current page, link, or media element in unflick — with seamless timestamp handoff.",
   "permissions": [
     "activeTab",
-    "contextMenus"
+    "contextMenus",
+    "scripting"
   ],
   "host_permissions": [
     "http://127.0.0.1:19542/*"
@@ -16,5 +17,19 @@
   "action": {
     "default_title": "Send to unflick",
     "default_popup": "popup.html"
+  },
+  "commands": {
+    "play-current-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+U"
+      },
+      "description": "Play current tab in unflick from current video timestamp"
+    },
+    "queue-current-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+Q"
+      },
+      "description": "Add current tab to unflick playlist"
+    }
   }
 }

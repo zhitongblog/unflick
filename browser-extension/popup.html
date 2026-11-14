@@ -10,7 +10,7 @@
       body {
         margin: 0;
         padding: 12px;
-        width: 260px;
+        width: 268px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #0d0d12;
         color: #ececf1;
@@ -49,7 +49,19 @@
         padding: 6px 8px;
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.04);
+        margin-bottom: 8px;
+      }
+      .handoff {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.75);
         margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .handoff.visible {
+        display: flex;
       }
       .actions {
         display: flex;
@@ -86,6 +98,10 @@
       <span id="daemon-state" class="badge">checking…</span>
     </div>
     <div id="current-url" class="url">—</div>
+    <label id="handoff-row" class="handoff">
+      <input type="checkbox" id="chk-resume" checked />
+      <span id="resume-label">Continue at 0:00</span>
+    </label>
     <div class="actions">
       <button id="btn-play" class="primary">Play now</button>
       <button id="btn-queue">Add to queue</button>

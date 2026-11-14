@@ -5,6 +5,12 @@ import { usePlayerStore } from "../stores/playerStore";
 import { useSettingsStore, type PreferredQuality } from "../stores/settingsStore";
 import { useStrings } from "../i18n/utils";
 import { STREAMING_SITES } from "../lib/streamingSites";
+import {
+  classifyOpenError,
+  detectPlatform,
+  hintKeyFor,
+  titleKeyFor,
+} from "../lib/openError";
 
 const STORAGE_KEY = "unflick_recent_urls";
 const MAX_RECENT = 5;
@@ -40,6 +46,7 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
   const extracting = usePlayerStore((s) => s.extracting);
   const extractError = usePlayerStore((s) => s.extractError);
   const openError = usePlayerStore((s) => s.openError);
+  const openErrorTarget = usePlayerStore((s) => s.openErrorTarget);
   const proxy = useSettingsStore((s) => s.proxy);
   const savedQuality = useSettingsStore((s) => s.preferredQuality);
   const t = useStrings();
@@ -174,14 +181,35 @@ export default function UrlDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Extraction failed, or the source itself would not open. The
-              second one is what a share URL or a dead host lands on, and it
-              carries the advice for getting to the file another way. */}
-          {(extractError || openError) && (
-            <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-300/90">
-              {extractError || openError}
-            </div>
-          )}
+          {/* Extraction failed, or the source itself would not open. Format
+              `openError` through the same localised classifier `OpenErrorCard`
+              uses so the dialog never displays a raw English backend refusal
+              alongside a translated UI. */}
+          {(extractError || openError) && (() => {
+            if (extractError) {
+              return (
+                <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-300/90">
+                  {extractError}
+                </div>
+              );
+            }
+            const classified = classifyOpenError(openErrorTarget ?? url, openError);
+            const platform = detectPlatform(
+              typeof navigator === "undefined" ? undefined : navigator.userAgent,
+            );
+            const strings = t.openError as unknown as Record<string, string>;
+            const title = (strings[titleKeyFor(classified)] ?? t.openError.titleUnreadable).replace(
+              "{scheme}",
+              classified.scheme ?? "",
+            );
+            const hint = strings[hintKeyFor(classified, platform)] ?? t.openError.hintUnreadable;
+            return (
+              <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-[11px]">
+                <p className="font-semibold text-red-200/90">{title}</p>
+                <p className="mt-1 leading-relaxed text-white/55">{hint}</p>
+              </div>
+            );
+          })()}
 
           {/* Help text — what's supported */}
           <details className="mb-4 group">

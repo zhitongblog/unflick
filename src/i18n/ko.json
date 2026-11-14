@@ -99,7 +99,13 @@
     "removeFailed": "그 항목을 제거하지 못했습니다",
     "nextFailed": "다음 항목으로 넘어가지 못했습니다",
     "prevFailed": "이전 항목으로 돌아가지 못했습니다",
-    "playFailed": "그 항목을 재생하지 못했습니다"
+    "playFailed": "그 항목을 재생하지 못했습니다",
+    "importList": "재생목록 가져오기…",
+    "exportList": "재생목록 내보내기…",
+    "imported": "{count}개 항목을 불러왔습니다",
+    "exported": "재생목록을 저장했습니다",
+    "importFailed": "재생목록을 불러올 수 없습니다",
+    "exportFailed": "재생목록을 저장할 수 없습니다"
   },
   "player": {
     "play": "재생",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "챕터",
-    "none": "이 파일에는 챕터가 없습니다."
+    "none": "이 파일에는 챕터가 없습니다.",
+    "fromTranscript": "자막에서 챕터 생성",
+    "detectScenes": "장면 전환 자동 감지",
+    "detecting": "장면 감지 중…",
+    "clearGenerated": "생성된 챕터 지우기",
+    "generated": "챕터 {count}개를 생성했습니다",
+    "generateFailed": "챕터를 생성할 수 없습니다"
   },
   "keybinds": {
     "section": "키보드 단축키",
@@ -440,7 +452,8 @@
     "open_file": "파일 열기",
     "open_url": "URL 열기",
     "settings": "설정",
-    "incognito": "시크릿 모드"
+    "incognito": "시크릿 모드",
+    "toggle_transcript": "대본"
   },
   "mouse": {
     "section": "마우스",
@@ -574,5 +587,22 @@
     "add": "스크립트 설치…",
     "empty": "설치된 사용자 스크립트가 없습니다.",
     "remove": "스크립트 제거"
+  },
+  "transcript": {
+    "title": "대본",
+    "close": "닫기 (T)",
+    "searchPlaceholder": "대사 검색…",
+    "allSpeakers": "모든 화자",
+    "detectSpeakers": "화자 분리",
+    "detectingSpeakers": "분석 중…",
+    "renameSpeaker": "화자 이름 변경",
+    "renamePlaceholder": "화자 이름",
+    "export": "내보내기…",
+    "exported": "대본을 내보냈습니다",
+    "exportFailed": "대본을 내보낼 수 없습니다",
+    "empty": "이 파일에 로드된 자막이 없습니다.",
+    "noMatch": "일치하는 대사가 없습니다.",
+    "autoScroll": "재생 위치 따라가기",
+    "cues": "{count}줄"
   }
 }

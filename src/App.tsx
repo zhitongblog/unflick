@@ -8,6 +8,7 @@ import MusicMode from "./components/MusicMode";
 import TitleBar from "./components/TitleBar";
 import LibraryPanel from "./components/Library/LibraryPanel";
 import PlaylistPanel from "./components/Playlist/PlaylistPanel";
+import TranscriptPanel from "./components/TranscriptPanel";
 import ContextMenu, { type ContextMenuEntry } from "./components/ContextMenu";
 import ClipDialog from "./components/ClipDialog";
 import UrlDialog from "./components/UrlDialog";
@@ -102,6 +103,29 @@ function App() {
   const [showClipDialog, setShowClipDialog] = useState(false);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [showOnlineSubtitles, setShowOnlineSubtitles] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+
+  const toggleTranscript = useCallback(() => {
+    setShowTranscript((prev) => {
+      const next = !prev;
+      if (next && usePlaylistStore.getState().showPlaylist) {
+        usePlaylistStore.getState().togglePlaylist();
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onToggle = () => toggleTranscript();
+    window.addEventListener("unflick:toggle-transcript", onToggle);
+    return () => window.removeEventListener("unflick:toggle-transcript", onToggle);
+  }, [toggleTranscript]);
+
+  useEffect(() => {
+    if (showPlaylist && showTranscript) {
+      setShowTranscript(false);
+    }
+  }, [showPlaylist, showTranscript]);
   /**
    * Dismissed in this run. Separate from the persisted flag because the
    * write can fail, and a welcome screen that comes back ten seconds after
@@ -211,6 +235,14 @@ function App() {
       } else if (e.payload === "playlist") {
         void usePlaylistStore.getState().fetchPlaylist();
         void usePlaylistStore.getState().fetchModes();
+      } else if (e.payload === "keybinds") {
+        void useKeybindStore.getState().load();
+      } else if (e.payload === "mousebinds") {
+        void useMousebindStore.getState().load();
+      } else if (e.payload === "settings") {
+        void useSettingsStore.getState().loadSettings();
+      } else if (e.payload === "recent") {
+        window.dispatchEvent(new CustomEvent("unflick:recent-changed"));
       }
     });
     return () => {
@@ -775,6 +807,7 @@ function App() {
       music_mode: () => { invoke("toggle_music_mode").catch(console.error); },
       toggle_library: () => toggleLibrary(),
       toggle_playlist: () => togglePlaylist(),
+      toggle_transcript: () => toggleTranscript(),
 
       screenshot: () => { if (state !== "stopped") captureScreenshot(); },
       clip: () => { if (state !== "stopped") setShowClipDialog((v) => !v); },
@@ -786,7 +819,7 @@ function App() {
     }),
     [
       state, pause, resume, seek, position, volume, setVolume, setSpeed,
-      stepFrame, stepChapter, abLoopAction, toggleLibrary, togglePlaylist,
+      stepFrame, stepChapter, abLoopAction, toggleLibrary, togglePlaylist, toggleTranscript,
       handleOpenFile, toggleSettings, t, adjustSpeed, nudgeSpeed, nudgeSubDelay,
       nudgeAudioDelay, captureScreenshot, addBookmark,
     ],
@@ -1043,7 +1076,10 @@ useEffect(() => {
             }
             return;
           }
-          play(target);
+          const seekRaw = params?.get("t") ?? params?.get("seek");
+          const seekNum = seekRaw !== null && seekRaw !== undefined ? Number(seekRaw) : NaN;
+          const startAt = Number.isFinite(seekNum) && seekNum >= 0 ? seekNum : null;
+          play(target, null, startAt);
           return;
         } catch {
           /* fall through */
@@ -1621,7 +1657,7 @@ useEffect(() => {
                 </button>
               </div>
 
-              <OpenErrorCard onOpenFile={handleOpenFile} />
+              {!showUrlDialog && <OpenErrorCard onOpenFile={handleOpenFile} />}
               <ResumeCard />
               <RecentFiles />
               <FirstStepsCard />
@@ -1643,7 +1679,7 @@ useEffect(() => {
             top: 0,
             bottom: 0,
             left: showLibrary ? 320 : 0,
-            right: showPlaylist ? 288 : 0,
+            right: showTranscript ? 320 : showPlaylist ? 288 : 0,
             background: "transparent",
           }}
           aria-label={t.player.videoRegion}
@@ -1740,6 +1776,13 @@ useEffect(() => {
       {/* Playlist panel — slides from right */}
       <AnimatePresence>
         {showPlaylist && <PlaylistPanel />}
+      </AnimatePresence>
+
+      {/* Interactive Transcript panel — slides from right */}
+      <AnimatePresence>
+        {showTranscript && (
+          <TranscriptPanel onClose={() => setShowTranscript(false)} />
+        )}
       </AnimatePresence>
 
       {/* Player bar. In a window it is part of the column and takes its

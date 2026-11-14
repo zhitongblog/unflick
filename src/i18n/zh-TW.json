@@ -99,7 +99,13 @@
     "removeFailed": "無法移除該項目",
     "nextFailed": "無法跳到下一項",
     "prevFailed": "無法跳到上一項",
-    "playFailed": "無法播放該項目"
+    "playFailed": "無法播放該項目",
+    "importList": "匯入播放清單…",
+    "exportList": "匯出播放清單…",
+    "imported": "已載入 {count} 項",
+    "exported": "播放清單已儲存",
+    "importFailed": "無法載入播放清單",
+    "exportFailed": "無法儲存播放清單"
   },
   "player": {
     "play": "播放",
@@ -387,7 +393,13 @@
   },
   "chapters": {
     "title": "章節",
-    "none": "此檔案沒有章節。"
+    "none": "此檔案沒有章節。",
+    "fromTranscript": "從字幕產生章節",
+    "detectScenes": "智慧偵測視覺場景",
+    "detecting": "正在偵測場景…",
+    "clearGenerated": "清除產生的章節",
+    "generated": "已產生 {count} 個章節",
+    "generateFailed": "無法產生章節"
   },
   "keybinds": {
     "section": "鍵盤快速鍵",
@@ -440,7 +452,8 @@
     "open_file": "開啟檔案",
     "open_url": "開啟 URL",
     "settings": "設定",
-    "incognito": "無痕模式"
+    "incognito": "無痕模式",
+    "toggle_transcript": "字幕文稿"
   },
   "mouse": {
     "section": "滑鼠",
@@ -574,5 +587,22 @@
     "add": "安裝腳本…",
     "empty": "尚未安裝使用者腳本。",
     "remove": "移除腳本"
+  },
+  "transcript": {
+    "title": "字幕文稿",
+    "close": "關閉 (T)",
+    "searchPlaceholder": "搜尋台詞…",
+    "allSpeakers": "全部說話者",
+    "detectSpeakers": "辨識說話者",
+    "detectingSpeakers": "辨識中…",
+    "renameSpeaker": "重新命名說話者",
+    "renamePlaceholder": "說話者名稱",
+    "export": "匯出文稿…",
+    "exported": "字幕文稿已匯出",
+    "exportFailed": "無法匯出字幕文稿",
+    "empty": "目前檔案未載入字幕。",
+    "noMatch": "沒有符合的台詞。",
+    "autoScroll": "跟隨播放",
+    "cues": "{count} 行"
   }
 }

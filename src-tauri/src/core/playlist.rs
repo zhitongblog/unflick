@@ -266,4 +266,148 @@ impl Playlist {
             }
         }
     }
+
+    // ─── Import / Export (.m3u / .m3u8 / .pls) ────────────────────────────
+
+    /// Save the current playlist to a `.m3u`, `.m3u8`, or `.pls` file.
+    /// Returns the number of entries written.
+    pub fn save_to_file(&self, path: &str) -> Result<usize, String> {
+        let list = self.list();
+        let target = std::path::Path::new(path);
+        if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("failed to create {}: {}", parent.display(), e))?;
+        }
+
+        let is_pls = target
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("pls"))
+            .unwrap_or(false);
+
+        let mut out = String::new();
+        if is_pls {
+            out.push_str("[playlist]\n");
+            for (i, entry) in list.iter().enumerate() {
+                let idx = i + 1;
+                out.push_str(&format!("File{}={}\n", idx, entry.path));
+                out.push_str(&format!("Title{}={}\n", idx, entry.title));
+            }
+            out.push_str(&format!("NumberOfEntries={}\nVersion=2\n", list.len()));
+        } else {
+            out.push_str("#EXTM3U\n");
+            for entry in &list {
+                out.push_str(&format!("#EXTINF:-1,{}\n{}\n", entry.title, entry.path));
+            }
+        }
+
+        std::fs::write(target, out)
+            .map_err(|e| format!("failed to write {}: {}", target.display(), e))?;
+        Ok(list.len())
+    }
+
+    /// Load entries from a `.m3u`, `.m3u8`, or `.pls` file into the playlist.
+    /// Replaces existing entries unless `append` is true.
+    pub fn load_from_file(&self, path: &str, append: bool) -> Result<Vec<PlaylistEntry>, String> {
+        let source = std::path::Path::new(path);
+        let bytes = std::fs::read(source)
+            .map_err(|e| format!("failed to read {}: {}", source.display(), e))?;
+        let raw = String::from_utf8_lossy(&bytes);
+
+        if raw.contains("#EXT-X-TARGETDURATION") || raw.contains("#EXT-X-STREAM-INF") {
+            return Err(
+                "this .m3u8 is an HLS media stream, not a playlist file — play it with `unflick play`"
+                    .to_string(),
+            );
+        }
+
+        let base_dir = source.parent();
+        let is_pls = source
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("pls"))
+            .unwrap_or(false)
+            || raw.trim_start().starts_with("[playlist]");
+
+        let mut parsed_paths = Vec::new();
+        if is_pls {
+            for line in raw.lines() {
+                let trimmed = line.trim();
+                if let Some((k, v)) = trimmed.split_once('=') {
+                    let k_lower = k.trim().to_ascii_lowercase();
+                    if k_lower.starts_with("file")
+                        && k_lower[4..].chars().all(|c| c.is_ascii_digit())
+                    {
+                        let item = v.trim();
+                        if !item.is_empty() {
+                            parsed_paths.push(resolve_playlist_entry(item, base_dir));
+                        }
+                    }
+                }
+            }
+        } else {
+            for line in raw.lines() {
+                let trimmed = line.trim().trim_start_matches('\u{feff}');
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                parsed_paths.push(resolve_playlist_entry(trimmed, base_dir));
+            }
+        }
+
+        if !append {
+            self.clear();
+        }
+        for p in parsed_paths {
+            self.add(&p);
+        }
+        Ok(self.list())
+    }
+}
+
+fn resolve_playlist_entry(raw: &str, base_dir: Option<&std::path::Path>) -> String {
+    if super::source::scheme_of(raw).is_some() || super::source::is_unc_path(raw) {
+        return raw.to_string();
+    }
+    let p = std::path::Path::new(raw);
+    if p.is_absolute() {
+        return raw.to_string();
+    }
+    if let Some(dir) = base_dir.filter(|d| !d.as_os_str().is_empty()) {
+        return dir.join(p).to_string_lossy().into_owned();
+    }
+    raw.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saves_and_loads_m3u_and_pls_playlists() {
+        let dir = std::env::temp_dir().join(format!("unflick-pl-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let pl = Playlist::new();
+        pl.add("https://example.com/a.mp4");
+        pl.add("sub/b.mkv");
+
+        let m3u = dir.join("list.m3u");
+        assert_eq!(pl.save_to_file(&m3u.to_string_lossy()).unwrap(), 2);
+
+        let loaded = Playlist::new();
+        let entries = loaded.load_from_file(&m3u.to_string_lossy(), false).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, "https://example.com/a.mp4");
+        assert!(entries[1].path.ends_with("sub/b.mkv"));
+
+        let pls = dir.join("list.pls");
+        assert_eq!(pl.save_to_file(&pls.to_string_lossy()).unwrap(), 2);
+        let loaded_pls = Playlist::new();
+        let entries_pls = loaded_pls.load_from_file(&pls.to_string_lossy(), false).unwrap();
+        assert_eq!(entries_pls.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -32,9 +32,14 @@ export default function RecentFiles({ limit = 6 }: { limit?: number }) {
       setEntries([]);
       return;
     }
-    invoke<RecentEntry[]>("recent_list", { limit })
-      .then(setEntries)
-      .catch(() => setEntries([]));
+    const fetchRecent = () => {
+      invoke<RecentEntry[]>("recent_list", { limit })
+        .then(setEntries)
+        .catch(() => setEntries([]));
+    };
+    fetchRecent();
+    window.addEventListener("unflick:recent-changed", fetchRecent);
+    return () => window.removeEventListener("unflick:recent-changed", fetchRecent);
   }, [limit, incognito]);
 
   if (incognito || entries.length === 0) return null;

@@ -185,6 +185,8 @@ unflick playlist prev
 unflick playlist clear
 unflick playlist repeat [off|one|all]     # omit value to read
 unflick playlist shuffle [on|off]         # omit value to read
+unflick playlist save <path>              # write .m3u / .m3u8 / .pls
+unflick playlist load <path> [--append]   # import .m3u / .m3u8 / .pls into the queue
 
 # Subtitles
 # Audio
@@ -228,11 +230,14 @@ unflick chapter generate [--count <n>]    # derive chapters from the transcript
 unflick chapter set '<json>'              # [{"time":0,"title":"Intro"}, ...]
 unflick chapter clear
 
-# Transcript (reads the subtitle track the player has open)
-unflick transcript get
-unflick transcript search <query> [--limit <n>]
-unflick transcript seek <query> [--occurrence <n>]
+# Transcript (reads the subtitle track the player has open, including .srt / .vtt / .ass / .ssa)
+unflick transcript get [--speaker <name>] [--file <path>]
+unflick transcript search <query> [--limit <n>] [--speaker <name>] [--file <path>]
+unflick transcript seek <query> [--occurrence <n>] [--speaker <name>]
 unflick transcript summary [--segments <n>] [--file <path>]
+unflick transcript speakers [--detect] [--count <n>] [--file <path>]
+unflick transcript rename-speaker <from> <to> [--file <path>]
+unflick transcript export <output> [--format txt|srt|vtt|json] [--speaker <name>] [--file <path>]
 
 # User scripts (.lua / .js in <config_dir>/scripts/)
 unflick script list
@@ -321,8 +326,10 @@ unflick mouse list
 unflick mouse set <trigger> <action>
 unflick mouse reset [<trigger>]
 
-# Frame capture (for multimodal models)
+# Frame capture & visual scene detection (for multimodal models)
 unflick frame capture [--output <path>] [--position <s>] [--max-edge <px>]
+unflick frame sheet [--cols <n>] [--rows <n>] [--start <s>] [--end <s>] [--max-edge <px>] [--output <path>] [--file <path>]
+unflick scene detect [--threshold <0.05..0.95>] [--to-chapters] [--file <path>]
 
 # A-B loop / frame stepping
 unflick loop a [<seconds>]      # omit to use the current position
@@ -379,7 +386,8 @@ unflick --mcp                   # Start MCP server (stdio)
 | `chapter_list` / `chapter_seek` | Chapter navigation | `unflick chapter 鈥 |
 | `ab_loop` | Repeat a section | `unflick loop 鈥 |
 | `frame_step` | Step one frame | `unflick frame next` |
-| `playlist_repeat` / `playlist_shuffle` | Playback order | `unflick playlist 鈥 |
+| `playlist_repeat` / `playlist_shuffle` | Playback order | `unflick playlist …` |
+| `playlist_save` / `playlist_load` | Export or import `.m3u` / `.m3u8` / `.pls` playlists | `unflick playlist save / load` |
 | `bookmark_add` / `bookmark_list` | Save and read named positions | `unflick bookmark 鈥 |
 | `bookmark_goto` | Jump to one, loading its file if needed | `unflick bookmark goto` |
 | `bookmark_rename` / `bookmark_remove` / `bookmark_clear` | Manage them | `unflick bookmark 鈥 |
@@ -411,15 +419,20 @@ driving unflick from outside:
 
 | Tool | Description | Maps to CLI |
 |------|-------------|-------------|
-| `search_transcript` | Find a phrase in the open subtitle track, with timestamps | `unflick transcript search` |
+| `search_transcript` | Find a phrase in the open subtitle track (optional speaker filter), with timestamps | `unflick transcript search` |
 | `seek_to_text` | Jump to where a phrase is spoken | `unflick transcript seek` |
-| `transcript_get` | Full transcript as timed cues | `unflick transcript get` |
-| `transcript_summary` | Segmented timeline summary, speaking stats, and top keywords | `unflick transcript summary` |
+| `transcript_get` | Full transcript as timed cues (optional speaker filter) | `unflick transcript get` |
+| `transcript_summary` | Segmented timeline summary, speaking stats, speaker breakdown, and top keywords | `unflick transcript summary` |
+| `transcript_speakers` | List speakers or run lightweight acoustic + turn-heuristic diarization | `unflick transcript speakers` |
+| `transcript_rename_speaker` | Rename a speaker label across the transcript and persist it | `unflick transcript rename-speaker` |
+| `transcript_export` | Export transcript cues to `.txt`, `.srt`, `.vtt`, or `.json` | `unflick transcript export` |
 | `library_transcript_search` | Search sidecar subtitles across every library entry | `unflick library transcript` |
 | `script_list` / `script_add` / `script_toggle` / `script_remove` | Manage `.lua` and `.js` mpv user scripts | `unflick script …` |
 | `generate_chapters` | Derive chapters from transcript pauses | `unflick chapter generate` |
 | `set_chapters` | Supply a chapter list the model wrote itself | `unflick chapter set` |
 | `describe_frame` | Return the on-screen frame as an image block | `unflick frame capture` |
+| `frame_contact_sheet` | Sample a `cols × rows` grid of timestamped frames into a single contact sheet image block | `unflick frame sheet` |
+| `detect_scenes` | Detect visual scene cuts via ffmpeg `showinfo` and optionally apply them as chapters | `unflick scene detect` |
 
 Generated chapters are real navigation, not just data: they show up in
 `chapter_list`, mark the progress bar, and respond to `chapter_seek`. They

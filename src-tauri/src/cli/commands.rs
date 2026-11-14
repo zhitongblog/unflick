@@ -198,6 +198,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: FrameAction,
     },
+    /// Detect visual scene boundaries in the current (or named) video file
+    Scene {
+        #[command(subcommand)]
+        action: SceneAction,
+    },
     /// Read and search the current file's subtitles as a transcript
     Transcript {
         #[command(subcommand)]
@@ -557,7 +562,14 @@ pub enum ScriptAction {
 #[derive(Subcommand)]
 pub enum TranscriptAction {
     /// Print every cue of the current file's transcript
-    Get,
+    Get {
+        /// Filter cues to a specific speaker (case-insensitive)
+        #[arg(long)]
+        speaker: Option<String>,
+        /// Video or subtitle file to read (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
+    },
     /// Find lines containing a phrase
     Search {
         /// Text to look for (case-insensitive)
@@ -565,6 +577,12 @@ pub enum TranscriptAction {
         /// Maximum matches to return
         #[arg(long, default_value_t = 20)]
         limit: u64,
+        /// Filter matches to a specific speaker
+        #[arg(long)]
+        speaker: Option<String>,
+        /// Video or subtitle file to search (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
     },
     /// Jump to where a phrase is spoken
     Seek {
@@ -573,13 +591,74 @@ pub enum TranscriptAction {
         /// Which occurrence to jump to, 1-based
         #[arg(long, default_value_t = 1)]
         occurrence: u64,
+        /// Filter matches to a specific speaker
+        #[arg(long)]
+        speaker: Option<String>,
+        /// Video or subtitle file to search (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
     },
-    /// Structured summary of the transcript: word count, keywords, and timeline segments
+    /// Structured summary of the transcript: word count, keywords, speakers, and timeline segments
     Summary {
         /// Number of timeline segments to divide the transcript into (1-20)
         #[arg(long, default_value_t = 5)]
         segments: u64,
         /// Video or subtitle file to summarize (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// List speakers in the transcript, or detect speaker turns automatically
+    Speakers {
+        /// Run lightweight acoustic + turn-taking speaker diarization
+        #[arg(long)]
+        detect: bool,
+        /// Target number of speakers when --detect is used (2-8)
+        #[arg(long)]
+        count: Option<u64>,
+        /// Video or subtitle file (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// Rename a speaker label across the transcript (persisted in cache)
+    RenameSpeaker {
+        /// Existing speaker name (e.g. "Speaker 1")
+        from: String,
+        /// New speaker name (e.g. "Host")
+        to: String,
+        /// Video or subtitle file (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// Export the transcript to a file (txt, srt, vtt, or json)
+    Export {
+        /// Output file path
+        output: String,
+        /// Export format: txt | srt | vtt | json
+        #[arg(long, default_value = "txt")]
+        format: String,
+        /// Optional speaker filter
+        #[arg(long)]
+        speaker: Option<String>,
+        /// Video or subtitle file (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SceneAction {
+    /// Detect visual scene cuts using ffmpeg scene-change scoring
+    Detect {
+        /// Scene change threshold (0.05 to 0.95; default: 0.3)
+        #[arg(long)]
+        threshold: Option<f64>,
+        /// Maximum number of scenes to return (default: 20)
+        #[arg(long)]
+        max_scenes: Option<u64>,
+        /// Apply the detected scenes as virtual chapters on the playing file
+        #[arg(long)]
+        to_chapters: bool,
+        /// Video file to inspect (defaults to the playing file)
         #[arg(long)]
         file: Option<String>,
     },
@@ -631,6 +710,30 @@ pub enum FrameAction {
         /// Longest edge of the saved image, in pixels
         #[arg(long, default_value_t = 768)]
         max_edge: u64,
+    },
+    /// Sample multiple frames across a time range into a tiled JPEG contact sheet
+    Sheet {
+        /// Output file path
+        #[arg(long, default_value = "unflick-sheet.jpg")]
+        output: String,
+        /// Number of columns in the grid (1-6)
+        #[arg(long, default_value_t = 4)]
+        cols: u64,
+        /// Number of rows in the grid (1-6)
+        #[arg(long, default_value_t = 3)]
+        rows: u64,
+        /// Start time in seconds (defaults to 0)
+        #[arg(long)]
+        start: Option<f64>,
+        /// End time in seconds (defaults to file duration)
+        #[arg(long)]
+        end: Option<f64>,
+        /// Target width of the tiled sheet in pixels (256-2048)
+        #[arg(long, default_value_t = 1280)]
+        max_edge: u64,
+        /// Video file to sample (defaults to the playing file)
+        #[arg(long)]
+        file: Option<String>,
     },
 }
 
@@ -897,6 +1000,19 @@ pub enum PlaylistAction {
     Shuffle {
         /// on | off. Omit to read the current setting.
         enabled: Option<String>,
+    },
+    /// Save the current playlist to an .m3u / .m3u8 / .pls file
+    Save {
+        /// Output playlist file path (.m3u, .m3u8, or .pls)
+        path: String,
+    },
+    /// Load a playlist from an .m3u / .m3u8 / .pls file
+    Load {
+        /// Path to the playlist file (.m3u, .m3u8, or .pls)
+        path: String,
+        /// Append to the existing playlist instead of replacing it
+        #[arg(long)]
+        append: bool,
     },
 }
 
@@ -1343,6 +1459,10 @@ pub fn run_cli(cli: Cli) -> i32 {
                         )),
                     },
                 },
+                PlaylistAction::Save { path } => send("playlist_save", json!({"path": path})),
+                PlaylistAction::Load { path, append } => {
+                    send("playlist_load", json!({"path": path, "append": append}))
+                }
             }
         }
         Some(Commands::Library { action }) => {
@@ -1621,20 +1741,59 @@ pub fn run_cli(cli: Cli) -> i32 {
         Some(Commands::Transcript { action }) => {
             ensure_daemon();
             match action {
-                TranscriptAction::Get => send("transcript_get", json!({})),
-                TranscriptAction::Search { query, limit } => {
-                    send("transcript_search", json!({"query": query, "limit": limit}))
+                TranscriptAction::Get { speaker, file } => {
+                    let mut args = json!({});
+                    if let Some(s) = speaker { args["speaker"] = json!(s); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_get", args)
                 }
-                TranscriptAction::Seek { query, occurrence } => send(
-                    "transcript_seek",
-                    json!({"query": query, "occurrence": occurrence}),
-                ),
+                TranscriptAction::Search { query, limit, speaker, file } => {
+                    let mut args = json!({"query": query, "limit": limit});
+                    if let Some(s) = speaker { args["speaker"] = json!(s); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_search", args)
+                }
+                TranscriptAction::Seek { query, occurrence, speaker, file } => {
+                    let mut args = json!({"query": query, "occurrence": occurrence});
+                    if let Some(s) = speaker { args["speaker"] = json!(s); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_seek", args)
+                }
                 TranscriptAction::Summary { segments, file } => {
                     let mut args = json!({"segments": segments});
                     if let Some(f) = file {
                         args["file"] = json!(f);
                     }
                     send("transcript_summary", args)
+                }
+                TranscriptAction::Speakers { detect, count, file } => {
+                    let mut args = json!({"detect": detect});
+                    if let Some(c) = count { args["count"] = json!(c); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_speakers", args)
+                }
+                TranscriptAction::RenameSpeaker { from, to, file } => {
+                    let mut args = json!({"from": from, "to": to});
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_rename_speaker", args)
+                }
+                TranscriptAction::Export { output, format, speaker, file } => {
+                    let mut args = json!({"output": output, "format": format});
+                    if let Some(s) = speaker { args["speaker"] = json!(s); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("transcript_export", args)
+                }
+            }
+        }
+        Some(Commands::Scene { action }) => {
+            ensure_daemon();
+            match action {
+                SceneAction::Detect { threshold, max_scenes, to_chapters, file } => {
+                    let mut args = json!({"to_chapters": to_chapters});
+                    if let Some(t) = threshold { args["threshold"] = json!(t); }
+                    if let Some(m) = max_scenes { args["max_scenes"] = json!(m); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("scene_detect", args)
                 }
             }
         }
@@ -1668,6 +1827,18 @@ pub fn run_cli(cli: Cli) -> i32 {
                     let mut args = json!({"output": output, "max_edge": max_edge});
                     if let Some(p) = position { args["position"] = json!(p); }
                     send("describe_frame", args)
+                }
+                FrameAction::Sheet { output, cols, rows, start, end, max_edge, file } => {
+                    let mut args = json!({
+                        "output": output,
+                        "cols": cols,
+                        "rows": rows,
+                        "max_edge": max_edge,
+                    });
+                    if let Some(s) = start { args["start"] = json!(s); }
+                    if let Some(e) = end { args["end"] = json!(e); }
+                    if let Some(f) = file { args["file"] = json!(f); }
+                    send("frame_contact_sheet", args)
                 }
             }
         }
