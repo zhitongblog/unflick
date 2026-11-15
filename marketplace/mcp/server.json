@@ -11,9 +11,9 @@
   "websiteUrl": "https://unflick.app",
   "packages": [
     {
-      "registryType": "npm",
-      "identifier": "unflick-mcp",
-      "version": "1.0.1",
+      "registryType": "mcpb",
+      "identifier": "https://github.com/zhitongblog/unflick/releases/download/v1.0.1/unflick-mcp-1.0.1.mcpb",
+      "fileSha256": "5faee1303fce58ed15c3730ccf7e8d6a5188d83c77c86f1677e1f489db47c891",
       "transport": {
         "type": "stdio"
       }
