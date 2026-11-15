@@ -1,0 +1,30 @@
+# Smithery auto-discovery manifest for unflick.
+# https://smithery.ai/docs/build/project-config
+
+name: unflick
+displayName: unflick — Video Player for Humans & AI
+description: |
+  Drive the unflick desktop video player (Windows, macOS, Linux) from any AI
+  agent via 114 MCP tools and 3 live resources: play local files, DVDs/ISOs and
+  30+ streaming sites (YouTube, Bilibili, Twitch, Vimeo…), search & summarize
+  transcripts with speaker diarization, generate/translate subtitles locally
+  with whisper.cpp, capture contact sheets & detect visual scenes, cut clips
+  and GIFs, control a 10-band EQ, cast to DLNA TVs, and manage a media library.
+
+  Prerequisite: install the unflick desktop app from https://unflick.app.
+
+homepage: https://unflick.app
+repository: https://github.com/zhitongblog/unflick
+license: MIT
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+    additionalProperties: false
+  commandFunction: |-
+    () => ({
+      command: "npx",
+      args: ["-y", "unflick-mcp"]
+    })

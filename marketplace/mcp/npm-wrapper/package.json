@@ -1,13 +1,15 @@
 {
   "name": "unflick-mcp",
+  "mcpName": "io.github.zhitongblog/unflick",
   "version": "1.0.1",
-  "description": "MCP server launcher for the unflick video player. Locates the installed unflick binary and runs `unflick --mcp` over stdio.",
+  "description": "MCP server launcher for the unflick video player. Locates the installed unflick binary and runs `unflick --mcp` over stdio (114 tools, 3 resources).",
   "type": "module",
   "bin": {
     "unflick-mcp": "bin/unflick-mcp.mjs"
   },
   "files": [
     "bin/",
+    "surface.json",
     "README.md"
   ],
   "keywords": [
@@ -16,7 +18,9 @@
     "unflick",
     "video",
     "player",
-    "mpv"
+    "mpv",
+    "subtitles",
+    "whisper"
   ],
   "homepage": "https://unflick.app",
   "repository": {

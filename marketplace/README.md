@@ -6,7 +6,7 @@ to the major marketplaces — and a reference any other app can copy to do the s
 > unflick is a free, ad-free, cross-platform video player for **humans and AI**.
 > The same playback core is exposed three ways: GUI, CLI, and an MCP server.
 > AI agents (Claude, Cursor, Codex — anything that speaks MCP) drive it natively
-> through **94 tools** and **3 live resources**.
+> through **114 tools** and **3 live resources**.
 
 - Website: https://unflick.app
 - Repository: https://github.com/zhitongblog/unflick

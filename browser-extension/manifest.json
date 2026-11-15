@@ -3,6 +3,12 @@
   "name": "Send to unflick",
   "version": "1.0.1",
   "description": "Play or queue the current page, link, or media element in unflick — with seamless timestamp handoff.",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
   "permissions": [
     "activeTab",
     "contextMenus",
@@ -16,7 +22,13 @@
   },
   "action": {
     "default_title": "Send to unflick",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
   },
   "commands": {
     "play-current-tab": {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "name": "unflick",
-  "description": "MCP server for the unflick video player. Play local files, discs and 30+ streaming-site URLs, seek to what was said, describe the frame, screenshot, cut clips/GIFs, generate and translate subtitles locally with whisper.cpp, bookmark, equalize, cast to a DLNA television, and scan/search a media library.",
+  "description": "MCP server for the unflick desktop video player (114 tools, 3 resources): play local files, discs and 30+ streaming-site URLs, search & summarize transcripts with speaker diarization, capture contact sheets & detect scenes, cut clips/GIFs, generate subtitles locally with whisper.cpp, equalize audio, cast via DLNA, and search your media library.",
   "maintainers": [
     "zhitongblog"
   ],
@@ -17,6 +17,7 @@
     "mpv",
     "subtitles",
     "whisper",
+    "diarization",
     "youtube",
     "screenshot",
     "clip",
