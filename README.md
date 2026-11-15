@@ -4,6 +4,9 @@
 
 **[unflick.app](https://unflick.app)** · MIT · Cross-platform · CLI + MCP first
 
+[![Glama MCP Server](https://glama.ai/mcp/servers/zhitongblog/unflick/badges/score.svg)](https://glama.ai/mcp/servers/zhitongblog/unflick)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.zhitongblog%2Funflick-7C3AED)](https://registry.modelcontextprotocol.io/?q=unflick)
+
 unflick plays your video files and your YouTube / Bilibili / Twitch / Vimeo / 26 other streaming-site URLs, in a beautiful native window. Auto-skips YouTube sponsor segments via SponsorBlock. Finds subtitles on OpenSubtitles, or generates them locally with whisper.cpp when none exist.
 
 What makes it different: **MCP is a built-in control surface, not a third-party wrapper.** Other players can be scripted from the outside; in unflick the CLI, the MCP server and the window share one player instance. Ask Claude to skip to the next chapter and the video *you are watching* skips — same mpv, same playback, no second hidden process. Every feature ships headless before it gets a button.
