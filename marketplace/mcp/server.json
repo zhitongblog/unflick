@@ -3,13 +3,21 @@
   "name": "io.github.zhitongblog/unflick",
   "title": "unflick",
   "description": "Control the unflick video player: play files/URLs, search transcripts, cut clips, 114 MCP tools.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "repository": {
     "url": "https://github.com/zhitongblog/unflick",
     "source": "github"
   },
   "websiteUrl": "https://unflick.app",
   "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "unflick-mcp",
+      "version": "1.0.1",
+      "transport": {
+        "type": "stdio"
+      }
+    },
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/zhitongblog/unflick/releases/download/v1.0.1/unflick-mcp-1.0.1.mcpb",

@@ -6,6 +6,7 @@
 
 [![Glama MCP Server](https://glama.ai/mcp/servers/zhitongblog/unflick/badges/score.svg)](https://glama.ai/mcp/servers/zhitongblog/unflick)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.zhitongblog%2Funflick-7C3AED)](https://registry.modelcontextprotocol.io/?q=unflick)
+[![npm](https://img.shields.io/npm/v/unflick-mcp?label=npm%20unflick-mcp)](https://www.npmjs.com/package/unflick-mcp)
 
 unflick plays your video files and your YouTube / Bilibili / Twitch / Vimeo / 26 other streaming-site URLs, in a beautiful native window. Auto-skips YouTube sponsor segments via SponsorBlock. Finds subtitles on OpenSubtitles, or generates them locally with whisper.cpp when none exist.
 
@@ -43,7 +44,7 @@ unflick exposes the same playback engine through three surfaces:
 
 - **GUI** — modern player window with libmpv-quality playback, keyboard shortcuts, drag-and-drop, picture-in-picture, true fullscreen, chapters, bookmarks, A-B loop, frame stepping, subtitle timing and styling.
 - **CLI** — every feature is also a command. `unflick play <file-or-url>`, `unflick chapter next`, `unflick bookmark add --name "the good bit"`, `unflick loop a`, `unflick subtitle auto`, `unflick subtitle bilingual on`, `unflick audio eq preset speech`, `unflick clip 0 5`, `unflick library scan`. Output is JSON; pipe it to `jq` and automate. Started with `--allow-dev`, `unflick dev snapshot` / `click` / `eval` drive and read the player's own window, which is how unflick is tested on all three platforms.
-- **MCP server** — `unflick --mcp` starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 101 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, subtitle_bilingual, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
+- **MCP server** — `unflick --mcp` (or `npx -y unflick-mcp`) starts a Model Context Protocol server over stdio. Add it to Claude Desktop / Cursor / Codex CLI's MCP config and your AI agent gets 114 tools (play, seek, chapter_seek, bookmark_goto, ab_loop, subtitle_delay, subtitle_bilingual, screenshot, clip, sponsor_segments, get_subtitles, equalizer_preset, generate_subtitles, library_search, …) plus live resources.
 
 Claude Code users can install the skills and the MCP server in one step:
 
